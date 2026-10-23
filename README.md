@@ -27,6 +27,10 @@ Cross-platform application compatibility is a research goal, **not an implemente
 3. Validate compatibility claims through technical research and experiments before making promises.
 4. Make incremental, evidence-based design decisions, with clear attention to maintainability, security, and licensing.
 
+## Architecture and research documents
+
+- [Kernel Architecture & Feasibility — Draft v0.1](docs/architecture/kernel-architecture-and-feasibility-v0.1.md): in-depth comparison of Linux, Windows NT, Apple XNU, FreeBSD, and Fuchsia Zircon, plus candidate UniOS system designs. **Research proposal only; no architecture decisions are final or implemented.**
+
 ## Repository
 
-This repository currently contains project documentation. Design notes, architecture proposals, and feasibility findings will be added as decisions are made.
+This repository is in the design and feasibility research phase. Drafts are tracked for discussion and revision, not as confirmed implementation requirements.
