@@ -486,7 +486,7 @@ A specific algorithm or role threshold must not be selected solely by mirroring 
 
 ## 18. Research exit gates and refusal criteria
 
-**R1 trust-chain design exit: NOT PASSED.** Before Accepted detailed spec or product claims:
+**R1 trust-chain design exit (v0.2): NOT PASSED.** Before Accepted detailed spec or product claims:
 1. Specify exact independent trust roots and firmware UEFI mode plus owned vs third-party PK/KEK/db/dbx on named hardware.
 2. Show loader/M0 verification chain, typed kernel bootstrap descriptor, canonical signed manifest and immutable/read-time SystemImage proof.
 3. Model TUF signature thresholds, Root replacement, Snapshot/Targets consistency, Timestamp expiration and offline bad RTC.
@@ -497,12 +497,16 @@ A specific algorithm or role threshold must not be selected solely by mirroring 
 8. Specify PCR/event log/quote/measurement scope and user data seal/recovery migration without promising universal TPM access.
 9. Contrast TRUST-A/B/C/D cost, TCB, platform lock-in, developer UX, key custody, user consent and offline fallback on identical threat model.
 10. After an explicit later implementation authorization, test safe QEMU/OVMF simulated modes and one *sacrificial reference PC* without touching existing personal boot keys or user disk, then independently evaluate key/TPM operations.
+11. **v0.2 P0:** demonstrate how UEFI variable persistence, authenticated write protection, monotonic replay resistance and TPM NV COUNTER/index-vector representation each work or fail on the intended Reference PC. Do not assume a single primitive satisfies all four.
+12. **v0.2 P0:** specify TUF sequential N+1 old/new threshold Root rotation, unique signer IDs, bounded updates, durable trusted metadata, key-rotation fast-forward recovery, full trusted cache rollback threat and expired RTC behavior.
+13. **v0.2 P0:** distinguish vendor-root, owner-custom-root, developer/test signer and unenforced firmware policies, including a separately EFI-authorized alternate bootloader and sealed user-data key unseal.
+14. **v0.2 P0:** enumerate all partial security floor *vector* writes and post-promotion actual rescue conditions; one read check of rescue media is time-scoped, not indefinite availability.
 
 **Explicit rejection outcomes:** no working trusted verifier, no robust floor store on strict-profile PC, no eligible alternate after promotion, unavailable physical rescue, inability to recover DataVolume keys/schema, insecure loader rollback, unbounded persistent reboot loops, or fundamental platform DMA compromise -> decline ProductionVerified/anti-rollback or return RecoveryUnavailable/FailStop. A partial document does not grant go-live.
 
-**Suggested next design step:** independent adversarial review RFC-017 v0.1→v0.2, then RFC-009 Native KABI and RFC-018 versioned status/canonical manifest bindings. The eight D1–D8 direction decisions remain Accepted only at top-level, not this proposal.
+**Suggested next design step:** the RFC-017 v0.1→v0.2 adversarial review is recorded in §20 but its P0 proof gates remain OPEN. Continue with RFC-009 Native KABI, then RFC-018 versioned status/canonical manifest bindings, while jointly reviewing RFC-006/008/017 for critical boot/update metadata semantics. D1–D8 remain Accepted only as high-level directions.
 
-## 19. Official first-party references (reviewed 2026-10-24)
+## 19. Official first-party references (rechecked 2026-10-24)
 
 - **[S1] UEFI 2.11 Boot Manager, PK/KEK/db/dbx and Secure Boot state:** https://uefi.org/specs/UEFI/2.11/03_Boot_Manager.html
 - **[S2] UEFI 2.11 Runtime Variable Services and authenticated variable semantics:** https://uefi.org/specs/UEFI/2.11/08_Services_Runtime_Services.html
