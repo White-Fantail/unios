@@ -801,3 +801,11 @@ Linux rseq uses registered per-thread memory fields and aborts critical sections
 **Guest separation:** Linux guest FD values **are intentionally reusable** and can share OpenFileDescriptions; a Guest FD, Native Handle token, ReplyToken, ReceiptSlot, SABI RequestId and DurableReceipt may never be converted by a raw integer cast or identical-key assumption. Exact errno/EINTR/close/epoll/restart semantics need per-operation translation, not a generic native UNKNOWN → clean no-effect map.
 
 **P0 still open:** native public token width/overflow, receipt bootstrap and nonce collisions/GC, copyout/alias/SMP barriers, Task restart and post-Task Supervisor query rights, M0 fixed budget and independent device/storage effects. This document stays **Proposed v0.2**, with no compiled ABI, test result or implementation authorized.
+
+## 27. 2026-10-25 Operation identity replay fence versus result evidence — Proposed
+
+**Source:** [CAPIPC Finite Handle Namespace, Receipt Ledger & GC v0.1](../models/capipc-finite-handle-namespace-receipt-ledger-gc-v0.1.md). This addendum remains **non-normative**; no numeric ID width, syscall layout, SDK interface, kernel ring buffer or ABI status value is approved.
+
+The separate proposed KR-M1 Task receipt identity is a **preknown strictly ordered operation sequence**, with kernel-protected high-water-mark admission and bounded records. After receipt GC, an old sequence q≤H is blocked from readmission but its actual committed outcome may be UNKNOWN. A historical completion reference does not reissue closed/invalid CapHandles; a TaskGeneration restart, a Linux guest FD or io_uring user_data value cannot be used to infer the same receipt identity or cross-reboot idempotency.
+
+**Proof/feasibility gate:** compare strict-entry ordering versus bounded sliding sequence window and unordered nonce history; require admission+PENDING storage atomicity, commit/result coherence, quota fail-before-cut, query rights after source MOVE, expiry truth and multi-Thread liveness. Existing RFC-009 Proposed v0.2 status is unchanged.
