@@ -195,3 +195,122 @@ Queue-cap containment can form cycles and recursive destruction. Fuchsia Channel
 
 Channel peer-closed or queue-full **before SEND cut** returns true NOT_COMMITTED with original source grants still owned by A (UniOS's candidate E1, unlike Fuchsia's consume-on-error write). After SEND cut, peer death can cause queue cleanup and close of transit caps but **does not restore original sender handle**, stop DMA or undo a remote VFS effect. When R2-F cannot be proved, keep device/pinned frames charged/quarantined, not reclaimed simply because final receiver cap is gone.
 
+
+## 7. Independently re-reviewed race and attack cases (RV-01…RV-28)
+
+All cases are **paper counterexamples**, not tests, formal witnesses or bug reports against running software.
+
+| ID | Adversarial interleaving | Unsafe outcome to rule out |
+|---|---|---|
+| RV-01 | after kernel staging, sender modifies bytes and handle descriptors before SEND commit | kernel sends inconsistent snapshot / unintended object |
+| RV-02 | grant revoked B after preflight but before K-S | a new unauthorized transfer commits |
+| RV-03 | source same public handle appears twice in one cap MOVE vector | one grant creates two owners under one send |
+| RV-04 | one item among 3 moved grants becomes invalid during commit | partial vector transfer, other source slots invalidated |
+| RV-05 | sender Endpoint E moved concurrently while SEND operation was admitted | two Task owners send without a defined order |
+| RV-06 | sender includes E itself in outgoing cap vector | an uncollectable Channel/message cycle or confused owner |
+| RV-07 | sender includes peer E2 and indirect chain of Channel caps | recursive queue destruction exhausts kernel stack/cleanup budget |
+| RV-08 | K-S completes, sender return status faults or Thread dies | false NOT_COMMITTED or blind replay of moved grant |
+| RV-09 | result contains fresh Ticket ID, but only returned in lost output | caller cannot discover committed operation despite nominal ticket |
+| RV-10 | SEND result UNKNOWN; same user bytes/cap identifiers reused after handle close | second operation acts on unrelated fresh grant through ABA |
+| RV-11 | B receives exclusive claim; another B Thread reads first prefix during copyout | abort claimed "no bytes seen" although disclosure irreversible |
+| RV-12 | B exposed prefix then final cap-slot allocation fails; message requeued to C | two distinct Task observers read secret with one successful K-I |
+| RV-13 | B exposed message then server restarts to B2 under same ServiceID | message retransmitted to different incarnation without disclosure record |
+| RV-14 | receiver user byte/count/handle output buffers overlap | handle output overwrites payload/metadata or writes outside checked range |
+| RV-15 | B mutates output count/address alias while kernel uses it | incoherent cap count, writable alias or out-of-bounds copy |
+| RV-16 | B holds ReceiveClaim indefinitely or crashes holding staging pages | global queue or wired M0 reserve starved |
+| RV-17 | B decodes unknown resource after source MOVE committed | parser error asserts source cap magically restored |
+| RV-18 | privileged cap installed before unknown method decode, B uses it immediately | policy incorrectly claims no cap usable before SABI admission |
+| RV-19 | revocation B while cap queued/claimed then installed | cap becomes newly usable despite revoke barrier |
+| RV-20 | last endpoint handle closed; queued caps contain Channel graph cycle | unbounded recursive closure or sponsor leak |
+| RV-21 | receiver cancellation after publication then external network send occurred | terminal settlement reports proven no external effect |
+| RV-22 | B's cap vector installed then byte copyout fails | all-or-none K-I misreported as full request delivery |
+| RV-23 | admitted SEND uses stale Task owner after E1 owner MOVE | FIFO reordering/old Task unauthorized operation after move |
+| RV-24 | queue peer closes pre-SEND, wrapper imports Fuchsia consume-on-failure | sources destroyed although UniOS NOT_COMMITTED promised retention |
+| RV-25 | inherited sponsor Task dies while claim and DMA pin still outstanding | charges refunded and old DMA corrupts freed frame |
+| RV-26 | status requery permitted across Task/Service restart using same numeric Ticket | old request info leaked to unrelated Task or new invocation |
+| RV-27 | Decode and close DeviceCap while ATS/device queue still active | R2-F incorrectly declared and memory reused |
+| RV-28 | SABI result after partial publication maps to Linux success or no-effect errno | guest ABI falsifies disclosure/effect semantics |
+
+## 8. Proposed v0.2 safety invariants (RV-I01…RV-I32) — NONE proved
+
+| ID | Invariant, proposed and unverified |
+|---|---|
+| RV-I01 | E1 Endpoint has at most one effective public owning Task handle, notwithstanding bounded in-flight refs. |
+| RV-I02 | Transfer and in-flight endpoint invocations are ordered at explicit admitted/commit cuts. |
+| RV-I03 | Sending an Endpoint into its own outgoing Channel is refused in initial E1; indirect cycles require separate bounded proof. |
+| RV-I04 | Kernel snapshots complete user bytes and source descriptor vector before final protected SEND validation. |
+| RV-I05 | Underlying handle/lineage/rights/revoke and queue sponsor conditions are revalidated at atomic K-S after preflight. |
+| RV-I06 | K-S moves exactly the full vector and bytes as one queue record or moves none. |
+| RV-I07 | Identical source handle repeated in one MOVE cannot create two independently valid owners. |
+| RV-I08 | True NOT_COMMITTED retains all source handles and never charges irreversible transit debt. |
+| RV-I09 | After COMMITTED no source handle is restored merely because receiver decodes/aborts/dies. |
+| RV-I10 | A lost SEND result or lost fresh ticket leaves caller UNKNOWN without independent pre-identified authenticated reconciliation. |
+| RV-I11 | A retry from UNKNOWN cannot reissue MOVE or non-idempotent effect without separate authoritative evidence. |
+| RV-I12 | ReceiveClaim exclusively binds one authorized Task/Endpoint generation, with bounded quota/lifetime. |
+| RV-I13 | Sensitive bytes remain kernel-private before a vetted claimant and permission/size checks. |
+| RV-I14 | Exposed(M) is conservatively set no later than first attempted user-visible write, regardless of actual partial copy success. |
+| RV-I15 | Exposed(M) can never transition back to unexposed during that message's lifetime. |
+| RV-I16 | After Exposed(M), normal queue re-delivery to a different Task/ServiceIncarnation is prohibited. |
+| RV-I17 | A claim can return to a queue only when user-visible publication is proven absent and current issuer/Endpoint policy permits it. |
+| RV-I18 | ReceiveClaim failure after possible disclosure cannot assert no recipient observed the bytes. |
+| RV-I19 | Complete cap-vector install at K-I is all-or-none and separate from user-buffer byte visibility. |
+| RV-I20 | Invalid/overlapping user output buffers and hostile aliases are rejected or governed by a separately proven layout. |
+| RV-I21 | An unknown SABI resource after SEND commit is always custodied, closed, quarantined or explicitly forwarded, never silently skipped. |
+| RV-I22 | Raw wire numbers, IDs and guest FDs never synthesize transferred native rights. |
+| RV-I23 | If cap usability before schema validation is forbidden by service security policy, a distinct enforced escrow/broker admission cut is required. |
+| RV-I24 | Grant lineage B prevents new use of revoked descendants in queue/claim/table irrespective of earlier transfer rights. |
+| RV-I25 | R0 handle close and cap settlement do not imply CPU R1, hardware R2-F or object-wide R2-O. |
+| RV-I26 | All moved grants, queue records, claims, pinned pages, reply tokens and terminal resources remain sponsor accounted across Task death. |
+| RV-I27 | Queue close/recursive cap destruction is bounded; no unbounded kernel stack traversal/privileged M0 reserve drain. |
+| RV-I28 | Kernel ReplyToken/generation and SABI request/status/ServiceIncarnation are separate authority domains. |
+| RV-I29 | A message's terminal settlement after V prevents further delivery but cannot retract already observed bytes or remote effects. |
+| RV-I30 | SABI and Linux guest status translation never fabricates completed receive or no-effect after partial publication/cancel. |
+| RV-I31 | Finite M0 CPU/memory/IPC cleanup reserves are preserved under malformed and malicious message/claim storms. |
+| RV-I32 | The document's entire transition family is Proposed; no numeric ABI, implementation or security certificate follows from these invariants. |
+
+## 9. Outstanding v0.2 joint blockers (RV-O01…RV-O22)
+
+| ID | Priority | Question with explicit owner |
+|---|---|---|
+| RV-O01 | P0 | Choose E1 owner-MOVE ordering versus admitted old SEND/RECEIVE and bounded cancellation (002/003). |
+| RV-O02 | P0 | Define reliable Task-scoped pre-identified result query if both commit status and returned new ticket ID lost (003/009). |
+| RV-O03 | P0 | Full-vector SEND commit under concurrent revoke B, Task death, allocation/pager fault and multiple locks (002/003/004). |
+| RV-O04 | P0 | Decide forbidden self-send, peer-endpoint containment and indirect Channel cycle settlement (002/003/005). |
+| RV-O05 | P0 | Define authorized recipient principal and whether same Task/new Thread/session counts as equivalent observer (003/006/018). |
+| RV-O06 | P0 | Choose V before actual write as conservative irreversible exposure marker; detect partial copyout path under unmap/alias (003/004/009). |
+| RV-O07 | P0 | Prove no foreign Task/ServiceIncarnation requeue after V including receiver death and E1 endpoint MOVE (003/006). |
+| RV-O08 | P0 | Decide pre-V reclaim and post-V terminal/drop/quarantine, with bounded fairness/cleanup (002/003/005). |
+| RV-O09 | P0 | Prove receiver output byte/count/handle buffer layout, aliasing and error results (003/004/009). |
+| RV-O10 | P0 | Decide cap installed-usable-before-IDL-validation vs inert kernel escrow vs trusted router and which service security model is promised (002/003/018). |
+| RV-O11 | P0 | If inert cap escrow, define release authority, handler death, cap role mismatch and resource reservation (002/003/018). |
+| RV-O12 | P0 | Rights/revoke B at SEND, claim, K-I and service method admission including already-admitted hardware work (002/007/018). |
+| RV-O13 | P0 | Budget and cleanup under stalled malicious receiver, recursive Channel close and DMA quarantine (002/003/005/006/007). |
+| RV-O14 | P0 | Unambiguous same-source duplicate handle rejection and independently derived different caps to same object (002/003). |
+| RV-O15 | P0 | Endpoint self-transit/cycle effects on peer close and object lifetime versus source cap loss (002/003). |
+| RV-O16 | P0 | Result status after terminal/drop and before actual method admission; represent possible byte exposure/effect separately (003/009/018). |
+| RV-O17 | P0 | Kernel protected message/claim generation and authenticated privacy-safe status enumeration across Task lifecycle (002/003/009). |
+| RV-O18 | P0 | Native→guest errno/side-effect truth for Linux read/recv/close/mmap and signal interruptions (009/010/018). |
+| RV-O19 | P1 | Compare RCV-T1/T2/T3/T4 and S-END-A/B/C with same liveness/TCB/performance budgets (001/003/005). |
+| RV-O20 | P1 | End-to-end message secrecy classification and explicit recipient capability/consent information-flow policy (002/016/018). |
+| RV-O21 | P1 | Formal model fairness, bounded state size, lossy usercopy and crash cuts; later differential test oracle (003/015). |
+| RV-O22 | P1 | Normalize these findings back to RFC-002/003/009/018 with no hidden acceptance or ABI layout freeze (all joint). |
+
+## 10. Proposed design decisions (RV-D01…RV-D16) — NONE Accepted
+
+- **RV-D01:** Retain CAPIPC-A E1 owner+kernel bounded MOVE+user SABI as conditional research architecture, not a verified runtime.
+- **RV-D02:** Sender final commit K-S is single all-or-none cap/bytes transfer after snapshot and post-preflight revoke/owner revalidation.
+- **RV-D03:** Same source handle appearing twice in a MOVE vector must not create duplicate live grant custody.
+- **RV-D04:** Early study an explicit ban on transfer of the very sending Endpoint; peer/indirect Channel cycle handling remains open.
+- **RV-D05:** E1 Endpoint handoff requires explicit old-invocation admissibility and global order on that object, not merely owner pointer replacement.
+- **RV-D06:** No new result ticket only returned *after* K-S is considered sufficient for lost-result resolution; preidentified scoped ticket/query or fail-closed UNKNOWN remains research.
+- **RV-D07:** Prefer an exclusive bounded ReceiveClaim that tracks **irreversible user visibility** separately from cap install.
+- **RV-D08:** Candidate Exposed(M) marker is set before first user-visible store attempt and never clears.
+- **RV-D09:** No replay/requeue to another Task/incarnation after Exposed(M); terminal settlement or same verified context only.
+- **RV-D10:** Pre-V only requeue is permitted conditionally under unchanged authorization, age/budget and no actual disclosure evidence.
+- **RV-D11:** Compare cap-usability-after-receive (bearer) with inert escrow until SABI admission; neither silently claims the other's guarantee.
+- **RV-D12:** Default reject overlapping buffer output layout unless proven race-safe; pointer preflight not sufficient for immutable aliasing.
+- **RV-D13:** Unknown cap role after committed MOVE settles grants under current custody; never restores sender handle or declares DMA fence on close.
+- **RV-D14:** Revocation B/CPU R1/device R2-F/object R2-O separate even when affected grant is inside a queued message.
+- **RV-D15:** Preserve exact transport/receive exposure/method effect/scoped durability status without false no-effect guest errno.
+- **RV-D16:** Remain Proposed: no KABI signatures, syscall number, protocol byte format, model execution, code or product promise approved.
+
