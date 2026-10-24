@@ -1,6 +1,6 @@
 # UniOS RFC-009 — Native ABI, System Call & User-Service Contract
 
-> **Status:** Proposed — Specification v0.1 (research/design only; NOT Accepted, implemented, frozen as stable ABI, benchmarked, or formally verified)
+> **Status:** Proposed — Specification v0.2 (critical adversarial re-review; NOT Accepted, implemented, frozen as stable ABI, benchmarked or formally verified)
 > **Date:** 2026-10-24 (Pacific/Auckland)
 > **Architecture:** [UniOS Architecture v0.2](../architecture/unios-architecture-v0.2.md); Accepted D1–D8 apply as broad direction only.
 > **Primary detailed dependencies:** [RFC-001 Kernel/TCB](rfc-001-kernel-boundary-and-tcb.md), [RFC-002 Capabilities](rfc-002-object-capability-lifetime-delegation-revocation.md), [RFC-003 IPC](rfc-003-ipc-wire-protocol-and-synchronization.md), [RFC-004 VM/Pager](rfc-004-virtual-memory-pager-cache-and-oom.md), [RFC-005 CPU](rfc-005-scheduling-preemption-and-cpu-budget.md), [RFC-006 Boot](rfc-006-boot-trust-chain-service-startup-and-recovery.md), [RFC-007 Drivers](rfc-007-user-space-drivers-dma-and-iommu.md), [RFC-008 Storage](rfc-008-storage-filesystems-and-crash-durability.md), [RFC-017 Trust](rfc-017-verified-boot-updates-and-rollback-protection.md).
@@ -24,6 +24,8 @@ Compare:
 - **ABI-B — message-centric KABI only with pure user-space servers:** perhaps smallest trap surface and uniform tracing; hardware/VM/thread/fault objects still require secure privileged operations and performance/boot proof.
 - **ABI-C — expanded kernel POSIX-like ABI:** simpler initial POSIX source port and raw syscall bridging, but enlarges kernel TCB and contradicts D5 without a strong measured exception.
 - **ABI-D — Linux syscall ABI as native KABI:** quick limited CLI compatibility on one architecture but makes Linux semantics a permanent kernel-facing policy dependency; not recommended absent compelling proof.
+
+**v0.2 critical corrections:** a per-Thread kernel-owned guest tag is insufficient when guest code can jump into trusted broker executable memory or reach native-capable thread state in the same Task; basic Fuchsia zx_channel_write **consumes transferred handles even on failure**, unlike UniOS candidate NOT_COMMITTED; receiver byte copyout and cap install need a protected claim/escrow proof; identical recycled handle integers defeat purely internal generation checks; Linux futex compare-and-block and rseq need atomic scheduler/memory semantics; capability-bearing SABI version negotiation must fail closed.
 
 **P0 blockers:** raw x86_64 native vs Linux guest entry identification cannot rely on userspace-controllable registers or one library shim; input/output copy and handle transfer must have clear atomicity; pending reply, timeout and cancel cannot invent rollback of remote effects; 64-bit data layouts and future 32-bit guests must not get confused; service/IDL version updates cannot grant new capabilities; bootstrap/rescue must run with the minimal supported ABI even when ordinary services fail.
 
@@ -56,18 +58,21 @@ A compromised M0/loader, firmware/SMM, real IOMMU, DMA before verified boot, PCI
 | seL4 IPC tutorial [S1] | IPC uses endpoints, labels/badges, receive/send, grants and optimized fastpath with precise constraints | distinguish kernel-asserted badge from user payload; don't promise fastpath with arbitrary cap transfers |
 | seL4 Manual [S2] | capability/CSpace, Thread, Endpoint, Reply and fault handling have explicit kernel operations | small capability primitive family plausible; seL4 API/ABI not copied automatically |
 | Fuchsia Zircon handles [S3] | process-local typed handles have rights; duplicate/replace/close, transfer in channels | model Task-local handle integer as locator, not globally meaningful transferable credential |
-| Fuchsia Channels [S4] | messages carry bytes and handle ownership; atomic send/receive phases; explicit ownership on errors | define UniOS separate E1 queue-commit, delivery and handle install outcomes rather than borrow incompatible subtle failure semantics |
+| Fuchsia Channels [S4,S19–S21] | basic zx_channel_write consumes all supplied handles **on success or failure**; write_etc has disposition-specific operations; read_etc exposes type/rights and size/discard options | UniOS must choose own NOT_COMMITTED sender-ownership rule and bounded receive escrow, never assume Fuchsia failure contract equals it |
 | Fuchsia async waits [S5] | objects may register async wait packets; multiple subscriptions can exist and consume resources | WaitSet quota, registration generation, edge/level/cancel semantics need precise promises |
 | Fuchsia FIDL flexible types [S6] | strict/flexible unknown fields, methods and resource/handle wire metadata support evolving clients | separate SABI IDL unknown-field handling from KABI small envelope, strict unknown handles cannot leak |
 | Linux syscall ABI (arch-specific) [S7] | syscall interface differs by architecture; Linux stable syscall set is distinct from POSIX library API | Linux x86_64 guest dispatch belongs to compatibility personality, not UniOS-native number table |
 | Linux syscall(2) x86-64 [S8] | x86-64 Linux passes args in rdi,rsi,rdx,r10,r8,r9; calling convention not identical to ordinary C function | separate syscall machine convention from C SDK ABI and define guest register snapshot |
-| Linux seccomp user notification [S9] | filters/notifier broker syscalls in user space but seccomp explicitly is not a complete sandbox | use as comparison for guest dispatch, never treat userspace filter/interception as native cap authorization |
+| Linux seccomp user notification [S9,S22] | filtering is not a sandbox; user notification has argument memory TOCTOU, ptrace and tracer lifecycle hazards | use only as interception analogy, not as native hardware syscall trap or capability authorization |
 | FreeBSD Capsicum [S10] | descriptors become rights-bearing capabilities in hybrid POSIX environment | a guest FD/proxy can carry attenuated native FileCaps; UID0 remains not native root |
 | Windows NT Ntdll API docs [S11] | user applications typically call Ntdll Nt entries; undocumented Native ABI isn't stable Win32 API contract | Windows compatibility should target named documented APIs/loader semantics before native NT syscall numbers |
 | Linux ABI stability docs [S12] | kernel userspace ABI has explicit stability tiers, syscalls generally append-only | define future stable vs experimental UniOS ABI claims independently, not assume all prototypes stable |
 | Fuchsia wait/handle docs [S13] | close invalidates handle and can cancel associated waits, peer closure has separate signaling | choose explicit wait invalidation and peer death race semantics |
 | Fuchsia FIDL wire format [S14] | a transferred handle's on-wire placeholder is not the sender's integer handle value | never treat serialized handle number as access credential |
 | Linux io_uring [S15] | asynchronous ring submission/completion carries complex buffer and lifecycle rules | optional batch/ring transport only after simple syscall+Channel safety model proven |
+| Linux futex(2) [S23] | atomically compare guest-shared memory value and block against concurrent writer/wake | naive two-RPC read-then-sleep loses wakeups |
+| Linux rseq [S24] | per-thread CPU/scheduler and userspace memory ABI across migration/signals | guest compatibility is not only syscall forwarding |
+| Linux clone(2) [S25] | thread group, signal state, shared VM and TID relationships are coupled | can't substitute TaskCreate once for clone/fork |
 | POSIX/Linux fsync and errors [S16] | completed write and successful fsync require distinct semantics and directory persist for namespace | SABI FS error maps to native receipt and errno personality, not a kernel fsync syscall |
 
 **External source limits:** seL4's formal proofs, Zircon's ABI, Linux compatibility promise, FreeBSD's Capsicum and Microsoft API guarantees do NOT automatically become UniOS achievements. FIDL version-evolution techniques may be relevant but importing FIDL schemas or Zircon syscalls would require independent technical/licensing decision. No implementation or numeric performance evidence.
@@ -112,7 +117,7 @@ Initial native SDK should offer a C-compatible ABI candidate (plain fixed-width 
 
 ### 3.5 GABI/guest boundary
 
-A Linux ELF's libc expects Linux syscall numbers, thread-local errno, signals, TLS, fork/exec, futex, blocking and restart behavior, /proc, dynamic linker and host file and network semantics. Translating one syscall number does not confer Linux binary compatibility. Windows PE needs Windows loader DLL dependencies, Win32/NT APIs, SEH/TLS, handle ownership, registry, GUI, Wine feasibility. Darwin Mach-O needs Mach traps, dyld, Objective-C/Swift ABI, Apple framework/licensing gates. None should automatically grant native DeviceGroup, BootPolicy, TPM floor or guest UID0 global caps.
+A Linux ELF's libc expects Linux syscall numbers, thread-local errno, signals, TLS, fork/exec, futex, blocking and restart behavior, /proc, dynamic linker and host file and network semantics. Linux futex's **compare-and-block is atomic** against concurrent memory updates and wakeups [S23], not a read-RPC then wait-RPC; Linux rseq registers a per-Thread user/kernel state coupled to migration and signal delivery [S24]; clone flags couple shared address space, signal handlers and TIDs [S25]. Translating one syscall number does not confer Linux binary compatibility. Windows PE needs Windows loader DLL dependencies, Win32/NT APIs, SEH/TLS, handle ownership, registry, GUI, Wine feasibility. Darwin Mach-O needs Mach traps, dyld, Objective-C/Swift ABI, Apple framework/licensing gates. None should automatically grant native DeviceGroup, BootPolicy, TPM floor or guest UID0 global caps.
 
 ## 4. Entry/exit x86_64 and architectural domain separation
 
@@ -126,15 +131,15 @@ SYSRET has canonical return-address pitfalls and architecture-specific flags; an
 
 ### 4.2 Native vs restricted guest P0 execution-domain problem
 
-At each kernel entry the authoritative execution domain is **kernel-owned per-Thread/per-Task state** established by a privileged loader/control transition; it must not be inferred solely from registers, ELF note, a service header, a writable TLS flag, a CPU syscall instruction or an untrusted compatibility library.
+At each kernel entry the authoritative execution domain is **kernel-owned per-Thread/per-Task state** established by a privileged loader/control transition; it must not be inferred solely from registers, ELF note, a service header, a writable TLS flag, a CPU syscall instruction or an untrusted compatibility library. **v0.2:** kernel-owned metadata cannot protect a trusted broker from a malicious jump into its code when both share executable memory and native-capable cap tables. Default restricted Linux guest and native privileged broker must occupy **different Task/AddressSpace trust boundaries**; G2 co-location remains unadmitted unless in-process instruction/memory/cap isolation is independently proved.
 
 Candidate designs to compare:
-- **G1 per-Task fixed GuestDomain:** all syscall entries from guest Task are trapped and interpreted in guest mode; simpler invariants, difficult when a trusted native compat broker shares Task and wants native KABI.
-- **G2 kernel-controlled per-Thread Native/GuestEntry state:** controlled privilege-checked transitions and separately mapped entry gates, careful signal/fault/return and same-thread reentrancy; more kernel TCB and state races.
+- **G1 preferred baseline, per-Task fixed GuestDomain:** guest syscall entries route through immutable kernel-owned GuestDomain, while the native-capable broker lives in a **separate protected Task and address space**, holding only typed grants needed to act for a request. No guest-controlled executable jump can become an authorized broker entry.
+- **G2 conditional countermodel, per-Thread Native/GuestEntry state:** kernel-owned state alone fails if guest bytes can run native broker code. Requires distinct enforced in-process protected region/cap compartment, non-jumpable privileged transition, reentrant signal and context proof; **not an eligible default** merely because the kernel stores a flag.
 - **G3 restrict guest to a userspace interpreter/emulator:** guest instructions/syscalls go through explicit host service, perhaps slower yet simpler kernel; cannot claim native hardware-speed Linux binaries.
 - **G4 direct Linux syscall dispatch in kernel:** ABI compatibility easier superficially, but requires Linux-specific semantics/TCB and native/guest collision rules; not default.
 
-**Mandatory attack example:** a guest sets its RAX to a UniOS privileged syscall number or jumps into a native syscall shim, attempts privileged native CapFactory or DeviceMap. Kernel must still dispatch according to its trusted guest-domain label and deny native-only operations; if native broker runs on same Thread, it requires a validated state-switch authorization not a plain writable flag.
+**Mandatory attack example:** a guest sets its RAX to a UniOS privileged syscall number or jumps into a native syscall shim, attempts privileged native CapFactory or DeviceMap. More strongly, with G2 sharing an AddressSpace, guest code can jump directly to native broker instructions and use that privileged Thread/CapTable unless actual execution and authority isolation exists. Default G1 segregates the privileged broker into another Task. Kernel must still dispatch according to its trusted guest-domain label and deny native-only operations; if native broker runs on same Thread, it requires a validated state-switch authorization not a plain writable flag.
 
 **Entry-time TOCTOU:** guest state cannot change between validating current execution domain and the actual dispatch / user-pointer address-space selection. Guest-to-native return must restore intended FS/GS, exception ABI and caller caps without allowing an untrusted guest frame to overwrite privileged continuity.
 
@@ -197,9 +202,9 @@ All names are identifiers for design discussion, not syscall names/numbers. A sm
 
 ### 6.3 Capability transport, transfer and ABA
 
-For MOVE, kernel must atomically move live typed authority from sender table to in-transit kernel queue or receiver table under exactly one defined commit. Raw 32/64-bit user-side handle integer is Task-relative; SABI on-wire payload reserves a role/slot and **separate kernel handle-vector transfer**. Validate duplicated handles, derivative rights and destination receiver quota before commit. If delivery is impossible, define whether caps remain enqueued, move back or drop under verified contract; never silently duplicate source+destination authority by retrying.
+For MOVE, kernel must atomically move live typed authority from sender table to in-transit kernel queue or receiver table under exactly one defined commit. UniOS E1 candidate: **provable NOT_COMMITTED preserves all source handles and rights; COMMITTED removes them into transit**. This is not Fuchsia basic zx_channel_write's failure behavior [S19]. Raw 32/64-bit user-side handle integer is Task-relative; SABI on-wire payload reserves a role/slot and **separate kernel handle-vector transfer**. Validate duplicated handles, derivative rights and destination receiver quota before commit. If delivery is impossible, define whether caps remain enqueued, move back or drop under verified contract; never silently duplicate source+destination authority by retrying.
 
-A closed handle's integer can be reused with new object and must not make a stale outstanding IPC/Wait/Reply/driver callback act on the new object. Kernel generation/lineage and server incarnation are independent; FIDL/Zircon semantics can inform tests but do not define UniOS default atomics [S3,S4,S14].
+A closed handle's **same externally visible integer must not reauthorize a different object during the same Task lifetime when an old copy can still be used**. Checking an internal table-generation only after a reused identical integer is presented is insufficient. Require nonwrapping public-generation token or non-reissue during Task lifetime with fail-closed exhaustion; this aligns RFC-002 §7 without freezing handle bit format. Kernel generation/lineage and server incarnation are independent; FIDL/Zircon semantics can inform tests but do not define UniOS default atomics [S3,S4,S14].
 
 ## 7. IPC and RPC transition semantics
 
@@ -224,6 +229,8 @@ At T1 COMMITTED does not imply T2 delivery, T3 execution, T4 reply, durable file
 Kernel-minted ReplyToken binds initiating Call, caller, service endpoint incarnation/generation and one valid reply grant. It must resist forging from request ID bytes, duplicate replies, stale generation or teardown. **Caller timeout** may release local wait and reply authority, but cannot revoke already committed remote storage work. Nested synchronous call chains can deadlock if the target Pager or server is throttled/blocked; a reply capability is neither a CPU scheduling budget donation nor progress guarantee (RFC-005).
 
 ### 7.4 Buffer-too-small and receive copyout
+
+**Receive linearization correction:** user buffer preflight cannot make data bytes copyout and handle-table installation one atomic user-visible transaction. Partial user memory writes may be observed even if the cap install/message removal later fails. RFC-003 §6's bounded **exclusive ReceiveClaim/escrow** is the preferred unproved countermodel, with precise claim/abort/commit and cleanup; register-only delivery is an alternative for small messages. Never call copy-before-commit secure when an unauthorized receiver may glimpse secret bytes.
 
 An incoming message may have data+cap vector larger than receiver's buffers. Define exactly whether message stays queued, is explicitly discarded, or moves to a terminal error with returned handles; do not claim successful receipt then lose security-relevant caps. Need a preflight query/read-size or bounded reservation to avoid repeated malformed input queue pinning. A malicious receiver may intentionally refuse to install cap handles; its resource charges and transit cleanup must remain bounded (RFC-003).
 
@@ -309,7 +316,7 @@ Guest ELF loader authenticates/authorizes restricted guest Task
  -> Kernel tags Thread/Task GuestDomain and allowed NativeBroker cap ceiling
  -> Guest issues Linux x86-64 syscall ABI
  -> Kernel intercepts based on trusted GuestDomain, saves full guest context
- -> Restricted syscall forwarding/trap broker with bounded request ownership
+ -> Restricted syscall forwarding/trap broker in a SEPARATE protected Task/AddressSpace
  -> Linux Personality service translates Linux syscalls to native scoped KABI/SABI
  -> complete guest return registers/errno, signal/restart and side effects
  -> kernel restores guest domain, denying any unauthorized native entry
