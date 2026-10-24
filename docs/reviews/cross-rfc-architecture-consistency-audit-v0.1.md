@@ -68,3 +68,154 @@
 **Risk:** kernel parsing user-written ServiceID/IDL epoch broadens Ring-0 TCB; a userspace cached handshake held past B revoke or changed server policy can reauthorize old permissions.
 
 **Proposed owner split:** kernel enforces kernel object/generation/ReplyToken and cap scope; Supervisor/issuer enforces genuine ServiceInstance/policy epoch and new grants; service checks current live policy before *new* effect admission. Specify what happens to already admitted work. **Exit:** independent epoch writer, expiry/rotation, rebind and race linearization.
+
+
+## 3. Unified capability, IPC, hardware and storage state ownership
+
+**This is an audit candidate, not a new accepted protocol.** The key integration mistake would be to collapse four different owners and six different completion cuts into one "done" status.
+
+| Phase | Authoritative state owner | Observed predicate | Specifically NOT guaranteed |
+|---|---|---|---|
+| Handle active | kernel Task-local cap table | right/type/scope/lineage + public token generation validated | original human identity, current device ready, no stale external effects |
+| SEND_PREPARED | sending Task + kernel temporary reserve | all bytes/caps checked, sender still owns | receiver got a message |
+| SEND_COMMITTED (E1) | kernel queue/in-transit cap custodian | enqueue+MOVE atomic; source gone | receiver saw/parsed data; remote side effect |
+| SEND_RESULT_LOST | kernel record may have committed; caller ignorant | status **UNKNOWN** if reliable result unavailable | safe retry of moved handle |
+| RECEIVE_CLAIMED | kernel-backed exclusive bounded escrow claimant | second claimant excluded; charge retained | atomic or confidential user-memory copyout without proof |
+| RECEIVE_CAP_INSTALLED | receiver Task cap table | entire cap vector installed; queue retired | method decoded/authorized, no post-commit copyout fault |
+| SABI_METHOD_ADMITTED | service/issuer policy | schema/actual rights/identity+PolicyEpoch verified | operation applied or durable |
+| SABI_EFFECT | service/backend | scoped File/Network/Device operation may have occurred | result observed; media stable; DMA quiescent |
+| FS_DEVICE_ACK | StorageHost/device | request completion under device semantics | flush/FUA, journal/namespace durability |
+| FS_DURABLE_RECEIPT | trusted FileSystem/VFS ledger and media assumptions | named file/dir generation and persist-barrier met | universal SSD honesty, unrelated file/slot durable |
+| REVOKE_B | kernel lineage/controller | no new operations through affected grant family | old mappings stopped, prior requests rolled back |
+| CPU_R1 | kernel MMU/TLB state | affected mapped CPU use cut off | DMA no longer writes |
+| DMA_R2-F | privileged DeviceGroup/hardware control | relevant group/IOVA/IRQ and submitted DMA genuinely fenced | old filesystem transaction rolled back |
+| R2-O | kernel/global object lifetime/sponsor | **all** independent roots/refs/fences settled, object reclaimable | prior bytes copied to arbitrary external parties deleted |
+| BOOT_GOOD | trusted BootSlotStateWriter after genuine HealthReceipt | selected image passed named trial checks | floor already advanced or data rollback works |
+| FLOOR_ADVANCED | independently trusted FloorWriter/monotonic anchor | security rollback admission floor raised | a usable readable rescue exists unless independently checked |
+
+**Custodian invariant:** every live capability, kernel queue entry, receiver claim, hardware pin, dirty page and durable error/transaction record requires exactly one accountable owning state (and charges). *Grant holder*, *grant issuer/controller*, *resource sponsor*, *current caller*, *software service incarnation*, *physical DeviceGroup owner* and *receipt issuer* are often different actors.
+
+### 3.1 Expected unified send-to-file path (all steps hypothetical)
+
+~~~text
+Task A Handle active / sender-sponsored grant
+  -> kernel E1 SEND_COMMITTED + cap InTransit
+  -> B ReceiveClaim + bounded bytes + cap ownership disposition
+  -> B method authorize(current rights, actual caller policy, schema epoch)
+  -> VFS accepted mutable effect (file generation F, txn id T)
+  -> StorageHost/DeviceGroup submitted DMA, pins retained
+  -> DEVICE_ACK (might include prior writes in volatile controller cache)
+  -> Flush/FUA + filesystem/root/DirectorySync dependencies actually met
+  -> DurableReceipt(F,T) if hardware profile supports it
+  -> ReplyToken reply COMMITTED (not necessarily observed by A)
+  -> A result observed OR UNKNOWN + authenticated recovery query
+~~~
+
+At every boundary, Thread death, IPC timeout, Pager fault, FileSystemService crash, DriverHost reset, power loss, revocation or policy change can occur. None of the prior steps is automatically a transaction covering all later steps. **R2-F is about safe physical memory/DeviceGroup reuse, not retroactive durability or rollback of filesystem writes.**
+
+## 4. Joint proof gaps and collision points (CX-05…CX-17)
+
+### CX-05 — E1 receive cap install vs observable bytes (G / P0)
+
+**Sources:** RFC-002 §9 permits all cap installs with receive message removal or none; RFC-003 §6 distinguishes sender/receiver commit and **RCV-A ReceiveClaim** as a candidate; RFC-009 §25 requires byte-publication and handle-install proof; RFC-018 §6/§19 rejects an unknown cap *after* a committed SEND.
+
+**Counterexample:** B's user buffer sees secret bytes, then faults before cap install or message removal; message goes back to queue for C. B saw bytes although it never became the committed receiver.
+
+**Joint required cut:** choose exclusive ReceiveClaim/escrow and exact authorization **before protected payload publication**; define what partial user-visible bytes can never be retracted, whether retry/requeue is permitted, which Task pays escrow quota and how to handle unknown resources and receiver death. Cap installs must remain all-or-none and sender's already-COMMITTED move **cannot be refunded**. A code generator cannot prove this kernel/VM invariant. P0 owner: 002+003+004+009+018.
+
+### CX-06 — sender commit versus status-copyout failure and ticket discovery (G / P0)
+
+**Sources:** RFC-002 §9 COMMITTED/UNKNOWN, RFC-003 §5.2 T1 ticket (unselected), RFC-009 §5.3 post-commit copyout and §25, RFC-018 §8.
+
+**Counterexample:** kernel removes sender FileCap and enqueues a request, but output status page is unmapped before return. Caller sees an error or dies with no operation ticket, retries SEND thinking cap still present, or recreates an external nonidempotent operation.
+
+**Required design:** either unambiguous register-return commit point with safe context preservation or pre-reserved kernel ticket whose **identity can be recovered without relying on a lost returned ID**, bounded Task-sponsored outstanding-record enumeration and proper privacy/GC, or explicit fail-closed UNKNOWN containment. Do not conflate kernel receipt with SABI transaction ID. P0 owner: 002+003+009+018.
+
+### CX-07 — R2-F family safety versus R2-O whole-object reuse (G / P0)
+
+**Sources:** RFC-002 §10 distinguishes R0/B/R1/R2-F/R2-O and independent roots; RFC-007 §§7/10/12 binds IOVA, pinned frames and DeviceGroup epoch; RFC-008 §§8/9 ties dirty file pages and controller state.
+
+**Counterexample:** Task A revokes its DmaPin family, driver claims "done", but a different independent root B holds mapping of same MemoryObject or a stale ATS/IOVA translation continues to write. Freeing frame when A's R2-F is complete could corrupt unrelated Task B or next allocator owner.
+
+**Required predicate:** exact grant lineage and *every* relevant independent pin/map/ref, CPU R1, hardware R2-F (IOTLB/ATC/IRQ/device command and reset evidence), sponsor ledger, then R2-O frame sanitization before reuse. If unproved, quarantine frame/DeviceGroup and do not claim cleanup complete. P0 owner: 002+004+007+008.
+
+### CX-08 — DeviceGroup isolation vs ResetCouplingSet and M0 storage dependency (G / P0)
+
+**Sources:** RFC-007 §§6/10 has DeviceGroup from IOMMU/ACS and a distinct ResetCouplingSet covering hardware affected by group reset; RFC-006 §§7–10 needs wired recovery; RFC-008 §9 IO/flush reset; RFC-017 §9 physical rescue.
+
+**Counterexample:** restarting a failed NIC's DriverHost performs secondary-bus reset that also resets the only boot NVMe/Pager path, while services claim recovery is independent. The unrelated logical Task can restart, but physical M0 path may be broken.
+
+**Required graph:** device isolation groups and reset-coupling sets are separate; constrain stop/reset to verified scope, model mandatory shared siblings/firmware mappings and reserve physically independent M0 timer/IRQ/storage recovery *or fail-stop*. A device of unknown ACS/IOMMU/interrupt-remap topology is not silently admitted to strict untrusted DMA profile. P0 owner: 006+007+008+017.
+
+### CX-09 — Driver restart vs in-flight persistent effects and remote UNKNOWN (G / P0)
+
+**Sources:** RFC-003 §7/10 ReplyToken and incarnation, RFC-007 §12 DriverHost epoch+DMA, RFC-008 §12 IO/transaction/dirty error, RFC-018 §8 idempotency.
+
+**Counterexample:** StorageHost dies after controller has written journal commit but before emitting the reply. New StorageHost accepts old request ID, repeats rename and corrupts namespace. Masking IRQ and achieving R2-F stops DMA but does not rollback journal writes.
+
+**Required contract:** kernel-cap/Endpoint/DriverGroup/IOVA/Volume transaction generations, durable per-volume transaction ledger with correct ordering and honest UNKNOWN when ledger missing. Old external effects remain old despite new ServiceID. Do not automatically replay nonidempotent writes or assert exactly-once across uncoordinated devices. P0 owner: 003+007+008+018.
+
+### CX-10 — Pager/VM + broker/driver CPU budget + M0 reserve (G / P0)
+
+**Sources:** RFC-004 §§7–12 private FaultWaiter and resident M0; RFC-005 §§7–11 independent protected CPU admission; RFC-006 §7 entire M0 reserve; RFC-007 §11 essential IRQ/DMA; RFC-009 §5 usercopy and RFC-010 §10 broker.
+
+**Counterexample:** critical kernel copyin from a pageable broker faults; Pager needs a driver whose IRQ is throttled or whose service waits on the same endpoint; everyone holds an IPC claim. An otherwise correct syscall API cannot complete, including failure cleanup.
+
+**Required proof:** bound graph of physical resident frames, fault dependencies, IPC/claim credits, CPU quota, timer/IRQ route, cleanup metadata and hardware group. Show that no critical path waits on untrusted/pageable broker or on resource already held by blocked caller. Under unresponsive hardware, finite fail-stop rather than promised recovery. P0 owner: 004+005+006+007+009+010+018.
+
+### CX-11 — Linux futex atomicity vs microkernel minimal TCB (G / P0 choice)
+
+**Sources:** RFC-001 KABI narrow; RFC-009 §13 and §25 warns two-RPC futex invalid; RFC-010 §6 describes F-A small kernel atomic compare-block/wake vs F-B emulator vs F-C unsupported.
+
+**Counterexample:** Linux guest Thread reads futex value through broker, another Thread changes/wakes, then broker starts WAIT; lost wake causes indefinite hang. Introducing full Linux futex/PI semantics to Ring 0 also expands trusted TCB.
+
+**Decision required:** small typed kernel MemoryObject-scoped compare-block/wake with race/revocation/priority budget proof **OR** proven equivalent emulator **OR** explicitly exclude threaded Linux target tier. No present RFC claims full Linux guest support. P0 owner: 001+004+005+009+010.
+
+### CX-12 — native SABI new status versus Linux FD/signal/errno ABI (G / P0)
+
+**Sources:** RFC-008 §12 durability/error epochs, RFC-009 §16 guest mapping, RFC-010 §21 close/dup2/epoll/exec/SA_RESTART and RFC-018 §§7–8 unknown result.
+
+**Counterexample:** new Native VFS returns EFFECT_UNKNOWN after a buffered write. Guest shim treats it as Linux EINTR and repeats already emitted bytes; or treats close(EIO) as FD still open although Linux FD may already be released, closing reused FD upon retry.
+
+**Required mapping:** per-Linux-syscall+flag+partial-progress state machine bound to FDEntry/OFD generations, true native transaction/receipt status, SIG/EINTR/SA_RESTART and process-image replacement. When precise guest semantics cannot be expressed safely, narrow supported binary profile or refuse. P0 owner: 008+009+010+018.
+
+### CX-13 — authenticated trial Good/floor versus physically usable rescue and data/key schema (G / P0)
+
+**Sources:** RFC-006 §11 four ledgers and recovery; RFC-008 §11 DataVolume migrations/Flush; RFC-017 §§5–6/9 Root/floor and actual rescue; RFC-018 §9 canonical manifest vs SABI.
+
+**Counterexample:** B passes service health, B migrates user data/key to V2, TPM floor rises, B or only SSD then fails. A is still signed but below floor or unable to decrypt/read V2. A Good label, old SABI-compatible RPC and rescue image digest do not make fallback possible.
+
+**Required joint predicate:** verified usable B; independently witnessed Good and durable slot state; actual physically present/readable bootable *floor-eligible* rescue with current drivers/key/data reader; all floor-vector monotonic writes/interruptions handled; SlotWriter and FloorWriter independent; rollback-aware DataVolume schema and key migration, persistent boot-attempt counter. **Strong data-restoring fallback** cannot be promised without independent storage. P0 owner: 006+008+017+018.
+
+### CX-14 — signed manifest bytes vs parsed policy and live executable identity (G / P0)
+
+**Sources:** RFC-017 §§3/6/20 independent pre-existing Root/floor, RFC-006 §4/§6 verified loader and bounded descriptor, RFC-018 §9/§19 restricted canonical format, RFC-004 use-time mapping and RFC-007 pre-IOMMU DMA.
+
+**Counterexample:** signature authenticates a blob with duplicate CBOR keys or unknown mandatory security extension. Loader/parser A grants broad cap, kernel/parser B treats same bytes differently. Or image was hashed then changed through writable alias/DMA before use.
+
+**Required chain:** independent trusted Root and monotonic floor, exact signed role/domain/scheme/byte representation, canonical or exact parser-equivalent interpretation, unknown-critical rejection, bounded loader→kernel typed descriptor and use-time immutable/rehash mapping; constrain pre-remapping DMA exposure or decline strong boot claims. No self-authenticated manifest trust root. P0 owner: 004+006+007+017+018.
+
+### CX-15 — source/holder/controller/sponsor charge after delegated moves and deaths (G / P0)
+
+**Sources:** RFC-002 §§6/10/11 lineage anchor and nonowner sponsor; RFC-003 §9 charge/queue; RFC-007 §12 quarantine and pin; RFC-008 §8 dirty pages; RFC-018 §6 unknown cap settlement.
+
+**Counterexample:** A sponsors a FileCap/Device DMA frame, MOVEs it to B, then A Task dies. B crashes while queue retains descendant cap and pinned frame. Simply refunding all of A's charges makes quotas lie; charging only B can exceed B's budget without any approved adoption.
+
+**Required invariant:** single accountable charge ledger for live queued/claimed/cap ancestry/pins/dirty pages, authorized sponsor ADOPT or retained inherited debt, deterministic bounded cleanup after death and physical fence before release. Unknown cap parser rejection doesn't erase physical outstanding work. P0 owner: 002+003+007+008+018.
+
+### CX-16 — text identity vs trusted issuer, ServiceRegistry and schema downgrade (G / P0)
+
+**Sources:** RFC-006 §§8/14 ServiceManifest and registry, RFC-009 §15 discovery/issuance, RFC-018 §§4/7/19 session binding and source badges.
+
+**Counterexample:** Old client negotiates deprecated version with broad permission; new service starts under same ServiceID with tighter consent policy; stale session/Endpoint caches grant broader access, or a proxy asserts caller ID without proof.
+
+**Required binding:** actual issued Endpoint+grant generation, signed/approved service/image and current policy epoch, independently authorized caller where necessary, server-side minimum permissions, strict unknown resource field and no silently downgraded mandatory security semantics. Kernel should not parse full SABI ServiceID or caller string to establish its own cap. P0 owner: 003+006+009+018 (plus RFC-016 portal in later study).
+
+### CX-17 — non-reissued public handle tokens vs finite width, old callbacks (G / P0)
+
+**Sources:** RFC-002 §7 Task-local public anti-ABA, RFC-009 §§6/25, RFC-003 wait/Reply generations, RFC-010 FD/PID generational tables.
+
+**Counterexample:** kernel changes internal generation but reuses exact same 64-bit public handle value in the still-running Task. A stale integer copy becomes a new unrelated authority. Similarly a reused guest FD integer is not an old epoll subscription's OFD identity.
+
+**Required rule:** true public token nonreuse while stale Task copies remain callable, fail-closed exhaustion, distinct kernel invocation pin and lifecycle generations for Endpoint/Reply/Wait/Device/GuestFD/OFD/PID. Do not treat "has generation" as sufficient unless the public token comparison or equivalent reference isolation actually protects against old caller bits. P0 owner: 002+003+009+010+018.
+
