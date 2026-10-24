@@ -85,3 +85,93 @@ Four graphs: (1) cap lineage and independent roots; (2) current custody and spon
 | hardwareFence | not-applicable/pending/proven/failed | actual DeviceGroup/IRQ/IOVA evidence |
 
 **Assumption requirements:** simultaneous actions are interleavings of atomic **kernel cut points**, not whole syscalls. Copyout can fault after a prefix, or another Thread/alias can read it before failure. R-B, Endpoint MOVE, service restart, Pager fault, death, timeout and device-fence failure may occur between any two cuts. The model must represent status observation separately from actual state and distinguish current authoritative audience from an untrusted sender-supplied name.
+
+
+## 4. Guarded abstract transitions — the heart of the research model
+
+These are **human-readable transitions**, not kernel opcodes, formal logic, executable pseudocode, or a claim that every step is currently implementable. A guard is necessary but still needs proof of atomic implementation if code is ever separately authorized.
+
+| ID | Trigger and necessary precondition | One abstract state change | Possible exposed effect / reason to reject |
+|---|---|---|---|
+| TR-01 | Source A has live distinct transferable grants, owns E1 endpoint; safe bounded snapshot | prepare kernel-private immutable message bytes/handle-descriptor copy | A's later user-memory changes cannot mutate staged message; raw pointer validation alone insufficient |
+| TR-02 | queue and sponsor reservations available; source still live | Prepared state with reversible reservations | no handles invalidated yet; failed reservation returns NOT_COMMITTED |
+| TR-03 | revoke B, Endpoint MOVE and Task death have not invalidated A/rights; entire cap vector revalidated | **K-S** atomically queues one message, invalidates *all* source public handles and changes grant custody to transit | if even one source invalid, no partial MOVE; source slot duplication rejected |
+| TR-04 | caller return status copyout lost after/around K-S | sendObserved becomes Unknown until separately authenticated record resolves sendActual | no speculative return of original handles; returned new ticket alone insufficient |
+| TR-05 | eligible ReceiverTask B currently holds receive right, matches message audience and Endpoint generation; claim/slot quota | **K-C** creates exclusive B-bound ReceiveClaim | a rival C cannot simultaneously claim; neither gets bytes yet |
+| TR-06 | B has not received user-visible bytes, output ranges and rights validated, cap slots and budgets reserved | private staged receiver buffer, still unexposed | must inspect pointer overflow/overlap and aliases; mapping can still change |
+| TR-07 | exclusive current B claim, active issuer/policy audience; publication about to be attempted | **K-V** sets exposed=true and binds recipient-generation before any user-visible store | conservative: publication may fault without actually storing bytes |
+| TR-08 | K-V already occurred and B output mapping remains admissible | attempt copyout, updating possible prefix or fault outcome | even partial prefix could be read/forwarded by B; cannot roll back |
+| TR-09 | one valid exclusive claim, all cap slots reserved, rights/lineage rechecked; T1 bearer is allowed | **K-I** all-or-none cap-vector install in B plus retirement of message/claim | success does NOT imply B's buffer all-or-none or SABI method accepted |
+| TR-10 | T2 used; trusted verifier Vt confirms exact cap vector/role/policy and current issuer proof, claim alive | **K-U** atomically releases specifically admitted inert grant(s) to B under bound identity/epoch | untrusted B self-attested boolean fails this guard |
+| TR-11 | no K-V ever attempted; B claim aborted/died; queue still eligible and current audience authorizes future claimant | return owned caps to kernel queue and release exclusive claim, without restoring A | preserve ordering/budgets; if service instance changed re-evaluate audience |
+| TR-12 | K-V occurred; claim abort, receiver death or copyout failure | mark terminal/settlement; no same-message automatic requeue to *different* recipient generation | bytes possibly exposed; release or quarantine caps and charge |
+| TR-13 | still same verified B generation and service/policy scope, bounded attempt budget | continue same B-bound claim if explicitly allowed | do not use name-only equality or fresh B2 to reopen old claim |
+| TR-14 | unknown SABI cap role after K-S and (for T1) K-I | authenticated receiver/escrow closes or quarantines mismatched grants | no retroactive sender restoration; no physical R2-F guarantee |
+| TR-15 | authorized controller publishes B barrier for grant family | deny **new** grant use/derivation/admission under affected lineage | already-admitted work and independent roots need separate fences |
+| TR-16 | an in-flight Endpoint ownership MOVE admitted | serialize with all earlier active SEND/RECEIVE invocation cuts or cancel uncommitted old ones, then install one new owner | cannot give old and new Task unrestricted concurrent ownership |
+| TR-17 | source/receiver Task dies, Channel peer closes or Claim timeout | charge and cleanup according to current phase; terminalize if exposed | sender death is not rollback of K-S; receiver death doesn't erase disclosure |
+| TR-18 | physical cap involved and R2-F unresolved after close/abort | retain quiescence/fence debt and quarantine pinned resources | no frame recycle or false DMA complete |
+| TR-19 | backend effect happens after an admitted service method, then reply lost | externalEffect may be Applied while caller sees Unknown | no blind replay/non-effect errno solely from timeout |
+| TR-20 | complete independent reconciliation record and authorized caller scope | update caller knowledge of actual kernel/remote result | query may confirm K-S but **not** independently infer X-E or scoped durability |
+| TR-21 | resource settlement proven, remaining object roots and pins fenced | settle/release sponsor budget and reusable object when R2-O applicable | R0 handle close alone doesn't satisfy condition |
+
+### 4.1 Send and revoke: same cut, different clocks
+
+A preflight snapshot and queue reservation may succeed, then a controller revokes the grant family or another Thread moves the source Handle/Endpoint before commit. TR-03 requires revalidation of **actual live** rights and unique holder against revocation's own atomic publication cut. Either the transfer linearizes first (transit may later become revoked) or B linearizes first (a new prohibited transfer fails); no half-committed mixture. A cap that was valid in the queued record need not remain usable at eventual TR-09/K-U. The current grant lineage at each new-use cut is authoritative.
+
+**Admitted-operation caveat:** some kernel invocation references may have begun before B; B does not automatically rewind their earlier changes. Give such references a bounded, named **admission generation** and distinct stop/fence policy. A device command submitted pre-B may still need R2-F; an external file write may remain EFFECT_UNKNOWN despite cap close.
+
+### 4.2 Receive and revoke: visibility precedes knowledge
+
+An observer can read B's writable output memory concurrently with kernel writing it. Therefore TR-07's conservative exposed=true must happen **before** the first attempted user-visible write. A later fault can stop TR-08 but not turn exposed back to false. If the recipient B had actual access authority to the data, this is not automatically a breach in isolation: the new prohibited action is **uncontrolled automatic redelivery of the same queued secret to a different audience** after B had possibly observed it.
+
+**Important availability tradeoff:** the terminal rule can discard a message even if TR-07 was marked and the very first write faulted without copying a byte. This intentionally prefers a bounded single-audience disclosure guarantee over guaranteed delivery. Higher-level services must use their own authenticated new transaction/retry protocol if resending is needed. Such explicitly authorized new delivery is NOT the same message being silently requeued by the kernel and requires a new distinct identity/effect analysis.
+
+### 4.3 Cap installation ordering and limits of pre-reservation
+
+Compare two candidate orders:
+
+| Order | Positive property | Bad path |
+|---|---|---|
+| B1: K-C → private reserve → K-V → bytes copyout → K-I | receiver shouldn't use cap before payload publication; partial byte faults become terminal/no caps | message may be lost after B sees bytes, before install; no atomic bytes+caps |
+| B2: K-C → private reserve → K-I → K-V → bytes copyout | cap table transfer may be accomplished before pageable copyout | receiver can use cap when copyout later fails; no method-level validation |
+| B3: K-C → private reserve → K-V → copyout → T2 inert escrow → trusted K-U | trusted authorization before usable grant | extra escrow state and trusted verifier, resource starvation and post-V terminal rule still needed |
+
+**Recommendation:** study B1 as normal T1 proof target with preallocated destination cap slots and bounded staged usercopy, and B3 only for explicitly demanding resource/consent profiles. Pre-allocation may lower but does not eliminate errors due to Task death, mapping changes or pager issues. The kernel must not hold a global lock across pageable usercopy. The claimed whole-vector K-I is a **kernel table** atomicity goal, not a proof of atomic reads by other userspace Threads.
+
+### 4.4 Terminal settlement must own the forgotten grant
+
+When TR-12 terminalizes a message, it must not silently return cap ownership to A or leak an orphan to an uncharged queue. The receiver B may hold no installed cap (B1 before K-I), or may already hold usable grants (B2), or kernel escrow may hold inert grants (B3). Define a separate settlement branch for each. In all cases:
+- the original source public handles invalidated at K-S stay invalid;
+- the message cannot be silently delivered again to C/B2 after exposed;
+- every pending cap/invocation/ReplyToken/pinned page carries a sponsor;
+- DeviceGroup physical R2-F and independent-root R2-O are separate, possibly never completing;
+- X-E remote work, FileSync and X-O caller knowledge are not inferred from queue terminalization.
+
+## 5. Safety properties and desired counterexample outcomes
+
+| ID | Candidate safety property (NONE proved) | Counterexample it must rule out |
+|---|---|---|
+| SM-01 | one effective E1 public Endpoint owner with transfer-order guarantee | Task A and C send concurrently after MOVE |
+| SM-02 | one kernel custodian for each particular MOVEd Grant, with all-or-none K-S | both sender/queue own grant or partial vector lost |
+| SM-03 | real NOT_COMMITTED preserves sender handles; ambiguous caller gets UNKNOWN | false rollback from lost return |
+| SM-04 | public handle anti-ABA under reuse/exhaustion | stale Task integer becomes unrelated live authority |
+| SM-05 | no byte/publication before correctly authenticated eligible receiver claim | C reads without RECEIVE or correct audience |
+| SM-06 | exposed flag monotonic, marked no later than first attempted visible write | later copyout fault resets secrecy history |
+| SM-07 | no automatic foreign/new-instance redelivery of same M after exposed | B reads prefix; C dequeues whole M |
+| SM-08 | pre-exposure requeue only with current rights, audience and bounded claim age | revoked/new-owner Task reads old secret |
+| SM-09 | all-or-none receiver kernel cap vector K-I, independent of byte-copy visibility | half installed cap vector |
+| SM-10 | T1 bearer grants limited to rights B may hold even if schema decode fails | unexpected DeviceGroup right usable pre-validation |
+| SM-11 | if T2 claims trusted method admission, K-U cannot be authorized by untrusted B alone | malicious B releases its own escrow with fake valid=true |
+| SM-12 | revocation B prohibits newly admitted actions of affected lineage in queue/claim/installed table | queued revoked cap becomes newly invokable |
+| SM-13 | distinct independent root not destroyed by a single family revoke | parent F revoke frees object held by G |
+| SM-14 | no false R2-F on close/abort and no R2-O before all roots fenced | stale DMA corrupts recycled frame |
+| SM-15 | every queue/claim/escrow/IRQ/pin cleanup and orphan has sponsor or quarantine charge | Task death frees quota while physical effect live |
+| SM-16 | stuck malicious ReceiveClaim cannot exhaust protected wired M0 reserve | claim forever blocks recovery |
+| SM-17 | queued Channel handle containment closes within bounded cleanup policy | self-send/cyclic queue unbounded recursion |
+| SM-18 | method admission and policy-epoch binding never supersede actual kernel grant ceiling | caller forges new policy/ServiceID |
+| SM-19 | timeout/ReplyToken loss doesn't prove service effect was absent | file write applied, caller blindly retries |
+| SM-20 | no statement of full buffer atomicity, global confidentiality or exact-once without evidence | one visible prefix reported as no disclosure |
+| SM-21 | kernel commit ticket correlation is recoverable or explicitly UNKNOWN if ID lost | false certainty from an unrecoverable ticket |
+| SM-22 | all Proposed safety properties remain research-only and require future proof | paper matrix advertised as working OS |
+
