@@ -171,6 +171,8 @@ Zircon의 기본 zx_channel_write는 성공·실패 모두 전달 handle을 소�
 
 **P0 보류:** RCV-A/B/C의 정확한 선택, in-kernel lock order, usercopy fault 중 Pager 재진입, 다중 수신자 레이스. Invalid user pointer 때문에 커널 패닉/권한 상승/자기 pager 교착이 발생하지 않아야 한다.
 
+**2026-10-25 CAPIPC 모델 v0.2 대조 (Proposed, 검증되지 않음):** [통합 모델 v0.2](../models/capipc-send-receive-revoke-state-model-v0.2.md)은 K-C Claim, K-Vm (민감 metadata 관측 가능성), K-Vp (payload 노출 시도 전 단조 표시), K-I (cap-table all-or-none install), 사용자-visible Handle token 출력, K-U (T2에서 독립 승인된 권한 활성화)를 분리한다. 특히 §6.1의 'cap 설치와 dequeue의 원자성'은 **사용자 메모리에 반환되는 핸들 번호 전체의 원자성**이나 **동시 실행 중인 수신 Task 스레드가 권한을 언제 사용할 수 있는가**를 자동 증명하지 않는다. 토큰 일부 출력 뒤 fault, 먼저 설치된 권한의 결과 분실 및 public-token ABA/고아 권한 회수는 P0 미해결이다. **RCV-T1 연구 우선, RCV-T2는 별도 신뢰된 검증자와 K-U 당시 권한/철회/정책 재검증이 있는 특수 프로파일 후보**이며, RFC-003의 기존 RCV-A/B/C 비교를 승인하거나 대체하지 않는다.
+
 ## 7. RPC, ReplyToken and timeouts
 
 ### 7.1 One-shot ReplyToken 후보
@@ -322,7 +324,7 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 | IPC-06 | Receive 단계에서 모든 grants가 설치되거나 아무것도 설치되지 않음. |
 | IPC-07 | In-transit handles의 lineage, rights, scope, sponsor obligations가 보존됨. |
 | IPC-08 | Revoke B barrier 이후 queued descendant가 새 권한으로 되살아나지 않음. |
-| IPC-09 | User receive copyout 오류가 partial-cap-install/cross-Task exposure를 초래하지 않음. |
+| IPC-09 | User receive copyout 오류가 partial cap-table install을 초래하지 않으며, 민감 내용이 이미 공개될 수 있었던 메시지를 별도 수신 Task/ServiceIncarnation에 무단 자동 재전달하지 않음. 공개 전후 바이트 관찰은 구분하며 **미완료 수신이 비공개였다고 주장하지 않음** (Proposed). |
 | IPC-10 | Kernel queue commit을 remote service의 완료/내구성과 혼동하지 않음. |
 | IPC-11 | ReplyToken은 kernel-minted, scoped, generation-bound, one-shot. |
 | IPC-12 | Late/stale reply는 새로운 call이나 다른 Task를 깨우지 않음. |
@@ -341,7 +343,7 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 | IPC-25 | Linux/Windows/Darwin guest 권한 숫자가 native IPC grant를 자동 부여하지 않음. |
 | IPC-26 | Unknown/malformed SABI method는 kernel/object ownership 또는 memory isolation을 우회하지 못함. |
 | IPC-27 | E1 Endpoint 단일 소유는 Task 간 MOVE와 in-flight syscall의 선형화로 유지된다. |
-| IPC-28 | User buffer payload 공개는 독점 Claim/권한 인가로 정당화되며 미완료 receive에서 기밀 데이터가 중복 노출되지 않는다. |
+| IPC-28 | 민감 payload/metadata 공개 전에 적법한 Claim·수신 audience를 검증하고, 공개 가능성 표시 이후에는 같은 message를 새 권한 주체에게 무단 재큐잉하지 않는다. 이미 관찰한 B의 정보/외부 전송은 복원할 수 없으며 이 조건은 전체 데이터 비공개 증명이 아님 (Proposed). |
 | IPC-29 | Kernel ReplyToken generation과 Supervisor service incarnation 혼동이 stale 권한을 새 서비스로 확대하지 않는다. |
 | IPC-30 | WaitSet W1/W2 각각 재등록/지속 알림, stale packet, 중복 observer와 busy-loop 규칙이 명확하다. |
 | IPC-31 | WOULD_BLOCK busy retry와 queue/credit 제한을 악용한 무제한 privileged work 또는 critical reserve 고갈이 방지된다. |
@@ -510,3 +512,45 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 ---
 
 **Document history:** 2026-10-24 v0.1 initial study (Git history retained). 2026-10-24 v0.2 corrections of ownership, confidentiality, WaitSet/reply scopes, pressure and lifecycle; documentation only.
+
+
+## 23. 2026-10-25 joint receive state-model re-review addendum — Proposed only
+
+**Scope / authority:** This addendum compares §§5–6,10,13–15,19–20 with the [CAPIPC unified state model v0.2](../models/capipc-send-receive-revoke-state-model-v0.2.md). The earlier [v0.1](../models/capipc-send-receive-revoke-state-model-v0.1.md) and [CAPIPC integration contract v0.2](../contracts/capability-ipc-sabi-integration-contract-v0.2.md) remain historical/parallel Proposed artifacts. It is an independent design-paper cross-check, NOT acceptance of E1/RCV-A/RCV-T1/RCV-T2, a new syscall/ABI, executable formal proof, OS code, test or security certification.
+
+### 23.1 Exact ownership and disclosure distinctions
+
+| Boundary | RFC-003 existing emphasis | Additional candidate safety cut (P0 OPEN) |
+|---|---|---|
+| SendHalf and ReceiveHalf | distinct E1 endpoints, one public Task owner per half | claim generation and request admission must also track which half MOVEd |
+| K-S | one queue append + complete source-cap MOVE; NOT_COMMITTED vs UNKNOWN | preidentified protected receipt even if new ticket number/report lost |
+| K-C | exclusive receiver ReceiveEscrow candidate | issuer-authorized fixed recipient audience bound to Task+Endpoint+ServiceIncarnation and current policy |
+| K-Vm | not separately named | metadata lengths, cap counts, type/rights and size errors can be policy-sensitive even when no payload bytes are copied |
+| K-Vp | partial copyout recognized as dangerous | mark possible exposure **before** any user-visible payload store/map; no cross-audience auto-redelivery thereafter |
+| K-I | cap-vector all-or-none install plus queue dequeue | user-facing handle-number publication **not** automatically atomic with kernel cap install |
+| Cap usability | actual installed cap is a native authority | whether public token visible/usable before successful SABI method decode must match declared service security profile |
+| K-U optional T2 | not part of original RCV-A proposal | conditional inert cap escrow **only with independently trusted verifier/issuer** and live revoke+policy recheck at activation |
+| Terminal settlement | abort/timeout/death and bounded charge | disclosed message may be lost rather than requeued; orphan cap/table slot, token tombstone and DMA pin charge separately |
+| Revocation B | queued descendant cannot become newly usable | in-claim/install/activation cut must revalidate lineage and distinguish admitted old effects from new rights |
+
+### 23.2 Counterexamples the original §6 wording could hide
+
+1. **Handle-number publication race:** kernel writes first token to B user memory, faults writing second, and no cap installation occurs. The first raw token may be held by B; it must never later authorize an unrelated grant. Conversely if K-I happened first and token copyout faults, active orphan caps and charge/authorized cleanup remain.
+2. **Confidential metadata:** a receiver probes message size/cap count before valid K-C. A generic BUFFER_TOO_SMALL result can reveal secret message structure; current RECEIVE rights/audience and issuer's metadata policy are independently required.
+3. **Endpoint ownership race:** B owns ReceiveHalf and acquires K-C; ReceiveHalf MOVEs to C before K-Vp. Do not silently write to old B or treat C as the same authorized recipient. Unexposed claim can be revalidated/aborted; exposed claim cannot silently redeliver.
+4. **Stale T2 release:** a trusted verifier checked grant under policy P0, controller publishes B and server policy becomes P1, then caller invokes K-U. Old positive verdict alone cannot activate revoked authority.
+5. **Spurious all-or-none conclusion:** an atomic cap-vector installation says nothing about B's earlier 16-byte payload observation, future external forwarding, service effect or complete handle-array copyout.
+6. **Cleanup completion confusion:** after exposed claim terminalizes, an unknown DeviceCap might be closed while DMA continues. This is not R2-F, R2-O, persistence or retroactive confidentiality.
+
+### 23.3 Proposed constraints, not approved wire rules
+
+- **IPC-09/28 corrected scope:** no misleading guarantee that unsuccessful receive revealed no data; forbid uncontrolled automatic redelivery to *another distinct recipient* after possible disclosure. An authorized B's earlier memory observation cannot be erased.
+- **Metadata policy:** define public or confidential projections for size/count/type/rights; if confidential, authorization and monotonic visibility accounting apply to metadata too. A hidden size query cannot bypass RECEIVE scope.
+- **Token lifecycle:** separate slot reservation, public token copying, kernel install, first invokability, error reporting and protection against stale bits. Do not select token-first or install-first until both failure paths are modeled.
+- **T1 versus T2:** RCV-T1 remains lower-TCB future proof candidate if grant was already legitimately usable by B. T2 is a composable optional promise, valid only if a separate issuer-authorized verifier can prevent B from releasing its own escrow; K-U must still validate current kernel cap and policy.
+- **Sponsor and M0:** pending claim, partial token output, installed-but-unreported cap, terminal receipt, orphan charge and unfenced DMA each require bounded sponsor ownership, independent from ServiceID and Task survival.
+- **Result semantics:** SEND_COMMITTED, RECEIVE_CAP_INSTALLED, bytes/metadata POSSIBLY_VISIBLE, right USABLE, METHOD_ADMITTED, external EFFECT_UNKNOWN and storage SYNC_SCOPED are not interchangeable success states.
+
+**Unresolved P0 exit:** exact guarded receive ordering, token publication/activation, claim/audience and policy epoch during Endpoint MOVE, revocation vs K-U, metadata leak bounds, terminal debt cleanup and Pager/M0 liveness. The Proposed E1 right-table DERIVE textual inconsistency fixed previously remains fixed; none of the new P0 items is proved by that editorial correction.
+
+**Roadmap:** review these scoped semantics jointly with RFC-002/009/018 and the CAPIPC model, choose one mathematically precise receive ordering only after a counterexample-free proposed state specification, and seek **separate** authorization if any future executable model or code is desired. Until then RFC-003 remains **Proposed v0.2**.
