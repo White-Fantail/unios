@@ -1,6 +1,6 @@
 # UniOS RFC-007 — User-space Drivers, DMA & IOMMU
 
-> **Status:** Proposed — Specification v0.1 (design research only; **not Accepted, implemented, tested, or proved**)
+> **Status:** Proposed — Specification v0.2 (adversarial re-review; **not Accepted, implemented, tested, or proved**)
 > **Date:** 2026-10-24 (NZDT)
 > **Architecture:** [UniOS Architecture v0.2](../architecture/unios-architecture-v0.2.md)
 > **Cross-RFC:** [RFC-001 Kernel & TCB](rfc-001-kernel-boundary-and-tcb.md), [RFC-002 Object Capabilities](rfc-002-object-capability-lifetime-delegation-revocation.md), [RFC-003 IPC](rfc-003-ipc-wire-protocol-and-synchronization.md), [RFC-004 Memory/Pager](rfc-004-virtual-memory-pager-cache-and-oom.md), [RFC-005 Scheduling](rfc-005-scheduling-preemption-and-cpu-budget.md), [RFC-006 Boot/Recovery](rfc-006-boot-trust-chain-service-startup-and-recovery.md).
@@ -8,12 +8,14 @@
 
 ## 0. Executive recommendation — DEV-A conditional research baseline
 
-**DEV-A: kernel-enforced bounded MMIO/PIO/IRQ/DMA + userspace driver services + userspace device policy/topology with trusted group verification and privileged fail-safe hardware control.** A *DeviceGroup* is the smallest real physical isolation/ownership unit verified from topology, firmware/platform information and enabled IOMMU protections, not necessarily one PCI function. The driver cannot gain unrelated memory by raw physical addresses, a fake group ID, registering MSI, using a permissive default DMA domain, or obtaining an MMIO doorbell before isolation is ready.
+**DEV-A: kernel-enforced bounded MMIO/PIO/IRQ/DMA + userspace driver services + userspace device policy/topology with trusted group verification and privileged fail-safe hardware control.** A *DeviceGroup* is the smallest real physical isolation/ownership unit verified from topology, firmware/platform information and enabled IOMMU protections, not necessarily one PCI function. The driver cannot gain unrelated memory by raw physical addresses, a fake group ID, registering MSI, using a permissive default DMA domain, or obtaining an MMIO doorbell before isolation is ready. **Caveat:** a raw MMIO register span may itself control bus master or peer routing and require mediation/deny; a safe-looking BAR aperture is not always a safe untrusted grant.
 
 Three candidate designs remain:
 - **DEV-A — split control plane:** small privileged IOMMU/IRQ/PCI safety primitives and authoritative device-group assignment; authorized DeviceAuthority/BusManager userspace enumerates, applies policy, supervises typed grants and normal drivers. **Preferred research hypothesis**, not proven simplest.
 - **DEV-B — trusted privileged driver/bus host for hard devices:** explicitly mark unisolatable DMA devices as part of broad hardware/software TCB, or disable them. Product may choose supported trusted storage/boot device exceptions; cannot advertise same security isolation as DEV-A.
 - **DEV-C — broad kernel device stack / trusted hypervisor I/O layer:** stronger centralized ownership but substantial TCB and driver hardware complexity. Compare only if physical reference-PC device/interrupt safety requires it.
+
+**v0.2 critical corrections:** (i) ACPI reserved DMA regions / RMRR/IVRS can conflict with blanket default-deny, requiring a constrained firmware-trust exception or rejecting the device; (ii) DMA isolation group, hardware-reset collateral group, interrupt domain and actual resource sharing are different graphs; (iii) driver process/queue stop, IOMMU invalidation, pending bus transactions, software synchronization and actual physical memory-reuse eligibility need separate scoped evidence; (iv) direct MMIO can defeat filtered PCI configuration if a device exposes equivalent controls; (v) hardware with an active rogue bus master and no effective remapping may be **unsafe even to continue the rest of the desktop**. None of these gates is verified.
 
 **Fail-closed rule:** A device may start CPU-independent DMA before its first driver command or continue after the driver exits. Kernel memory protection alone (MMU) is **not** a DMA boundary. A completed IOMMU unmap/invalidation is **not** itself proof that already issued DMA writes, device queues, posted transactions, peer-to-peer paths or device-private caches are drained. Driver death is **not** a quiescence signal; a software completion/fence from a dead or malicious driver is not physical evidence. Until an independent trusted fence/reset plus translation/cache invalidation completes, the affected DeviceGroup, IOVA reservations and physical frames must remain quarantined rather than reassigned.
 
@@ -50,20 +52,22 @@ Full PCIe bus implementation or ECAM driver, ACPI AML interpreter, Thunderbolt/U
 
 | Official source | Existing evidence | Consequence for UniOS (not a claim of implementation) |
 |---|---|---|
-| Linux VFIO [S1] | secure direct user access uses actual **IOMMU groups**; PCI multifunction/bridge/ACS limitations can make multiple devices inseparable | DeviceGroup must be topology-verified, never fabricated by a per-function string or assumed independent |
+| Linux VFIO [S1] | secure direct PCI access relies on **IOMMU groups**; ACS/bridge/multifunction can make devices inseparable; even VFIO cdev keeps group DMA-owner exclusivity | verified group is a *minimum assignment unit for a given routing topology*, not itself proof all side channels, firmware DMA or reset effects are isolated |
 | Linux iommufd [S2] | I/O address space, device ownership and hardware I/O page-table attach are distinct operations | separate DeviceGroup, IOMMUDomain, DMA map/pin and attachment provenance; kernel remains authoritative |
 | Linux DMA mapping guide [S3] | streaming/coherent DMA semantics differ; explicit sync, ordering barriers and direction matter | a mapping/pin doesn't make CPU/device caches coherent or prove transfer complete |
 | Linux PCI P2P DMA [S4] | PCIe switches and ACS can route peer traffic without visiting root/IOMMU path | verify P2P containment / topology; no automatic universal IOMMU protection |
 | Linux PCI device reset API [S5] | FLR, function/bus reset availability and effects depend on device and scope | any promised restart/reset must state exact reset granularity and effect on sibling functions |
 | seL4 platform/FAQ [S6] | seL4 drivers run in userspace; formal kernel verification assumes MMU protection and DMA off, requiring separate assurance for DMA devices | user driver isolation proof ≠ proof of DMA safety |
 | seL4 hardware I/O manual [S7] | IRQHandler grants, user notifications and x86 IO space/page-table capabilities | minimal kernel IRQ/IOMMU control is plausible but not sufficient without group and device semantics |
-| Linux x86 IOMMU [S8] | DMA IOVA mapping lifecycle and exceptions including interrupt/P2P routing | MSI/interrupt remapping and IOVA map alone must not be conflated |
+| Linux x86 IOMMU [S8] | ACPI DMAR/IVRS enumerates hardware; **RMRR** can require restricted unity identity DMA mappings for firmware devices | strict default-deny requires explicit reserved-memory and firmware ownership exception audit, not implicit broad identity map |
 | Linux DMA buffer sharing/fences [S9] | dma-buf, async fences and reservations coordinate shared-device work | software completion fence ≠ trusted hardware bus quiescence, distinct scopes |
 | Linux IOMMUFD user API current [S10] | nested hardware page tables, PASID attachments and cache invalidation have distinct lifetimes | advanced ATS/PRI/PASID/SVA disabled from initial profile pending exact security proof |
 | Linux x86 Shared Virtual Addressing [S11] | SVA/PASID binds device to process memory and uses ATS/PRI/TLB invalidations | guest VA/CPU PTE invalidation alone cannot close device-side translations |
 | Linux DMA attributes [S12] | cache synchronization and buffer-sharing contracts depend on ownership/direction | per-device mapped ownership and alias/access conflict must be modeled |
 | Linux VFIO group cdev ownership [S13] | modern per-device cdev still respects **one DMA owner per group** | API shape does not waive group isolation requirements |
-| UEFI Boot Services [S14] | firmware DMA/device services can be active before ExitBootServices; boot services end after exit | UniOS must define safe device handoff, not assume new IOMMU protection existed pre-boot |
+| UEFI Boot Services [S14] | boot services may stop on ExitBootServices but that is not a hardware DMA drain acknowledgement | boot firmware-to-kernel handoff and hardware quiescence are separate |
+| UEFI PCI Bus Support [S15] | EFI_PCI_IO_PROTOCOL Map/Unmap and required completion/flush ordering for bus-master DMA | EFI itself distinguishes device completion, posted-write flush and unmap; do not claim ExitBootServices automatically drained every transaction |
+| Linux PCI reset and group coupling [S5,S16] | function reset may be unavailable and bridge reset can affect several functions | isolation group and reset collateral set need independent graph; reset success must be scoped to exact affected hardware |
 
 **Do not overread source wording:** Linux VFIO's current no-IOMMU mode is explicitly unsafe, not evidence it can safely host hostile PCIe hardware. seL4's proof assumptions do not automatically transfer to UniOS. A Linux dma_fence is a software synchronization object whose correctness depends on participating driver/device; it is not a proof against malicious bus masters.
 
@@ -78,8 +82,10 @@ A trusted physical group assignment needs:
 4. MSI and interrupt-remapping coverage and control over interrupt generation/registration;
 5. a documented power/reset topology, firmware-reserved devices and platform-critical components;
 6. explicit hardware/evidence profile tag and generation. If unknown, group into a more conservative shared isolation set, or deny direct nontrusted access.
+7. **separate reset-coupling inventory:** what other devices/functions/storage controllers are lost when function/bridge/bus/power reset is performed; do not merge this with IOMMU grouping merely because they overlap.
+8. **firmware reserved region inventory:** ACPI DMAR RMRR/AMD IVRS exclusions, access to SMM/firmware reserved RAM and possible mandatory identity mappings, with validated scope and explicit protected-memory exclusion.
 
-**Important distinction:** a *PCI function* identifies one BDF address; *IOMMU Group* is the set of devices mutually nonisolatable under actual hardware; *IOMMU Domain/IOAS* is translation state which may be shared by authorized groups; *DriverHost* is a user process. These identities are never interchangeable. A single function can have more than one associated DMA requester/SVA context on modern systems; this is **not** early-profile proof of independent trust. VFIO's device-file descriptor does not waive group membership [S1,S13].
+**Important distinction:** a *PCI function* identifies one BDF address; *IOMMU Group* is the set of devices mutually nonisolatable under actual hardware; *IOMMU Domain/IOAS* is translation state which may be shared by authorized groups; *DriverHost* is a user process. **ResetCouplingSet**, **IRQ/InterruptRemappingDomain**, **P2PRouteGroup** and **FirmwareReservedMapSet** are separate overlays, not automatically identical to IOMMU Group. A group is the minimum VFIO-like DMA *ownership* granule under supported PCI topology, not a universal guarantee of safe device firmware or reset/IRQ containment. These identities are never interchangeable. A single function can have more than one associated DMA requester/SVA context on modern systems; this is **not** early-profile proof of independent trust. VFIO's device-file descriptor does not waive group membership [S1,S13].
 
 ### 3.2 Initial probe and classification
 
@@ -87,7 +93,7 @@ A trusted physical group assignment needs:
 |---|---|---|---|
 | **HW-0 No usable IOMMU** | I/O MMIO/PIO and maybe CPU MMU, no trusted DMA remap | **NO** for DMA bus masters; PIO-only/non-bus-master subset evaluated individually | deny DMA device or knowingly trust whole hardware path, never market as isolated |
 | **HW-1 IOMMU exists, group topology/ACS or interrupt remap unproven** | some DMA translation | **NO** until hardware-specific group+MSI threat review | conservative grouping, disable risky DMA/P2P features and verify |
-| **HW-2 Verified group-aware DMA remap and IRQ safety** | assigned groups+domains with tested isolation and reset limits | candidate YES in approved profile only | bounded per-group grants, pin/maps/fences and fault audit |
+| **HW-2 Verified group-aware DMA remap and IRQ safety** | assigned groups+domains with tested isolation and reset limits plus RMRR/reset-coupling review | candidate YES in approved profile only | bounded per-group grants, pin/maps/fences and fault audit; no unsupported firmware identity exceptions |
 | **HW-3 Advanced ATS/PRI/PASID/SVA/P2P/GPU** | shared VA, peer memory/device translation caches | **Deferred** pending independent model/hardware proof | support later only with device-cache invalidation and trust model |
 | **HW-T Trusted-only exception** | no practical isolation, product accepts a chosen hardware/driver in TCB | Not called an isolated untrusted driver | documented weaker security class; scope limited, possible production exclusion |
 
@@ -102,9 +108,9 @@ Hotplug, function reset, re-enumeration, firmware/ACPI changes, a bridge becomin
 | Operation | Proposed kernel enforcement | User-space authorization/policy | Remaining hardware risk |
 |---|---|---|---|
 | PCI probe topology | access-controlled privileged config read, table validation where required, atomic group owner/security state | BusManager enumerates/proposes group graph | false firmware tables, stealth bridges, device quirks |
-| DeviceGroup assign | exclusive group owner state and delegation gate, typed rights, generation | DeviceAuthority policy decides which named DriverHost | PCI P2P, ACS, reset coupling |
+| DeviceGroup assign | exclusive group owner state and delegation gate, typed rights, generation | DeviceAuthority policy decides which named DriverHost | PCI P2P, ACS and distinct reset/firmware coupling |
 | MMIO map/PIO | checked BAR/port span, cache attributes, CPU mapping and revocation | driver protocol and queue layout | registers may enable DMA/reconfigure group |
-| PCI configuration | restrictive privileged gates on BAR, bus-master, MSI, ACS, IOMMU-sensitive config | BusManager approved init and reset recipe | device may ignore expected reset semantics |
+| PCI configuration | restrictive privileged gates on BAR, bus-master, MSI, ACS, IOMMU-sensitive config and **dangerous equivalent MMIO command registers** | BusManager approved init and reset recipe | device may ignore expected reset semantics; mediated command interface required for some BARs |
 | IOMMU domain | own hardware-translation safety mechanism or tightly trusted equivalent, deny-by-default | scoped translation request for pinned object/range | stale IOTLB/ATS device cache and P2P |
 | DMA memory | kernel frame owner, pin, IOVA mapping and lifetime record; no PFN authority from integers | driver chooses approved buffer/IOVA requests | device may DMA while driver process absent |
 | IRQ/MSI | vector routing, interrupt remap, ack/mask, grant provenance, bounded notification | driver services designated IRQ messages | IRQ spoof/flood and MSI bypass |
@@ -125,10 +131,12 @@ No blanket policy that the entire PCI allocator and complex bus protocol must re
 | IrqSource / IrqBinding | BIND_IRQ, MASK, ACK, UNBIND, WATCH | group owner and generation; interrupt remap and level semantics |
 | MmioWindow / IoPortWindow | CPU_MAP, READ, WRITE scoped cache type/range | cannot write protected bus-master/ACS/MSI config indirectly |
 | DeviceControlGrant | privileged assignment/reset/config class, restricted scope | revocation/lineage persists beyond Task handle close |
-| DeviceResetFence / QuiescenceRecord | trusted ordered hardware reset/invalidation stages | never fabricated by a driver numeric cookie alone |
+| DeviceResetFence / QuiescenceRecord | trusted ordered hardware reset/invalidation stages | **stage evidence is distinct:** no new grant, IRQ disable, translation invalidate, in-flight drain, source power isolation, and safe reuse; cannot be fabricated by a numeric cookie |
 | DmaFaultReport | typed fault source, IOVA, access type, group/domain gen | advisory observation vs authoritative kernel hardware fault |
 | DeviceBudget | pinned bytes, map metadata, IOVA space, IRQ credits/reset attempts | sponsor charges persist during quarantine and crash |
 | DeviceHealth / DriverIncarnation | user service progress and restart state | not hardware DMA quiescence evidence by itself |
+
+**v0.2 overlays:** ResetCouplingSet (reset affects which siblings), FirmwareReservedDmaRegion (firmware/ACPI reserved physical scope and trusted policy), UnsafeMmioCommandProfile (register operations able to alter isolation), FenceEvidence (physical stop/posted-write drain/cache invalidation/readiness) are conceptual typed policy records; none is a frozen kernel object/ABI.
 
 A DriverHost can receive a DeviceFunctionView/MemoryObject but **not a broad DeviceGroupResource ASSIGN** merely from possession of a sibling function or a ServiceID. Create privileges and budget are separate. Integer BDF, physical MMIO/PA, IRQ vector, IOVA and API-provided cookie are **locators, not kernel capabilities**.
 
@@ -147,13 +155,14 @@ A DriverHost can receive a DeviceFunctionView/MemoryObject but **not a broad Dev
 ~~~text
 FirmwareOwned / Unknown
  -> Discovered (no untrusted DMA)
- -> TopologyValidated (group/ACS/IRQ/IOMMU evidence)
- -> BlockedDomainInstalled (default deny; no bus-master acceptance)
+ -> TopologyValidated (group/ACS/IRQ/IOMMU AND reset/P2P/firmware-reserved overlays evidence)
+ -> FirmwareReservationResolved / DeniedDevice (RMRR/IVRS identity-map exception explicitly authorized or rejected)
+ -> BlockedDomainInstalled (default deny for UNTRUSTED groups; no bus-master acceptance)
  -> AuthorizedGroupAdmitted (owner, budget, mandatory shared siblings)
  -> Prepared (safe config + pinned buffers + IOVA + IRQ)
  -> Active (enabled bus-master within scoped domain)
  -> Quiescing (new work denied, IRQ masked, DMA stop requested)
- -> Fenced (trusted device and caches quiesced)
+ -> FencedForReuse (hardware evidence of stopped submitted work, pending writes ordered, translations invalidated)
  -> Detached (domain/IOVA retired, device owners drained)
  -> Reusable or Quarantined/Offline/Fatal
 ~~~
@@ -162,8 +171,8 @@ FirmwareOwned / Unknown
 
 ### 6.1 DeviceGroup assignment transaction
 
-1. Validate current topology/ACPI/IOMMU routing, firmware reservation, group epoch and no conflicting owner; deny unsupported hardware state.
-2. Ensure a **blocked/default-deny IOMMU domain** is installed as the device attachment (or establish trusted equivalent). Do not enable bus mastering or grant direct MMIO/PCI config before this barrier.
+1. Validate current topology/ACPI/IOMMU routing, firmware reserved-RMRR/IVRS spans, reset/P2P group overlays, current group epoch and no conflicting owner; deny unsupported hardware state. **Treat mandatory firmware unity maps only under a separate tightly constrained trusted-device profile; never pass arbitrary firmware identity mappings to untrusted DMA groups**.
+2. Ensure a **blocked/default-deny IOMMU domain for untrusted group** is installed as the device attachment (or establish trusted equivalent), explicitly reconciling protected firmware-required mappings under a separate trusted class; if no safe split exists, refuse untrusted assignment. Do not enable bus mastering or grant direct MMIO/PCI config before this barrier.
 3. Atomically charge group owner, pinned memory allowance, map/IRQ quotas and named DriverHost image/incarnation rights against validated manifest and sponsor.
 4. Validate **all functions/siblings in the group**, reset and bus-master implications. A trusted kernel driver cannot simultaneously own another member in a way that lets userspace bypass DMA group ownership.
 5. Create scoped Function/Domain/IRQ/MMIO/port grants; disallow unsafe config writes that alter ACS/root port remap or MSI/IRQ ownership.
@@ -196,7 +205,7 @@ Candidate DmaRegion rights include DEVICE_READ (memory-to-device), DEVICE_WRITE 
 
 **Safe grant proposal:** isolate DMA-specific frames or bounce regions when page granular mapping would expose neighboring data, charge extra copies and avoid declaring the bounce *a security solution for a device without IOMMU*. A malicious driver cannot specify arbitrary physical addresses or map privileged kernel memory as a DMA buffer via a fake object ID.
 
-**Mapping lifetime records** must link group+domain+IOVA range+physical frames+grant lineage+sponsor+generation+device generation. PIN_MEMORY on a revocable MemoryObject does not by itself create an eternal DMA privilege; attempts to revoke must either fence and release or report pending unsafe effect and quarantine.
+**Mapping lifetime records** must link group+domain+IOVA range+physical frames+grant lineage+sponsor+generation+device generation. A *domain mapping* is not permission to reach the entire mapped frame's neighboring security data; IOMMU granule expansion and PCI/device access controls decide that risk. PIN_MEMORY on a revocable MemoryObject does not by itself create an eternal DMA privilege; attempts to revoke must either fence and release or report pending unsafe effect and quarantine.
 
 ### 7.3 CPU-device coherence is a separate synchronization protocol
 
@@ -223,6 +232,8 @@ Authorize DeviceGroup + MemoryObject range + direction + sponsor
   -> remove translation + IOTLB/ATC invalidation with completion
   -> release pin/ref only after R2-F; otherwise Quarantined
 ~~~
+
+**Ordering and evidence:** Denying future IOVA translation is one safety stage; stopping already queued submissions and draining previously accepted posted writes is another. A successful invalidate acknowledges the defined IOMMU cache operation only under its hardware contract; it is NOT a universal DMA completion event. Device reset response or driver fence token cannot establish stronger ordering than hardware defines [S3,S5,S15].
 
 **Unmap timeout is not success.** An invalidation API returning an error or unavailable reset means device translations and/or older bus transactions may survive. Keep unsafe frames pinned and unavailable for cross-domain reuse. Drivers may be malicious and hide pending work. Implementations must specify trusted hardware evidence at the chosen device profile, not accept user-space "I am done" status as proof of physical safety.
 
@@ -291,20 +302,20 @@ On Task death or cap B: stop new bind/ack authority, mask/disable source using p
 
 ### 10.2 Device reset hazards
 
-An FLR attempt is not an FLR guarantee. Some PCIe functions do not implement individual function reset, bridge bus reset affects children, and an unexpected reset may invalidate MSI, BARs or device state needed for subsequent driver initialization [S5]. Config-space availability itself can fail while device is hung. A completed IOMMU invalidation does not retroactively revoke writes that occurred before the fence or guarantee recovery of corrupted kernel/file memory. Firmware may be controlling a device even after user driver exit if firmware/runtime services or SMM take ownership: product trust profile must include that possibility.
+An FLR attempt is not an FLR guarantee. Some PCIe functions do not implement individual function reset, bridge bus reset affects children, and an unexpected reset may invalidate MSI, BARs or device state needed for subsequent driver initialization [S5]. **ResetCouplingSet is not the same as the IOMMU isolation DeviceGroup:** a bus reset may take down a trusted boot-storage sibling outside the requested driver's group, and independent isolation does not imply independent reset. Config-space availability itself can fail while device is hung. A completed IOMMU invalidation does not retroactively revoke writes that occurred before the fence or guarantee recovery of corrupted kernel/file memory. Firmware may be controlling a device even after user driver exit if firmware/runtime services or SMM take ownership: product trust profile must include that possibility. **ACPI reserved mappings (RMRR/IVRS) can be required for firmware emulation and cannot be silently made available to an untrusted driver as identity-mapped arbitrary RAM;** require reserved frame exclusion, explicit narrow trusted exception, disabling BIOS feature/device if supported, or reject strict HW-2 assignment [S8].
 
 ### 10.3 Quarantine semantics
 
 **Quarantine keeps *affected* physical frames and group resources unavailable for unsafe reuse** until a trusted fence; it does not necessarily require freezing every unrelated software service or rebooting a healthy device. Pin/map metadata, sponsor debt, lineage and group generation remain in kernel even if user process has died. Quarantine may last until reboot or operator recovery and can consume real physical RAM—OOM policy must explicitly count quarantined memory and refuse new workloads rather than silently reclaim.
 
-**Hard limit caveat:** if no real IOMMU or trustworthy reset and DMA hardware can target arbitrary RAM, "quarantining a few buffers" does not confine its future writes. The only honest options can be trusted-only device, physical disable/power removal, full fail-stop, or refusing to boot in the stronger security profile. Kernel software cannot quarantine against arbitrary DMA that bypasses its protection.
+**Hard limit caveat:** if no real IOMMU or trustworthy reset and DMA hardware can target arbitrary RAM, "quarantining a few buffers" does not confine its future writes. In this scenario, **continuing unrelated applications may also be unsafe**, because the rogue device can still overwrite their or kernel memory. Local software quarantine only isolates what effective hardware remapping can actually stop. The only honest options can be trusted-only device, physical disable/power removal, full fail-stop, or refusing to boot in the stronger security profile. Kernel software cannot quarantine against arbitrary DMA that bypasses its protection.
 
 
 ## 11. Boot, M0 and essential driver dependency
 
 ### 11.1 Boot ownership handoff
 
-Early x86_64 UEFI may use firmware storage/display/network drivers and DMA-capable devices before UniOS can construct its IOMMU and device-group model. RFC-006 BootContext can describe physical resources, but a boot metadata pointer or ACPI table is **not evidence that devices are already quiesced or isolated**.
+Early x86_64 UEFI may use firmware storage/display/network drivers and DMA-capable devices before UniOS can construct its IOMMU and device-group model. ACPI **RMRR / IVRS reserved DMA and identity-translation exceptions** may survive firmware handoff or be necessary for firmware emulation. Their existence is not an automatic entitlement for an untrusted DriverHost; default-deny applies to *untrusted domains* while any firmware-trusted exception must be narrowly scoped or the device remains unsupported. RFC-006 BootContext can describe physical resources, but a boot metadata pointer or ACPI table is **not evidence that devices are already quiesced or isolated**.
 
 Candidate safe handoff study:
 - determine trusted firmware/bootloader DMA security assumptions and whether remapping is enabled while firmware is active;
