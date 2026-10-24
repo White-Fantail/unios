@@ -530,3 +530,82 @@ Third-party sources are technical comparisons and not proof of UniOS correctness
 ---
 
 **Document history:** 2026-10-24 v0.1 created and retained in Git. 2026-10-24 v0.2 adversarial re-review corrects UEFI variable access-vs-durability, TPM NV counter type vs security index, TUF sequential dual-threshold Root migration and local trusted-cache rollback, owner-root/other EFI boot paths, key/slot/floor and rescue evidence limits. Documentation/research only; no kernel/loader implementation, key enrollment, TPM/EFI write, boot, physical test or formal proof.
+
+## 20. v0.2 Adversarial re-review — root persistence, counters, key provenance and recovery (2026-10-24)
+
+**Method and limits:** Re-read v0.1 under RFC-002/003/004/006/007/008 authority, persistence and hardware contracts; checked UEFI 2.11 Runtime Variable Services, TUF specification 1.0.36 (last modified 2026-08-05), Android Verified Boot/attestation and TPM NV COUNTER attribute documentation [S1–S20]. This was a **document-only critical review**. It is NOT a crypto proof, TPM platform audit, code implementation, model-checker execution, physical boot, firmware key operation, destructive hardware test, or passing design gate.
+
+### 20.1 Highest-risk specification corrections
+
+| Finding | Adversarial v0.1 reading | v0.2 corrected constraint | Priority |
+|---|---|---|---|
+| **NV-1 persisted vs protected EFI variable** | A custom ordinary UEFI NV variable stores Floor=17; firmware guarantees old/new after power cut, so attacker cannot roll it back. | UEFI [S2] makes persistence guarantees but **does not automatically grant general read/write/delete security**. An authenticated var needs explicit trust, authorization, anti-replay and firmware state; no arbitrary "secure counter" assumption. | P0 |
+| **NV-2 TPM counter type mismatch** | Release index jumps F=12→F=300. Assign 300 to TPM NV COUNTER in one write, then boot. | TPM NV COUNTER is increment-only [S18]; arbitrary security version vectors require a formally defined monotonic epoch/record mapping, bounded writes/availability and a clear TPM reset/provisioning threat model. | P0 |
+| **NV-3 physically cleared/replaced TPM** | Stored floor remains secure even if hardware owner resets/replaces TPM, changing local state and sealed keys. | Declare trusted provisioning root, TPM clear/replacement policy, key-binding and recovery; **owner with hardware control is a separate threat class**. A missing old floor or missing unseal key never silently becomes ProductionVerified. | P0 |
+| **TUF-1 incorrect Root handoff** | Fetch Root N+7 signed only by newly advertised key, skip missing N+1, call it rotated. | TUF requires sequential N+1, required old and new threshold signatures with distinct key IDs, bounded updates and persisted intermediate Root [S3]. | P0 |
+| **TUF-2 full local metadata-cache rollback** | Attacker copies old signed root, targets, versions and cache to disk; client sees its own prior history as normal. | Signature verifies historical bytes, not last observed state. The trusted baseline/version history must be independently rollback resistant *under the stated local attacker model*, or claim only narrower repository authenticity. | P0 |
+| **TUF-3 fast-forward after key revocation** | Old attacker with Snapshot key publishes huge metadata version; key is rotated but client retains old enormous version and cannot accept legitimate next Snapshot. | TUF Root update has specific trusted Timestamp/Snapshot reset semantics when their keys rotate [S3]. Preserve the actual root-anchored transition and validated metadata dependencies. | P0 |
+| **TUF-4 expired Timestamp, offline RTC** | Owner disconnects laptop for months; RTC fails. Either blindly accept an old update as latest, or refuse to boot any last-known signed OS. | Separate **launch of locally eligible existing image** from **fresh acceptance of new update**. Trusted update-start time/freshness failure gives FreshnessUnknown/deny staging; offline authorized boot need not inherit network expiry. | P0 |
+| **BOOT-1 broad firmware db allows other EFI app** | All UEFI signed apps are deemed UniOS-verified and may access the same sealed DataVolume. | Firmware policy may admit a different EFI loader; UniOS ProductVerified depends on exact *UniOS* chain. User-data key release, device lock/owner root and measured boot must limit alternate-boot disclosure under stated profile. | P0 |
+| **BOOT-2 owner root equals test/vender root** | A user-signed custom image, dev-signed OVMF and vendor-release full chain all show identical green "verified" status. | Separate vendor-enforced, owner-custom-root enforced, development signed, unlocked, measurement-only; key provisioning and threat model affect actual assurance. Android's attestation distinctions [S19] are precedent, not copy of label semantics. | P0 |
+| **AB-1 signed rescue is not operationally present** | Manifest claims RescueDigest but its only disk is dead or the dbx revokes its EFI loader. | Signed, floor-eligible, *currently physically readable/bootable*, drivers present, and data/key compatible are distinct. Failure is RecoveryUnavailable/fail-stop, not silent revoked fallback. | P0 |
+| **AB-2 multiple floor indexes partially written** | Updating first of two TPM/software indexes then losing power is treated as full 2-component advancement, making old rescue unbootable. | Define vector monotonicity, partial-write state and genuine post-cut eligible rescue for every persistable intermediate index vector. | P0 |
+| **AB-3 Good witness forgery/TOCTOU** | New B launches GUI, normal Supervisor marks itself Ready, floor immediately promoted. | Only independently granted, scoped HealthReceipt witness and durable Good record can authorize further consideration; witness cannot prove indefinite future device health or all files durable. | P0 |
+| **DATA-1 signed A readable only in old schema** | B Trial changed DataVolume from V1→V2, A signature and floor still valid; fallback automatically means user can read files. | Schema read range, encryption key and rescue readers must be validated under each candidate boot; otherwise A is only code-bootable, not usable data fallback. | P0 |
+| **FW-1 dbx CA revocation** | Routine update revokes signer used by rescue USB or another installed OS but "signed rescue" remains good. | Assess firmware signer chain, owner multiboot, physical recovery and new signing path before writing PK/KEK/db/dbx; firmware change is not ordinary app update. | P0 |
+
+### 20.2 Root metadata and local floor are TWO independent monotonicities
+
+**Repository-client trust history** includes locally pinned Root identity/rotation, cached root versions, highest previously trusted Timestamp/Snapshot/Targets (and delegated Targets) metadata according to the chosen TUF client workflow. **Boot authorization history** includes current local floor per security-index location, signer revocation and approved release-hardware policy. A single physical TPM monotonic integer **does not automatically encode both**. Conversely TUF trusted metadata persistence on a normal DataVolume does not protect the boot floor against a local disk replay attacker.
+
+Minimum research proof: define what state survives powered-off disk replacement, root-cache restoration, boot rescue, TPM clear, UEFI SetupMode transition and loss of network time. Bind cached metadata to a separately trusted client installation identity or admit that the local attacker can reset client history. A verifier cannot test for "newest worldwide release" using only a valid old signed file when the network can withhold all new data.
+
+**TUF operational subtleties:** official spec starts an update cycle with a *fixed start time*, persists each newly trusted intermediate Root, checks final root expiration, and clears trusted Timestamp/Snapshot as appropriate when their keys rotate. Role thresholds count distinct key IDs. A custom "TUF-inspired" design that omits these must not present itself as TUF-conformant; product scope must state which attacks remain.
+
+### 20.3 TPM NV candidate representations (not selected)
+
+| Representation | Possible use | Failure/limitation |
+|---|---|---|
+| One TPM NV COUNTER directly equals software security index | simple comparison on small incremental versions | security index can jump; increment-only, likely unacceptable provisioning/update cycles and a single scalar cannot directly express vector |
+| Monotonic TPM counter as epoch + authenticated floor-vector blob | fewer counter increments in principle, signed/matched blob references current secure epoch | blob replay when epoch binding wrong, atomicity between counter increment and blob storage, torn writes, storage lost |
+| Separate protected NV indices for each security floor component | per-location isolation | limited NV indices/size, ownership and inconsistent vector after interrupted updates |
+| Authenticated UEFI floor record under firmware policy | may be available without custom TPM NV | general EFI variable is not monotonic; signed update authorizations, timestamp replay and firmware ownership require exact proof |
+| Trusted external/RPMB profile | genuine secure monotonic model possible | not guaranteed on selected x86 PC; may require dedicated hardware/authority |
+| No protected floor storage | still can authenticate signed boot bytes | vulnerable signed downgrade under local disk attacker remains possible; no strict anti-rollback assertion |
+
+**Not a working fix:** using TPM COUNTER as an epoch but writing the new floor-vector blob after increment can brick recovery on power loss; writing blob before increment can expose an old epoch blob during replay or require preservation of several compatible states. No ordering is declared correct until a complete crash-state proof and physically supported platform profile exists.
+
+### 20.4 UEFI authenticated variable versus boot-trust controls
+
+UEFI SetupMode, firmware physical ownership, PK/KEK/db/dbx authorization, authenticated variable update attributes, general OS-settable variables, runtime service capability and TPM NV policies are separate. A protected Secure Boot policy database does not imply a new vendor-scoped custom ordinary NVRAM variable is protected. An EFI runtime SetVariable success means its documented NV storage state was saved, not that it was bound to the UniOS release signer or monotonically increasing security versions.
+
+Real owner-managed PC can allow multiple third-party EFI loaders, and an owner custom root may provide meaningful owner-managed verification. Product assurance must disclose which loader/root/code image was verified and under whose key, rather than one boolean. The threat model must say whether an attacker with firmware setup access is assumed or excluded and whether DataVolume key policies guard alternate boot paths.
+
+### 20.5 Floor promotion and rescue counterexample cut matrix
+
+Assume Slot A Good at floor F; B is signed with floor F', user data V1; current rescue R is either separate or on same disk.
+
+| Persisted cut | Threat | Required candidate response |
+|---|---|---|
+| B download/stage started, no durable B image | firmware boot accidentally sees partial B | B ineligible, A/R remain if verified |
+| B image complete but manifest/checksum flag volatile | booter trusts stale cache flag | hash/reverify B exact stored image, or reject |
+| B Trial boots but health not independently Good | untrusted READY advances floor | no irreversible promotion |
+| B Good committed; DataVolume V2 migrated but A only supports V1 | rollback stranded despite A signature | migration/compatibility gate or non-destructive rescue; do not advertise A as data fallback |
+| R signature valid but only media removed | floor F' would ban A, leave nothing | deny floor promotion; if already lost, RecoveryUnavailable/fail-stop |
+| F location 1 raised, location 2 write fails | R or B now version-mismatch on index vector | explicit intermediate-vector eligibility or refuse such protocol |
+| Firmware dbx revokes B's loader after B Good | image signer still valid but EFI cannot execute | separate firmware/signer/physical rescue verification |
+| TPM sealed key tied to old PCR bank | B Good and R boots but cannot decrypt data | recovery key policy/migration, report data unavailable |
+| Retry count decrement cannot persist | B reboots forever if ignored | bounded RecoveryOnly/stop; no unlimited retry |
+| Root threshold revoked during emergency | signer/old rescue invalid | independent owner repair/recovery; never auto trust revoked code |
+
+Even if all current checks passed, a future physical disk failure remains possible. Product may promise *attempted recovery under specified hardware and media assumptions*, not guaranteed always available rescue.
+
+### 20.6 Revised formal-check target and exit criteria
+
+Model old/new Root signatures as threshold distinct-key votes, malicious skipped intermediate Root, elevated Timestamp/Snapshot metadata version, compromised Timestamp role, trusted disk-cache rollback, trusted Root replacement while power fails, TPM counter increment vs signed floor-vector blob ordering, UEFI variable old/new crash, two rollback-index locations, physically missing rescue, owner-signed alternative loader, signed but data-incompatible A, and normal Supervisor forged Good.
+
+**Required safety counterexamples:** invalid current root signature accepted; fake Root N+7 skipping N+1; duplicate key ID counts twice toward Root threshold; old client metadata restores previously rejected signed target; floor vector partial write makes every rescue ineligible; firmware alternate boot root has unauthorized data key unseal; misleading VendorVerified on user root; request to TPM counter writes arbitrary floor jumps; false claim of cross-variable atomicity; RTC rollback accepts expired remote update as fresh.
+
+**Required conditional liveness:** With functioning trusted firmware/TPM/clock or defined offline policy, honest block flush, working eligible media, stable loader, sufficient M0 resources and DataVolume reader/key, at least one permitted boot/rescue may run. Remove any hardware/clock/key assumption and make outcomes explicit (Unsupported, RecoveryOnly, ManualRepair, FailStop). Never state that finite initial health checks guarantee future storage availability.
+
+**Review result:** TRUST-A remains a conditional architecture family, but its actual rollback and update security profile is **not implementable from this document alone**. P0 trusted monotonic state representation, TUF client-history storage, root rotation, firmware alternate boot/data-key scope and usable post-floor rescue remain OPEN. None of TRUST-D decisions is Accepted. No model executed or hardware/crypto implementation performed.
