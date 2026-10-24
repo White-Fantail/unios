@@ -597,6 +597,57 @@ Results must disclose physical/virtual hardware, CPU online count, IRQ load, pow
 - **[S12] Linux cgroup v2 hierarchy, CPU weight/cap/burst and distribution models:** https://docs.kernel.org/admin-guide/cgroup-v2.html
 - **[S13] Linux capacity-aware scheduling, CPU IRQ loss/thermal DVFS:** https://docs.kernel.org/scheduler/sched-capacity.html
 
+## 25. v0.2 Adversarial re-review — counterexamples and design gates (2026-10-24)
+
+This is a documentation-only technical criticism of RFC-005 v0.1, cross-checked with RFC-001/002/003/004/006 and official seL4/Fuchsia/Linux kernel documentation [S1–S13]. **No code, models, static analysis, proof, scheduling simulation, interrupts, benchmarks or kernel tests were executed**. An algorithm family remaining plausible is not a finding of optimality.
+
+### 25.1 Corrected conceptual mistakes and threats
+
+| Finding | v0.1 ambiguity / adversarial example | v0.2 correction | Evidence needed |
+|---|---|---|---|
+| Maximum CPU cap vs guaranteed reservation | Two child groups each have a maximum 80% CPU limit but share a parent 100% group. Rejecting their config because 80+80>100 incorrectly treats independent *maximum ceilings* as simultaneously guaranteed reservations. | Four ledgers: fair weight, overcommittable maximum cap, non-overcommittable protected minimum and actual runtime. Effective ancestor limit is enforced at execution, not by summing every configured maximum. cgroup v2 distinguishes weights, limits and allocations [S12]. | explicit bound/window accounting model and sibling contention work-conservation |
+| CPU runtime vs elapsed walltime | On two cores, group runs 1 ms on each simultaneously. If global group is charged only 1 ms walltime, it consumes **2 CPU-ms** while charged for one. | Sum exclusive per-core running intervals; charge correct group and ancestors without physically double-counting inclusive counters. CPU-ms still not normalized completed work on heterogenous or SMT hardware. | SMP migration/IRQ/cycle-vs-time counters, atomic global cap debit |
+| Reservation does not schedule blocked code | RecoveryAuthority has booked runtime but its worker waits on pageable stack, an empty channel credit, nonrunning Pager or a kernel lock held with interrupts masked. | Bound **CPU+IRQ+timer+nonpreemptible critical sections+wired memory/IPC+dependency graph** jointly. A scheduling reservation alone proves neither readiness nor response deadline. | simultaneous worst-case M0 cut and fail-stop assumptions RFC-003/004/005/006 |
+| Missing server budget causes distributed starvation | Client with remaining budget sends to throttled VFS; VFS needs Pager; Pager needs storage driver. No IPC peer necessarily runs though client is healthy. | Server-owned budget is still the default. Admit finite essential service progress and bounded producer queue/error credits; SCHED-C lease not automatically enabled. | wait-for edges with budget-exhausted servers, coalesced fault and ordinary queue full |
+| Kernel work exemption is exploitable | Process at zero CPU quota issues repeated expensive syscalls, faults and IRQ-generating requests; unlimited privileged cleanup execution bypasses group limit. | Define attribution for synchronous kernel work and bounded exceptional denial/cleanup/IRQ charge. No universal free work and no impossible claim all external IRQ is attributable. | adversarial syscall/IRQ storm and kernel lock latency |
+| SMP entitlement races | Each core locally sees last 1 CPU-ms and admits simultaneous 1 CPU-ms, allowing parent cap overspend before cached state reconciles. | Use atomic or reserved chunk model with bounded aggregate overshoot and explicit enforcement; no refill on migration/context transition. An unacceptable overshoot is a failing proof gate. | concurrent charge/refill/refund/CPU-offline race state model |
+| Thread state orthogonality | FaultBlocked Thread's quota expires and timer fires; one flat enum may drop fault wait or requeue illegally. | Represent thread wait/stop state, budget eligibility and one-CPU running ownership as orthogonal predicates with atomic wake/ready generations. | timeout vs PagerSupply vs kill and CPU hotplug counterexamples |
+| Replenishment is not a continuous entitlement | Sporadic scheduling context with finite replenishment entries can forfeit usable runtime when queue fills, even if configured C/T seems sufficient. | Distinguish maximum window enforcement vs lower service guarantee. seL4 MCS [S1] is temporal-isolation precedent, not proof of UniOS M0 response service. | refill fragmentation, burst, affinity and repeated block testing |
+| Source and capacity drift | "N CPUs" treated as N equal execution capacities; thermal/SMT/hotplug/IRQ load can defeat admission. | Capacity-aware *eligible online domain* and reduced-capacity re-admission; no hard bound from logical-core count. [S13] | Reference PC clock/IRQ/SMT/thermal profile |
+| Unconditional highest-priority recovery | M0 thread boosted to absolute priority but deadlock holds scheduler raw lock, timer IRQ absent, or M0 loops forever. | Bounded M0 reservation and self-budget, explicit kernel/hardware failure branch, watchdog not credited as successful recovery; no fixed deadline claim. PREEMPT_RT [S7] still has low-level exceptions. | kernel critical-section WCET evidence and fail-stop path |
+
+### 25.2 Proposed ledger/state decomposition
+
+| Ledger | What changes it | What it can and cannot promise |
+|---|---|---|
+| Fair scheduling weight | typed scheduling-policy grant | relative CPU share among competing runnable/eligible groups, *not* a fixed minimum |
+| Hard maximum cap | configured window/burst and actual charged per-core runtime | no more than permitted execution when ancestor/global policy enforces it, *not* a service reservation; child ceilings may sum above parent |
+| Protected minimum reservation | trusted capacity domain admission and independent M0 grant | candidate amount of service if runnable and all hardware/blocking prerequisites hold; not an unconditional completion-time SLA |
+| Executed CPU-time counter | every actual CPU execution interval and eligible kernel charge | resource usage sum across CPUs, not wall-clock delay or units of completed instructions |
+
+A task's wait condition, scheduling eligibility and CPU running ownership are **orthogonal**; a forced-kill transition must revoke executable eligibility and invalidate subsequent wake by generation even if a concurrent page supply logically completes. The actual budget sponsor may differ from Task owner only under explicit future authorization; changing a Task name, entering restricted guest code or restarting a service does not reset accounting rights.
+
+### 25.3 Bounded M0 proof checklist
+
+To say "M0 can progress" the RFC-003+004+005+006 evidence must bound or explicitly rule out: CPU online capacity; a correct monotonic clocksource; post-UEFI clockevent; timer/IRQ delivery; IRQ storm and critical-section nonpreemption; scheduler runqueue wake; a charged M0 group; wired code/stack/page tables; IPC/reply/fault/error queue credits; lower-layer driver/storage dependency; allocator and cap/VM cleanup cost; and failed root/normal Supervisor states. If any indispensable dependency has no path, outcome is degraded or fail-stop, not silently recovered.
+
+### 25.4 Prioritized additional design tests (future only)
+
+1. A 2-core model with 2 siblings at maximum caps whose **sum exceeds parent** but with separately admitted minimum reservations; verify actual parent CPU debit and productive reuse of unused capacity.
+2. 2 CPU cores concurrently running the same group, same global last quota, quota replenish during migration, then Task death/restart; prove no unauthorized overspend.
+3. Blocked Pager client, throttled VFS/Pager workers, saturated ordinary channels and independent wired M0 error credits; prove no scheduler-only "high priority" deadlock.
+4. Timer expires while waiter is FaultBlocked and Throttled; PageSupply, revoke B, Task kill and CPU migration race; prove one CPU owner and no stale resume.
+5. Failure of post-ExitBootServices clockevent or indefinite nonpreemptible lock: distinguish inability to run M0, optional watchdog reset, and actual recovered state without inventing a bounded dispatch.
+6. Untrusted zero-budget app generating syscalls/IRQs/errors: prove restricted forced-kernel overhead plus bounded safe cleanup/denial, or name denied hardware profile.
+7. Process/service restart with independent capability ancestor and CPU group billing: no inherited undocumented reserved CPU rights and no duplicated reservation during overlapping old/new processes.
+8. Contrast SCHED-A and SCHED-C on **equivalent async IPC** reply/timeout/queue semantics and total cost, not only seL4 synchronous fast-path numbers.
+
+### 25.5 Revised status and constraints
+
+**SCHED-A remains the first conditional research hypothesis** because weighted fair + bounded critical reservation is an understandable desktop-oriented architecture. It has **not** been shown faster, simpler in LOC, more secure or more available than SCHED-B/C/D, and guaranteed minimum service remains blocked on an explicit admission/proof contract. There is no selected algorithm, numeric slice, cap, minimum, time unit, clocksource, ABI or production hardware target beyond the architecture's x86_64-first direction.
+
+D1–D8 are accepted at top-level design only. All SCHED-D01…D23 remain **Proposed**. RFC-005 v0.2 must not be confused with authorization to implement, or with passing any formal/physical design gate.
+
 **Evidence and legal limitation:** These are cited as technical references for other independently implemented systems, not copied source code or proof of UniOS safety/performance. Verify future hardware and source versions before selecting a production policy. No third-party code imported.
 
 ---
