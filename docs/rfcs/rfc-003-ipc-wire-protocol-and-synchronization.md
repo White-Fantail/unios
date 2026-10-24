@@ -138,7 +138,7 @@ User pointer fault, 스레드 종료, signal/interrupt와 커널 반환을 혼�
 | T2 preallocated immutable result slot | 커밋 전 결과가 안전하게 기록될 공간을 예약하여 원자적 결과 전달 시도 | user page remap/fault, pin 비용, Pager 교착 |
 | T3 fail-closed ambiguous caller | 생존 Task의 불확정 상황에서 해당 context 격리·종료 및 supervisor reconciliation | 낮은 UX, 외부 I/O 처리 상태는 여전히 불확정 |
 
-T1 역시 ticket의 ID가 syscall 반환 시 유실되는 경우를 해결해야 한다. Task namespace의 제한된 pending-operation enumeration, prior reserved operation slot 등이 후보지만 커널 권한·메타데이터 누출 위험이 크다. **RFC-003 v0.1은 어느 알고리즘도 이미 안전하다고 주장하지 않는다.**
+T1 역시 ticket의 ID가 syscall 반환 시 유실되는 경우를 해결해야 한다. Task namespace의 제한된 pending-operation enumeration, prior reserved operation slot 등이 후보지만 커널 권한·메타데이터 누출 위험이 크다. **RFC-003 v0.2도 어느 알고리즘도 이미 안전하다고 주장하지 않는다.**
 
 - 커밋 전 결과/보조 커널 메타데이터는 quota 예약되어야 한다. 실패 후 임시 메타데이터가 살아남지 않음.
 - 커밋 후 대기 중인 결과를 무조건 rollback하지 않는다. 명시적 status reconcile 또는 fail-closed 상태로 정리한다.
@@ -384,7 +384,7 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 
 **먼저 설계 모델 검사:** 2~4 Tasks, 각 방향 queue, 두 개 grant roots, 1~3 handle MOVE, single reply token, 1 WaitSet registration, budget exhaustion, usercopy fault, deadline/reply race, server restart, revoke B를 유한 상태로 탐색. TLA+/Alloy/PlusCal 또는 동등 형식으로 검토. 선택한 도구가 있다는 것만으로 검증 성공을 주장하지 않는다.
 
-- Safety: IPC-01~26, ownership conservation, no privilege gain, single reply authorization, no stale wake.
+- Safety: IPC-01~32, ownership conservation, no privilege gain, single reply authorization, no stale wake.
 - Liveness: fair scheduling/finite bounded resources 전제 하 cleanup starvation, pager-self-deadlock, abandoned waiter 방지.
 - Linearization: enqueue-vs-B revoke; dequeue-vs-usercopy error; timeout-vs-reply; wait-register-vs-signal; close-vs-receive.
 - Accounting: sponsor death, queue drain, retry/ticket expiration, cyclic endpoint references.
@@ -467,25 +467,6 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 
 **Status discipline:** These are Proposed Specification choices only. D1–D8 and ADR-002 stay Accepted — Direction; RFC-001/002 baseline is not silently amended. This RFC does not mean kernel code, ABI, hardware support, verified security or implementation Go.
 
-## 22. Critical re-review record: v0.1 → v0.2
-
-**Evidence and limits:** Official seL4 IPC/MCS, Zircon Channel/Read/Call/Wait and IPC Limits were checked alongside RFC-001/002. This is a document-level adversarial counterexample review, NOT formal verification, independent audit, implementation or performance validation.
-
-| Finding | v0.1 vulnerability | v0.2 research change |
-|---|---|---|
-| Channel ownership | Assumed duplicated/shared Endpoint is ordinary | E1 exclusive-ownership candidate, E2 optional |
-| Receive data secrecy | Bytes can leak to loser of receive race before commit | Claim/auth before user disclosure; RCV-B default rejected |
-| Service identity | Kernel ReplyToken could be tied to user-space registry identity | Scope Kernel object/generation separately from Supervisor incarnation |
-| Wait observation | Zircon one-shot wait mistaken for persistent Level WaitSet | W1 one-shot rearm vs W2 persistent level |
-| Async memory pressure | Queue bounds / WOULD_BLOCK alone imply stability | IPC limits, flow control, no tight retry, critical reservation |
-| Endpoint self-transfer | Sender endpoint could be moved in own send; cycles unclear | Reject self MOVE, cycle proof or feature gate |
-| Graceful shutdown | Drain direction/deadline not stated | Explicit grace/abort escalation and in-transit state |
-| Source behavior | Zircon policy exception differs from UniOS errors | Mark external documentation vs independent UniOS proposal |
-
-**Proof blockers:** E1 MOVE vs concurrent invocation; claim/disclose/dequeue with untrusted usercopy; W1/W2 wait register race; bounded receipt/ticket and Reply lifecycle; end-to-end flow-control; Task kill with cyclic endpoints. These must be tested using model checking and later separately approved fault injection. Never treat a design invariant as a proven feature.
-
-**Decision:** Retain IPC-A as conditional baseline. RFC-002 type-specific capability rights allow ChannelEndpoint nonduplication as a candidate without changing D1–D8. Kernel/SDK code unchanged; RFC-003 remains Proposed Specification.
-
 ## 21. Official primary sources (checked 2026-10-24)
 
 - **[S1] seL4 IPC tutorial:** https://docs.sel4.systems/Tutorials/ipc
@@ -504,6 +485,25 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 - **[S14] Zircon zx_channel_read:** https://fuchsia.dev/reference/syscalls/channel_read
 
 **Research quality note:** External source documentation is evidence about external platforms only. UniOS-specific protocols, error states, budgets and security invariants are novel design proposals and have no runtime/formal/benchmark validation. No third-party kernel source was imported.
+
+## 22. Critical re-review record: v0.1 → v0.2
+
+**Evidence and limits:** Official seL4 IPC/MCS, Zircon Channel/Read/Call/Wait and IPC Limits were checked alongside RFC-001/002. This is a document-level adversarial counterexample review, NOT formal verification, independent audit, implementation or performance validation.
+
+| Finding | v0.1 vulnerability | v0.2 research change |
+|---|---|---|
+| Channel ownership | Assumed duplicated/shared Endpoint is ordinary | E1 exclusive-ownership candidate, E2 optional |
+| Receive data secrecy | Bytes can leak to loser of receive race before commit | Claim/auth before user disclosure; RCV-B default rejected |
+| Service identity | Kernel ReplyToken could be tied to user-space registry identity | Scope Kernel object/generation separately from Supervisor incarnation |
+| Wait observation | Zircon one-shot wait mistaken for persistent Level WaitSet | W1 one-shot rearm vs W2 persistent level |
+| Async memory pressure | Queue bounds / WOULD_BLOCK alone imply stability | IPC limits, flow control, no tight retry, critical reservation |
+| Endpoint self-transfer | Sender endpoint could be moved in own send; cycles unclear | Reject self MOVE, cycle proof or feature gate |
+| Graceful shutdown | Drain direction/deadline not stated | Explicit grace/abort escalation and in-transit state |
+| Source behavior | Zircon policy exception differs from UniOS errors | Mark external documentation vs independent UniOS proposal |
+
+**Proof blockers:** E1 MOVE vs concurrent invocation; claim/disclose/dequeue with untrusted usercopy; W1/W2 wait register race; bounded receipt/ticket and Reply lifecycle; end-to-end flow-control; Task kill with cyclic endpoints. These must be tested using model checking and later separately approved fault injection. Never treat a design invariant as a proven feature.
+
+**Decision:** Retain IPC-A as conditional baseline. RFC-002 type-specific capability rights allow ChannelEndpoint nonduplication as a candidate without changing D1–D8. Kernel/SDK code unchanged; RFC-003 remains Proposed Specification.
 
 ---
 
