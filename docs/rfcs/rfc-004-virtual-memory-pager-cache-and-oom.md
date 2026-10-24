@@ -371,6 +371,21 @@ R1 design exit gate **not passed**. Need: MappingRecord/FaultToken rights and sh
 
 **Next recommended work:** RFC-006 Boot Trust Chain, Service Startup & Recovery jointly with RFC-003+004. RFC-005 Scheduling, RFC-007 physical DMA and RFC-008 durability remain important dependencies.
 
+## 21. Official primary technical references
+
+- **[S1] seL4 Mapping:** https://docs.sel4.systems/Tutorials/mapping.html
+- **[S2] Fuchsia Address Spaces:** https://fuchsia.dev/fuchsia-src/concepts/memory/address_spaces
+- **[S3] Fuchsia Virtual Memory Object:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/vm_object
+- **[S4] Fuchsia Pager:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/pager
+- **[S5] Fuchsia pager detach:** https://fuchsia.dev/reference/syscalls/pager_detach_vmo
+- **[S6] Fuchsia memory reclamation:** https://fuchsia.dev/fuchsia-src/concepts/memory/memory_reclamation
+- **[S7] Fuchsia RFC-0226 writeback:** https://fuchsia.dev/fuchsia-src/contribute/governance/rfcs/0226_zircon_pager_writeback
+- **[S8] Linux userfaultfd:** https://docs.kernel.org/admin-guide/mm/userfaultfd.html
+- **[S9] Linux page pins:** https://docs.kernel.org/core-api/pin_user_pages.html
+- **[S10] Linux OOM policy:** https://docs.kernel.org/admin-guide/sysctl/vm.html
+
+**Research limitation:** Third-party official documentation supports external-system comparison only. UniOS is not implemented or formally verified; no external code imported or licensed from these projects.
+
 ## 22. v0.2 심층 재검토 기록 및 반례 (2026-10-24)
 
 **방법:** RFC-001/002/003 상호 정합성, 공식 seL4/Fuchsia/Linux 아키텍처 및 writeback/detach/OOM 자료를 비교하고 보안·수명 반례를 분석했다. 실제 모델 검사·구현·벤치마크·독립 감사가 아니다.
@@ -398,21 +413,6 @@ R1 design exit gate **not passed**. Need: MappingRecord/FaultToken rights and sh
 VM-A는 여전히 유력하지만 최선으로 확정되지 않았다. M0~M3는 설계 검토의 순서이지 승인된 구현 단계나 기능 일정이 아니다. RFC-001/002/003과 Architecture v0.2의 상위 방향을 변경하지 않았으며, 새 VM-D15~18도 **Proposed**이다. ABI/기술 수치와 데이터 무손실 보장, 실물 하드웨어 시험 결과를 주장하지 않는다.
 
 **Version history:** v0.1 registered 2026-10-24, preserved in Git history; v0.2 re-reviewed 2026-10-24 and corrected pager authority, dirty-data retention, staged feasibility and OOM outcomes.
-
-## 21. Official primary technical references
-
-- **[S1] seL4 Mapping:** https://docs.sel4.systems/Tutorials/mapping.html
-- **[S2] Fuchsia Address Spaces:** https://fuchsia.dev/fuchsia-src/concepts/memory/address_spaces
-- **[S3] Fuchsia Virtual Memory Object:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/vm_object
-- **[S4] Fuchsia Pager:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/pager
-- **[S5] Fuchsia pager detach:** https://fuchsia.dev/reference/syscalls/pager_detach_vmo
-- **[S6] Fuchsia memory reclamation:** https://fuchsia.dev/fuchsia-src/concepts/memory/memory_reclamation
-- **[S7] Fuchsia RFC-0226 writeback:** https://fuchsia.dev/fuchsia-src/contribute/governance/rfcs/0226_zircon_pager_writeback
-- **[S8] Linux userfaultfd:** https://docs.kernel.org/admin-guide/mm/userfaultfd.html
-- **[S9] Linux page pins:** https://docs.kernel.org/core-api/pin_user_pages.html
-- **[S10] Linux OOM policy:** https://docs.kernel.org/admin-guide/sysctl/vm.html
-
-**Research limitation:** Third-party official documentation supports external-system comparison only. UniOS is not implemented or formally verified; no external code imported or licensed from these projects.
 
 ---
 
