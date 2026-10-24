@@ -548,6 +548,58 @@ Liveness states (under explicitly stated CPU/IRQ/fair scheduler/working storage 
 - **[S14] Android current Virtual A/B overview:** https://source.android.com/docs/core/ota/virtual_ab
 - **[S15] TCG PC Client Platform Firmware Profile PCR/event-log:** https://trustedcomputinggroup.org/wp-content/uploads/TCG-PC-Client-Platform-Firmware-Profile-Version-1.06-Revision-49_31July2023.pdf
 
+## 25. Critical adversarial review — v0.1 → v0.2 (2026-10-24)
+
+**Method and scope.** Reconsidered BOOT-A against architecture v0.2 and RFC-001/002/003/004, current official UEFI ExitBootServices guidance, Android Verified Boot and A/B, seL4 initial capabilities, Fuchsia early boot description, and TCG measurement sources. The task is design research only; NO model checking, independent audit, hardware boot, firmware key provisioning, actual signed image, performance measurement, or OS implementation occurred.
+
+### 25.1 Material corrections and counterexamples
+
+| Topic | Counterexample against v0.1 assumptions | v0.2 safety response | Remaining evidence |
+|---|---|---|---|
+| EFI firmware interface after first ExitBootServices | A stale MapKey causes EFI_INVALID_PARAMETER. A naive recovery retries console/event/filesystem Boot Services even though firmware may already be partially shutting down. | Restrict retry calls to UEFI-permitted Memory Allocation Services, current MapKey and valid descriptor info. On failure, do not assume full firmware environment survives. | UEFI state-machine, buffer sizing and exit postconditions on OVMF and physical PC |
+| Firmware boot watchdog | ExitBootServices succeeds; the preboot watchdog is disabled and cannot time out a wedged Pager/RecoveryAuthority. | Require separately initialized OS timer/IRQ path or independently supported hardware watchdog, including IRQ stack and reserved memory. | RFC-005 scheduling/timer, RFC-007 physical IRQ |
+| Complex bootstrap verifier | Loader trusts a service manifest that declares its own acceptable key/version and demands broad boot grants; kernel parses unbounded rich manifest and increases TCB-K. | Establish verifier/key/floor from higher trusted stage; propose trusted loader or M0 policy parser and bounded fixed typed kernel descriptor. | Secure signer floor/origin and privilege reduction model RFC-001/017/018 |
+| Check-time vs use-time | Correctly hashed kernel/M0 bytes later change via shared writable mapping, loader buffer reuse or unauthorized DMA before execution. | Protected immutable or reauthenticated executable/manifest bytes through handoff; W^X and physical driver isolation required. | RFC-004/007/017 boot DMA threat and firmware assumptions |
+| RecoveryAuthority own crash | RA-1 seamless root re-exec requires image loader, Task construction, CPU/IPC/VM budgets and root grants in Ring 0; small kernel assumption fails. | RA-2 verified reboot/fail-stop is conservative M0 own-death baseline until an explicitly bounded RA-1 design is proven; ordinary Supervisor restarts may remain user-managed. | Minimum kernel hooks, no-image-Pager recovery cut and hardware restart policy |
+| Volatile boot loop counter | System reboots after RecoveryAuthority crash and resets in-memory BootEpoch/restart counters each time, repeating failure forever. | Persistent trusted cross-boot attempt journal or independently triggered firmware/recovery fallback; unavailable persistence has explicit stop policy. | RFC-008 crash semantics, RFC-017 trusted slot counter |
+| Rescue merely listed, not bootable | A/B floor raised after B marked Good and rescue hash validated, but recovery partition is missing, unreadable, signed below F' or cannot read migrated data. | Floor promotion requires physically present readable, bootable, signed and **at new floor** eligible rescue/alternate, plus required user-data migration compatibility. | Simulated all crash cuts and offline recovery on selected media |
+| Boot-good controlled by compromised service | Normal Supervisor sends READY and can itself mark B Good and advance irreversible security floor without independent observation. | Separate health reporter, boot slot state writer and trusted floor writer; check identity/health source and strict capability budget. | Malicious Supervisor and forged receipt model |
+| R2-F device quiescence stalls unrelated recovery | A crashed driver cannot safely quiesce a DMA group, leaving non-device software restart indefinitely blocked by global drain ordering. | Separate resource ownership: affected group remains fenced/quarantined while unrelated scoped software may start after its own B/R1 and budget checks. | Dependency and lifetime graph RFC-002/006/007 |
+| Documentation drift | Fuchsia early boot guide explicitly warns it may be outdated. Android legacy A/B and modern Virtual A/B use different storage topologies. | Cite both historical and current references as design comparators; do not copy their layouts as current guarantees. | Confirm on future chosen hardware and actual updated RFC-017 design |
+
+### 25.2 New proof obligations, organized by threat boundary
+
+**BOOT-33/34 — handoff:** model first ExitBootServices failure→partial shutdown→legal GetMemoryMap retry→success; prove that afterward no Boot Services watchdog/device protocol remains assumed. Protect verification bytes from mutable alias and post-check DMA between load and execution.
+
+**BOOT-35/36 — privileged root:** compare a signed manifest parsed by verified loader/M0 with a tiny kernel bootstrap record against a manifest parser in kernel; include new kernel TCB and lack of secure floor provenance. When RecoveryAuthority is destroyed, show fail-stop without invoking nonexistent kernel filesystem loader. If later selecting RA-1, explicitly budget trusted loader, authority reissuance and generation revocation before acceptance.
+
+**BOOT-37/38 — update/reboot loop:** model failure on every power interruption between durable retry count, trial image, Good receipt, floor promotion and rescue. A hash/signer alone cannot make rescue bootable. The recovery artifact must actually exist at a version/format/floor and usable hardware configuration. A secure irreversibly advanced floor may intentionally forbid old A, so verified rescue is a product-recovery prerequisite, not an optional nice-to-have.
+
+**BOOT-39/40 — bounded restart:** an unrelated software service can restart while a separate unsafe DMA group is quarantined; no cross-domain authority must leak. Boot-good receipt and monotonic floor writer are independently authenticated. A change to user-data schema before trial health may make A rollback logically impossible even if A remains signed.
+
+### 25.3 Specific statements NOT supported by this design
+
+- Not proven that RA-1 is possible within a microkernel's current KABI or without extra Ring 0 loading code.
+- Not proven that signed boot chain, TPM quote, measured logs, no-downgrade state or secure NVRAM is available on a chosen PC.
+- Not proven that A/B metadata or version-floor changes are crash-atomic, that a recovery image is actually readable, or that user data remains usable after update rollback.
+- Not proven that an independent M0 timer/IRQ/watchdog/scheduler with bounded credits exists or can be restarted after a kernel-wide fault.
+- Not proven that security isolation implies liveness, that restarting userspace repairs DMA, or that dirty memory is persisted at shutdown.
+- Not proven that Fuchsia component manager or Android A/B historical behavior applies unchanged to UniOS.
+
+### 25.4 Exit-gate changes
+
+1. **RFC-003/004/005/006:** demonstrate an *actually bounded* M0 CPU/IRQ/timer/IPC/frame/cleanup wait-for graph under dead Supervisor, Pager and OOM.
+2. **RFC-001/002/006:** map image verification→fixed boot descriptor→initial typed grants; ensure boot parser, trust key, secure floor and service grant lifetimes do not form a circular trust chain.
+3. **RFC-006/008/017:** construct a product-state model with two slots, persisted attempts, monotonic floor, physically available signed rescue and user-data schema compatibility; enumerate every power-cut point.
+4. **RFC-002/006/007:** separate software-process recovery from hardware DeviceGroup regrant and prove B/R1/R2-F boundaries in malicious driver reset cases.
+5. **Architecture choice:** retain BOOT-A as research hypothesis; accept BOOT-B with an explicit fail-stop if BOOT-A requires an unbounded M0 loader or broad root privileges. No Approved/Accepted status until actual counterexamples are resolved.
+
+### 25.5 Version status and source caveats
+
+**RFC-006 v0.2 remains Proposed — Specification.** References [S1,S2,S3,S4,S7,S8,S9,S12,S13,S14,S15] are architecture comparison or normative specifications of other systems; UniOS adopts neither their source code nor their proof. [S6] specifically self-labels as potentially stale; [S7] is explicitly Android *legacy* A/B, not the Virtual A/B layout currently used for dynamic partitions [S14]. [S12] reference integrity manifest is not the platform event-log format source; [S15] is the relevant TCG firmware profile. All brand/implementation claims have to be rechecked when selecting physical hardware and release assurance.
+
+**Review judgement:** The trust separation and scoped userspace supervisor of BOOT-A still make a promising design target. But v0.1 overstated the simplicity of recovering the privileged bootstrap authority and under-specified the firmware handoff/watchdog, secure-floor rescue and persistent reboot-loop controls. These are real blockers, not optional optimizations.
+
 **Evidence and licensing note:** External technical sources describe those independent systems only; no UniOS kernel code, EFI binary, third-party source or working test was produced or imported. Any future use of code must undergo separate license/provenance review.
 
 ---
