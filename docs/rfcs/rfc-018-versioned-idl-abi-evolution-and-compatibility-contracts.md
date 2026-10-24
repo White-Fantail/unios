@@ -625,6 +625,84 @@ No experiment, test, compiler generation, formal verification, disk write, softw
 
 ## 18. Official external references and interpretation scope (2026-10-25)
 
+## 19. v0.2 independent adversarial review — capability custody, identity, version pinning and signed meaning
+
+**Review date: 2026-10-25.** Compared RFC-018 v0.1 against Fuchsia FIDL protocol openness, unknown resource envelopes and historical wire format changes [S1,S2,S17,S18]; Protobuf binary versus ProtoJSON and noncanonical serialization [S5,S6,S19,S20]; CBOR RFC 8949 deterministic encoding and duplicate map keys [S12]; gRPC deadline behavior [S10,S11,S21]; and UniOS RFC-002/003/008/009/010/017. This is only **design and source research**. No model checker, binary codec, source implementation, benchmark, hardware examination or formal security proof was run.
+
+### 19.1 Critical architecture corrections
+
+| Finding | Dangerous v0.1 shortcut | Revised v0.2 research rule | P |
+|---|---|---|---|
+| **CAP-01 Post-commit decoding** | Sender's caps automatically restored when service rejects unknown resource field. | E1 SEND_COMMITTED transferred live grant into kernel transit or receiver claim. Decoder failure settles/ closes under a separately proven cleanup path; **no rewind** to source. | P0 |
+| **CAP-02 Resource unknown not value unknown** | Flexible table/union unknown field always safely skippable as bytes. | Unknown resource-bearing envelopes may contain actual transferred handles; require handle counts, type/role, ownership and close/reject/proxy disposition. FIDL explicitly differentiates value/resource, and wire envelope counts enable managed skipping [S17,S18]. | P0 |
+| **CAP-03 Destruction not physical quiescence** | Closing unknown DeviceCap on rejected request proves driver and DMA work stopped. | Handle R0/reference drop and RFC-002 R1/R2-F/R2-O remain distinct. Sponsor pinned frames/DeviceGroup until actual hardware fence or quarantine. | P0 |
+| **ID-01 Delegable bearer Endpoint** | Any Endpoint holder claiming caller_id=owner is the original owner. | Bearer cap confers scoped authority but does not itself authenticate original principal. Identity-sensitive services require trusted per-call provenance or must use explicitly designed transferable bearer-only semantics. | P0 |
+| **ID-02 Proxy confused deputy** | Proxy forwards resource cap under its broad service rights, silently retaining wider policy. | Authorize proxy method and destination with issuer/controller scope; actual kernel cap rights/lineage and caller-bound policy intersect; no string-based principal upgrade. | P0 |
+| **SESSION-01 Cached handshake across restart** | Client handshakes with service name S then S reincarnates, keeping negotiated features/roles and pending replies valid. | Session token binds actual Endpoint issuance, service generation, policy epoch, rights ceiling, required feature set and resource role schema; changed epochs invalidate/rebind. | P0 |
+| **SESSION-02 Policy TOCTOU** | Rights checked at negotiation, then grant revoked/policy strengthened before method effect; server acts using stale cached allowed=true. | Per-effect current cap validation or strictly proved admitted-inflight/revoke cutoff. Negotiation cannot outrank revocation B or current policy. | P0 |
+| **METHOD-01 Unknown interaction classes** | All flexible unknown methods are equivalent, including two-way method with no implementation/reply. | Closed, ajar and open service openness and strict/flexible method/event directions have different safe behavior; no old-client indefinite wait and no default invoke privileged unknown method [S1,S17]. | P0 |
+| **PROTO-01 Unknown-field bridge** | Binary Protobuf decoder preserves unknowns; therefore intermediary ProtoJSON or hand-copy always preserves security-critical extensions. | ProtoJSON doesn't support unknown fields and some copying drops them [S19,S20]. Refuse unsafe bridge or enforce invariant independently at final service. | P0 |
+| **BOOT-01 Signed bytes interpreted differently** | Valid signature on bytes implies old/new parsers agree on policy/rights. | Fix exact accepted grammar, role/domain-separated signing, canonical/exact-byte representation and critical extension policy with old/new parser equivalence. | P0 |
+| **BOOT-02 Duplicate CBOR keys** | Generic decoder silently takes last Root key while verifier took first. | RFC 8949 permits decoder behavior differences unless profile dictates duplicate rejection; signable boot grammar must reject duplicate/equivalent keys and require explicit deterministic ordering [S12]. | P0 |
+| **RESULT-01 Unrepresentable unknown in guest ABI** | Old Linux shim maps native unknown-effect to errno that promises work never happened. | Unknown effect cannot be faithfully assigned an arbitrary old guest status. Require per-syscall safe reconciliation/support-tier refusal, not false success or false rollback. | P0 |
+| **RESULT-02 Expiry and remote side effects** | DEADLINE_EXCEEDED means server didn't commit, so resend non-idempotent request automatically. | gRPC documents completed state-changing work may still yield deadline [S10,S21]. UniOS transport/method/effect/durability receipts must remain distinct. | P0 |
+
+### 19.2 Capability transfer and decoder rejection state example
+
+~~~text
+Client A holds scoped FileCap hA
+   |
+   | kernel E1 SEND_PREPARED: hA still owned by A
+   v
+Kernel E1 SEND_COMMITTED: hA withdrawn from A; cap in kernel transit
+   |
+   v
+Server B ReceiveClaim: bounded claim, possible byte publication
+   |
+   +-> decode recognizes all roles -> authorized install/dispatch
+   |
+   +-> unknown resource-bearing union -> reject and account/close
+       (or explicitly scoped typed proxy, if independently authorized)
+       *** NOT return hA to client A automatically ***
+       *** NOT state that close stopped physical DMA ***
+~~~
+
+**Hard rule:** An IDL library sees a message *after* the kernel may have committed its cap transit. The library cannot roll kernel history backward by returning a parser error. Exactly one accountable state must retain or settle grants under receiver death, cancel, partial copyout and service restart. Deferring *publication* with ReceiveClaim can prevent some confidentiality races, but copying to mutable user memory is not generically atomic with handle installation.
+
+### 19.3 Identity and session proof example
+
+Two clients C1 and C2 may both hold an Endpoint cap that originated from a service broker. If a service authorizes the method by bearer capability alone, C2 may legitimately invoke every operation allowed by its actual scoped cap, without needing to impersonate C1. If, however, the service promises "only C1 may approve payment" or "only the user who opened this file may grant consent", then a transferable Endpoint and a sender-written account ID cannot prove that fact. Define an **identity-bearing per-call grant or trusted kernel/issuer metadata** bound to the actual present caller and not forgeable by the delegate. Do not bind authorizations to a Task ID that becomes stale/reused without generation control.
+
+Policy example: C1 negotiates Protocol v1 allowing a broad DirectoryCap. Server policy is tightened while C1 remains connected, reducing allowed paths and requiring a fresh consent. A cached v1 handshake MUST NOT preserve old expanded authorization; current service policy and actual native cap scope remain ceilings. Service reincarnation or Endpoint replacement also invalidates the handshake unless explicitly reauthorized with a narrowly justified epoch inheritance rule.
+
+### 19.4 End-to-end schema and signed-byte equivalence
+
+**Old/new payload compatibility is directional:** NewWriter→OldReader, OldWriter→NewReader and relay forwarding each require separate semantic/security proof. For resource-bearing flexible union, old reader may need to close unknown handles; that preserves isolation but **does not** preserve the application behavior of a newly required operation. A parser accepting unknown fields proves only syntax, not policy enforcement.
+
+**ProtoJSON bridge:** Old reader that converted a binary Proto3 message to JSON before forwarding may drop an unknown required future field. A downstream new reader never learns it existed; a mandatory restriction cannot be entrusted to opaque unknown extension preservation through such a path. Format transforms need explicit allowed field set and hard failure for unsupported critical changes [S19,S20].
+
+**Signed boot example:** Two parser versions accept same signed serialized blob, one interprets an unknown field as mandatory BootFloor policy and another ignores it while issuing a broad bootstrap grant. A valid signature did not fix the semantic mismatch. The signing domain must declare exact schema/profile/parser restrictions and critical extension behavior; independent firmware/Root/floor authority still gates admission. Core CBOR deterministic ordering versus historical length-first variants, numeric key equality, unknown tags and duplicate map rejection are choices the signed profile must make explicitly. Protobuf deterministic output is not canonical [S6]; signing raw bytes requires equally consistent accepted-byte and parsed-meaning rules.
+
+### 19.5 API completion and compatibility refusal
+
+Native method success must identify its issuer and effect scope. A client may observe E1 COMMITTED without server receipt, R admission without effect, E applied without D durable, D durable but O reply lost. A deadline is an observation cutoff, not a global rollback. A correctly scoped idempotency key helps only if the **backend** ledger, actual effect ordering and crash cuts are proved.
+
+If a guest Linux personality cannot express native EFFECT_UNKNOWN while honoring its syscall's actual Linux semantics, the design must **restrict that guest syscall or compatibility claim**, or define application-specific reconciliation. Converting UNKNOWN to a generic Linux EIO/EINTR/ENOSYS without analyzing whether callers may retry/assume no effect is not automatically safe; a conservative error can still be semantically wrong.
+
+### 19.6 Revised critical exit gates
+
+1. **Resource custody proof:** Model E1 sender/source, kernel transit, ReceiveClaim, handle install, decode reject, receiver death and resource closure; never backdate source ownership.
+2. **Principal proof:** Specify bearer-only methods versus identity-sensitive methods; show trusted origin/delegation/current caller distinctions under proxies and service names.
+3. **Session epoch proof:** Pin protocol/feature/handle-role terms to actual issued Endpoint, ServiceInstance and current authorization-policy epoch; invalidate/reattest on revoke, restart and security change.
+4. **Unknown interaction proof:** Model closed/ajar/open and strict/flexible one-/two-way/event outcomes plus unknown value vs resource fields. Test with malicious extra handle vectors.
+5. **Bridge proof:** Demonstrate old/new binary and ProtoJSON/proxy representational differences, especially retention of critical unknown fields and enum statuses.
+6. **Canonical signing proof:** Determine boot signing format and domain; reject duplicates/ambiguous parse, prove verified-byte to parsed-policy equivalence, critical extensions and loader/M0 grant ceiling.
+7. **Outcome proof:** Bind claimed durable/effect status to trusted issuer and resource generation; no false retry or unrepresentable guest-effect status.
+8. **Cross-RFC proof:** Reconcile R2-F device quiescence, RFC-003 ambiguous SEND/RECV and RFC-008 power-cut/durable idempotency under same finite model.
+9. **Honest status:** IDL-A stays an unapproved research family; no chosen wire encoding, binary ABI freeze, codegen, working codec or formally tested implementation.
+
+**Decision:** Keep IDL-A as provisional comparative architecture, not selected codec. RFC-018 **remains Proposed v0.2**, all P0 obligations OPEN, and no OS feature implementation authorization is implied.
+
 - **[S1] Fuchsia FIDL language and protocol openness:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
 - **[S2] Fuchsia FIDL wire format and resource envelopes:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/wire-format
 - **[S3] Fuchsia FIDL API rubric and resource evolution:** https://fuchsia.dev/fuchsia-src/development/api/fidl
