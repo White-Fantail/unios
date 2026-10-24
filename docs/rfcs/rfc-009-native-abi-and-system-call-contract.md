@@ -708,3 +708,81 @@ Before calling ABI-A Accepted or Stable v1:
 ---
 
 **Document history:** 2026-10-24 v0.1 initial Proposed draft remains in Git history. 2026-10-24 v0.2 independent adversarial review revises co-located native/guest broker unsafety, Fuchsia vs UniOS MOVE-on-failure differences, receive escrow disclosure, public handle token ABA, kernel post-commit copyout, Linux futex/rseq/clone semantic gates and SABI unknown-resource compatibility. Documentation only; no kernel/loader/guest/SDK implementation, tests, formal proof, reference hardware work or ABI freeze.
+
+## 25. v0.2 Adversarial re-review — guest privilege, IPC disclosure and ABI correctness
+
+**Reviewed 2026-10-24.** RFC-009 v0.1 challenged against RFC-001/002/003/004/005/006/007/008/017, seL4 IPC, Fuchsia Channel/FIDL specifications [S19–S21], Linux seccomp [S22], futex [S23], rseq [S24] and clone [S25]. All findings are **document-based**. No executable code, formal model, proof, physical tests, source imports or ABI freeze were performed.
+
+### 25.1 Counterexample matrix
+
+| Finding | Concrete adversarial scenario | Revised design boundary | Priority |
+|---|---|---|---|
+| GUEST-1 per-Thread flag is insufficient | Guest code shares Task memory with privileged native broker. Although kernel maintains a read-only GuestDomain tag, the guest jumps into native broker instructions or corrupts broker-writable data, gaining privileged native operation. | Default G1: guest and native broker are **separate protected Tasks/AddressSpaces and cap tables**. G2 in-process mixed-code privilege boundary is unsupported until strong code and cap isolation proven. | P0 |
+| GUEST-2 raw syscall trap | Linux guest calls a native opcode by putting its number in RAX or invokes a native userspace stub. | Kernel dispatch requires its own Task domain first; guest cannot self-promote via registers, shims, TLS or ELF note. Broker receives attenuated IPC, never a raw privileged jump. | P0 |
+| GUEST-3 mutable argument pointer | Kernel forwards guest user address to broker; another guest Thread changes mapping/data after broker validates path/size. | Snapshot validated args or use proven stable pinned backing, bounded lifetime and per-MemoryObject generation; remote pointer is not authority. | P0 |
+| SEND-1 mistaken Zircon handle semantics | Fuchsia basic channel_write fails but caller handles were consumed; UniOS sender code assumes failure preserved them, or vice versa. | **UniOS E1 NOT_COMMITTED leaves all sender handles intact; COMMITTED transfers entire byte+cap vector**. This is a UniOS proposal, not Fuchsia behavior [S19,S20]. | P0 |
+| RECV-1 copyout exposes unowned bytes | User buffer receives secret message bytes, then copyout faults before queue/cap commit. Message is subsequently delivered to another receiver. | Require exclusive bounded ReceiveClaim/escrow and independent publication/commit rules; no magical atomic user-memory bytes+handle transaction [S21]. | P0 |
+| RECV-2 hostile escrow hold | Receiver claims a message and never completes receive, consuming handles/queue quota and starving essential recovery IPC. | Bounded claim time/cost, quota sponsor, cleanup on Task death/revoke and declared discard/requeue policy, with protected M0 reserve. | P0 |
+| COPY-1 handle created, output lost | Kernel creates charged cap then caller output buffer is unmapped; caller gets invalid-buffer despite committed grant or object leaks forever. | Protected bounded result/receipt or honest UNKNOWN and deterministic owner/sponsor cleanup; never report NOT_COMMITTED for a completed effect. | P0 |
+| COPY-2 partial user writes observable | First half of syscall output copied; second half faults. Concurrent Task observed first half; kernel says it rolled back output. | User-memory writes are not generally transactional; cap authority and queue commit must be conserved, partial byte exposure reported where relevant. | P0 |
+| CAP-1 identical handle token ABA | Task closes handle 0x42, gets new unrelated object also 0x42; stale copied old integer now invokes new privilege even if internal slot generation changed. | Public token must not reissue same value while stale copies usable; nonwrapping generation or Task-lifetime nonreuse, fail-closed exhaustion [RFC-002 §7]. | P0 |
+| LINUX-1 futex lost wake | Broker reads shared futex word, another Thread changes/wakes, broker then sleeps forever after wake happened. | Linux futex compare-and-block must be atomic against shared-memory updates/wakes [S23]; study native kernel scoped primitive or explicitly exclude guest threads. | P0 |
+| LINUX-2 rseq false support | Runtime registers restartable-sequence area; CPU migrates during per-CPU critical sequence without abort. | Require scheduler/migration/signal hooks or return unsupported rather than pretend successful Linux rseq [S24]. | P1 |
+| LINUX-3 clone false parity | CLONE_THREAD/VM/SIGHAND translated into independent Task with wrong TID, signals or memory. | Model entire Linux process/thread group semantics or limit support tier; do not equate generic TaskCreate and clone [S25]. | P1 |
+| SABI-1 optional unknown cap | Old protocol ignores unknown field, but that field carries an actual transferred capability, leaking grant or silently discarding a resource. | Unknown handle must be explicitly closed/rejected/authorized proxy with accounting; normal flexible-value skip is unsafe [S6,S21]. | P0 |
+| VERSION-1 compatibility downgrade | New service requires attenuated rights/durable reply field; client negotiates old version and obtains broad permission or false save success. | Required security semantics are enforced even on old wire version; refuse negotiation if cannot satisfy them. | P0 |
+| SCHED-1 broker lacks resources | Restricted syscall forwards to privileged broker which waits on Pager, but Pager is CPU-starved or needs itself. | Wired critical M0 path and independently admitted CPU/IPC/VM budget [RFC-004/005/006]; ReplyToken isn't a CPU reservation. | P0 |
+| ENTRY-1 context return | Guest controls FS/GS/return address; unsafe SYSRET or restored flags yield invalid kernel entry or state confusion. | Architecture-specific context discipline, canonical RIP validation, verified IRETQ fallback, dedicated kernel-owned stacks. | P0 |
+
+### 25.2 Rejection of simple in-process G2
+
+A kernel-owned per-Thread GuestDomain is a necessary *dispatch label*, not an instruction provenance proof. If untrusted guest bytes and privileged broker functions coexist in one address space with shared executable memory, the guest may branch to or corrupt broker behavior. Restricting access to a native syscall by checking Thread state does not fix a broker function executing in a native-authorized Thread/capability context.
+
+**Preferred G1 research:** Guest Task has only its restricted interpreter/personality domain, bounded memory and granted channel endpoints. An independently protected native broker Task has exactly the narrow authority it needs and treats every guest message as hostile. No direct jump, native syscall reuse, writable code alias, shared privileged handle table or unvalidated user pointer can bridge that boundary.
+
+**Unresolved G2 alternatives:** prove genuinely separate intra-process protected execution/metadata domains with code integrity, no writable/executable aliases, protected native cap entries, safe nested signal/exception transitions, reentry/return and control-flow provenance. A library wrapper, TLS flag, signed guest binary or nonwritable kernel flag alone does not satisfy this gate. G3 emulator and G4 native-kernel Linux dispatch remain comparisons, not implementations.
+
+### 25.3 IPC ownership and receive-publication stages
+
+| State | Distinct event | Authorized conclusion |
+|---|---|---|
+| SEND_PREPARE | Copy input bytes and inspect sender SEND/TRANSFER rights, reserve credits | no cap MOVE yet |
+| SEND_NOT_COMMITTED | Precommit failure before queue/cap transition | sender source handles retained; no queued message |
+| SEND_COMMITTED | One queue record installed and source handles moved into kernel transit | sender no longer owns moved caps; receiver not yet guaranteed |
+| RECEIVE_CLAIMED | Exclusive bounded claim + handle-slot reservation | rival receiver cannot deliver same message; claim resources charged |
+| RECEIVE_BYTES_PARTIAL | Some user bytes copied, potentially concurrently observed | no claim that these writes were rolled back |
+| RECEIVE_CAP_COMMITTED | All caps installed with fresh Task-local tokens; queue record removed | exactly one authorized receiver owns new handles |
+| RECEIVE_RESULT_LOST | Status copyout or client death after committed transition | receipt/UNKNOWN/cleanup, not fabricated NOT_COMMITTED |
+| RPC_TIMEOUT | local wait deadline fired | remote server effect may continue |
+
+RFC-003 §6 notes that receiving bytes into user memory and installing handles are distinct commit issues. **RCV-A ReceiveEscrow is the research candidate**; it must bound claimant lifetime and charges, forbid a second reader race, handle copyout disclosure and Task death, and explicitly specify drop/requeue/terminal-error behavior. Pre-validating a userspace pointer cannot make multi-page copies atomic under concurrent unmap. A protected result receipt is itself another bounded object with failure/garbage collection semantics.
+
+Fuchsia comparison precisely: its basic channel_write discards handles on both success/failure [S19]; channel_write_etc uses per-handle MOVE (source closed) or DUPLICATE (source retained) dispositions and detailed error results [S20]; channel_read_etc provides type/rights and size/discard semantics [S21]. UniOS's proposed NOT_COMMITTED preserving source caps is a **different** and still unproved E1 design decision, not a summary of Fuchsia.
+
+### 25.4 Handle ABA and effect reconciliation
+
+An internal slot-generation guard cannot distinguish a stale public handle integer from a newly valid object when both invocations present exactly identical user bits. Avoid identical public token reassignment over the Task life, or prove equivalent anti-ABA via trusted per-invocation context unavailable to stale user copies. Finite token space implies an explicit exhaust/fail-closed transition. No spec freezes slot widths or generation bit positions.
+
+An invocation pin before revoke B may finish under the scoped revoke model; a new invocation after B cannot become authorized simply by reusing a numeric handle. CPU R1, DMA R2-F and final R2-O are independent.
+
+When output delivery fails **after** object creation, reply token use, IPC receive or storage request, distinguish committed authority transfer, partial user-visible bytes and unknown remote side effects. User-visible INVALID_BUFFER does not imply no effect. The kernel cannot guarantee the client observed its receipt before crash; safe cleanup and queryability are explicit separate design obligations.
+
+### 25.5 Linux guest compatibility limit is a semantic contract
+
+Linux futex compares shared user memory and sleeps **atomically** with respect to concurrent wake/update [S23]. A client RPC to read the value followed by another RPC to sleep has a lost-wakeup race. To claim Linux multithreaded guest support, prove a comparable kernel/shared-MemoryObject synchronization primitive and account for futex address alias, owner death and priority inheritance where relevant.
+
+Linux rseq uses registered per-thread memory fields and aborts critical sections on migration/signal/context switch conditions [S24]. Claiming successful rseq without implementing these guarantees can corrupt programs. Linux clone flags couple AddressSpace, thread-group identity, signal dispositions and TIDs [S25]. These requirements must be included in the declared support tier, not hidden under "syscall forwarding." Linux vDSO operations can avoid traps; they require a separately correct runtime mapping/context policy. Restrict initial L1 compatibility claims if these are unavailable.
+
+### 25.6 Exit-gate changes
+
+1. **P0 guest isolation:** default separated Guest Task and native privileged Broker Task with adversarial jump/cap/shared-memory tests designed; only later consider G2 with independent execution/cap isolation proof.
+2. **P0 sender MOVE:** one defined NOT_COMMITTED and COMMITTED boundary plus sender ownership/charges under all failure reasons, including duplicate/malformed handles.
+3. **P0 receive escrow:** exclusive claim before sensitive byte disclosure, bounded resource lifetime, all-cap install, copyout partial failure and receiver death correctness.
+4. **P0 public token:** nonreissued handle values across possible stale references and a precise exhaustion rule.
+5. **P0 postcommit status:** object created / side effect committed but result lost must be reconciliable or honestly UNKNOWN, never reported undone.
+6. **P0 guest semantics:** futex compare-block atomicity or explicit unsupported, and rseq/clone scope clearly gated.
+7. **P0 SABI safety:** unknown resource handles and security-critical field/version negotiation fail closed with quota cleanups.
+8. **P0 M0 and CPU:** first-stage native ABI and broker path must not recursively depend on broken Pager or starved services.
+9. **P0 x86/SDK:** register calling convention, user return path, FFI structs/status remain unfrozen pending concrete proof and authorized compiler/hardware tests.
+
+**Verdict:** ABI-A remains a conditional research target. G1 separate protected broker is the preferred security boundary, G2 same-address-space switch is unadmitted, and RCV-A/handle ABA/guest atomicity remain unresolved cross-RFC P0 proofs. RFC-009 v0.2 is still Proposed, without implementation permission.
