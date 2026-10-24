@@ -106,3 +106,67 @@ If method authorization is promised, bind the verdict to an immutable kernel-own
 
 Once Stage publishes plaintext to B, B can call another service and produce an external effect **before** it calls AcceptCommit. If the claim later terminalizes due to expiry, it is false to tell A "the request could not have been processed." Extra C phases therefore increase the window where **payload was observed but receive was never committed**. The kernel can prevent cap use, but cannot stop B from using other already held caps or network rights absent an explicit independent sandbox/effect gate. Do not promise exactly-once SABI delivery/effect merely because ReceiveClaim was exclusive.
 
+
+## 4. HPA-B+ bounded candidate transition model
+
+**Scope:** conceptual state machine for design proof, not executable notation or selected syscall sequence. Kernel and receiver Task are adversarially scheduled; actual cap custodianship and caller knowledge are separate.
+
+| Phase | Cap custody / invokability | User-visible payload/tokens | Trust and fault cut |
+|---|---|---|---|
+| B0 Queued | kernel queue holds all moved grants after sender K-S | none B-side | sender source handles gone; result may be UNKNOWN |
+| B1 ClaimBound | kernel-exclusive bounded claim for B TaskGeneration, receiving EndpointGeneration and issuer audience | no secret bytes yet | validates current RECEIVE + claim charge, prevents rival C |
+| B2 Reserved | same claim plus destination inactive Handle IDs, cap slots and protected return status record | none/metadata as separately authorized | token IDs may fail closed on namespace exhaustion |
+| B3 ExposurePossible | claim holds all grants, **no new cap usable** | some confidential metadata, payload or numeric IDs may be observable; K-Vm/K-Vp recorded before publication | usercopy may fault/alias; no foreign requeue if secret disclosure possible |
+| B4 K-ICommitted | B Task cap table atomically owns full grant vector and queue/claim retired | prepared token IDs valid in B, user return still may be lost | live lineage/Endpoint/Task policy and R-B checked at one cut |
+| B5 K-ITerminal | claim/message dropped or closed/quarantined, no new B authority | possibly observed bytes or inert IDs; leaked tokens burned | terminal cleanup may outlive Task, physical DMA pending |
+| B6 ObservationUnknown | **not an actual kernel ownership state** | initiating Thread may not know B4 versus B5 | preidentified protected receipt query or honest UNKNOWN |
+
+**HPA-B+ obligations:**
+1. Provide a Task-scoped preidentified protected result slot or safe, bounded authenticated enumeration **before** an irreversible receive cut. If initial slot allocation result can also be lost, the discovery mechanism must not depend on that missing value.
+2. Reserve complete cap table capacity and output staging *before* attempting sensitive user stores. A K-Vm/K-Vp potential-exposure marker must precede the first user-visible disclosure path. No global pageable lock can be held across copyout.
+3. Public token IDs possibly copied into user memory remain INERT until K-I; after failed copyout any exposed IDs cannot later resolve to unrelated grants in the same Task. Internally reserved yet *proven never visible/previously live* IDs may be reclaimable under an explicit stronger proof.
+4. K-I must have exactly one successful winner against Task death, receiver Endpoint MOVE, revocation R-B, competing receiver/claim abort, and queue close. All or none live grants installed plus exact queued-message retirement.
+5. Upon K-I success, return/report can still be lost. Protected result record and cap ownership remain until accounted settlement; an initiating Thread's missing result is NOT proof no native grant exists.
+6. After possible confidential exposure but failed K-I, prohibit automatic redelivery of *the same queue message* to a different receiver Task/ServiceIncarnation; settle caps/sponsor/quarantine and preserve possible application effect truth.
+7. Do not assume a successful usercopy means B's Thread retained the payload or was the only Task Thread that observed/acted upon it. Policy-sensitive method authority remains a separate service concern.
+
+**Why B+ is still not an accepted design:** An ordinary buffer copy is not guaranteed atomic or stable under alias/mapping changes; real performance, locked critical sections, CPU memory ordering, protected ticket storage, finite public token space and complete source-to-destination ownership proof are missing. B+ could fail these gates and require either C, a register-only narrower transport, or different ABI semantics.
+
+## 5. Competing HPA-C deferred activation model — where it genuinely helps
+
+The first C phase (Stage) is similar to B+ through inactive token publication, but **does not invoke K-I**. A separate, explicit Task AcceptCommit later invokes K-I for T1 bearer rights. If C is used for high-security method admission (T2), distinguish accepting a message from **trusted independent verifier release K-U**. A malicious B calling AcceptCommit doesn't demonstrate independent method authorization.
+
+| Real C use case | Additional promise that may be meaningful | Tradeoff and hidden hazard |
+|---|---|---|
+| Application controls when Task-wide bearer rights go live | correct application can inspect staged bytes before acknowledging grant | a malicious/misconfigured B can always call Commit; more claim state |
+| Asynchronous Task-level receipt admission / batching | B can deliberately defer activation while routing work | queue head held, claim expiration, fairness and claim-lane deadlock |
+| Trusted broker decodes immutable message while cap stays inert | broker could apply issuer/service policy before forwarding to worker | broker/verifier is an expanded user-space TCB, need actual-grant attestation |
+| Consent-sensitive cap | trusted consent authority can require K-U after verification | not equal to self-accepting Task; old consent/policy epoch invalid at release |
+| Long-running interactive desktop IPC | staged work may be visible earlier | extra crossings and DoS surface may hurt responsiveness; **no measured cost** |
+
+**Conditional C acceptance criterion:** document a required pre-activation action or independent trust boundary that B+ cannot satisfy, and bound claim duration/CPU/IPC/metadata budget without blocking M0. If C only separates staging for cosmetic neatness, B+ has a better complexity/availability hypothesis.
+
+### 5.1 Two-phase verification does not prove immutable request meaning
+
+With T2, any verifier receipt must be bound to immutable original bytes (or a proven authenticated digest under kernel/issuer witness), native actual CapGrant identity+rights+scope+lineage, message/claim generations, receiver Task/Endpoint identity, current issuer PolicyEpoch and allowed ResourceRole. A user-created checksum over a mutable alias is not such a witness. The kernel need not parse arbitrary evolving SABI schema, but a trusted verifier/service that does parse it belongs in the explicit policy TCB. Recheck B and policy at activation, even if an earlier trusted user-space verdict was valid.
+
+### 5.2 No universally safe replacement for lost result
+
+A C caller may lose the ClaimID return on Stage, the AcceptCommit return, or the trusted K-U return. Each needs scoped result/authorization independently. A B+ caller may lose only the single receive return, but protected result-discovery remains necessary. **Counting syscalls is not a proof of superior safety**, yet additional independently interruptible results enlarge the state space and verification burden.
+
+## 6. Cross-RFC collision points and repair list
+
+| Existing Proposed contract | Current v0.1 concern | Independent v0.2 correction proposed |
+|---|---|---|
+| RFC-002 Handle ABA | strict public nonreuse over same Task lifetime | distinguish definitely never exposed reservations from possibly published IDs; retain no unrelated reuse where stale public value can act |
+| RFC-003 §6 ReceiveClaim | all-or-none cap vector install | doesn't require extra Task self-accepting phase; B+ and C both can preserve one K-I |
+| RFC-003 §§23–24 | v0.1 describes C as a formal proof leader | keep that historical record; add v0.2 independent recommendation that **B+ leads general bearer proof research, C optional** |
+| RFC-009 copyout/receipt | irreversible kernel transition and lost results | preidentified Task record is equally available to B+ or C, not a uniquely C benefit |
+| RFC-018 SABI role and policy | unknown resource handling, T2 independent verifier | C untrusted Task acceptance does not enforce resource schema; T2 verifier must bind actual immutable request/grant |
+| RFC-005/006 CPU/M0 | bounded ordinary and critical budget | C Stage can hold a queue while awaiting verifier/other IPC, potentially deadlocking circular service dependencies |
+| RFC-007 DMA R2-F | DeviceCap close separate from hardware quiescence | terminalized receive must not refund DMA pin/IOVA without scoped physical fence |
+| RFC-008 filesystem effects | backend already may have emitted writes | C may increase “visible but not received” window; no external no-effect guarantee |
+| RFC-010 Linux guest | FD/errno differences | neither extra AcceptCommit nor result receipt converts native UNKNOWN into clean guest no-effect automatically |
+
+**Compatibility with prior CAPIPC proposals:** E1 Endpoint owner uniqueness, MOVE-only source cap transfer, first-possible-exposure terminalization, cap-vector K-I, revocation barrier B, R1/R2-F/R2-O and no native cap from raw SABI numbers remain intact. This is a priority and trust-model refinement, not a newly discovered contradiction in those fundamentals.
+
