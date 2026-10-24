@@ -175,3 +175,129 @@ When TR-12 terminalizes a message, it must not silently return cap ownership to 
 | SM-21 | kernel commit ticket correlation is recoverable or explicitly UNKNOWN if ID lost | false certainty from an unrecoverable ticket |
 | SM-22 | all Proposed safety properties remain research-only and require future proof | paper matrix advertised as working OS |
 
+
+## 6. Counterexample schedule catalogue (MX-01…MX-18)
+
+An interleaving is a **future research test obligation**, not executed evidence.
+
+| ID | Schedule | Expected design outcome |
+|---|---|---|
+| MX-01 | A snapshots source cap; R publishes revoke B; A attempts K-S | reject new action or prove K-S linearized before B, never both |
+| MX-02 | A SEND vector includes same public Handle twice | all-or-none reject, no double ownership |
+| MX-03 | A K-S commits, status and newly generated ticket ID lost | caller Unknown; no blind MOVE replay; preidentified query if adopted |
+| MX-04 | A in-flight SEND; ownership of that E1 Endpoint transfers to C | one serialization/cancel rule; no concurrent unrestricted owner |
+| MX-05 | Receiver B K-C; buffer count valid; other Thread unmaps next page | no global kernel lock held through fault; potential exposure tracked |
+| MX-06 | B K-V then first write faults before a byte lands; B dies | still terminalized conservatively; delivery can be lost |
+| MX-07 | B K-V; reads 16-byte prefix; K-I later fails; rival C claims | C cannot automatically receive same message |
+| MX-08 | B K-V; service crashes; ServiceID reused by B2 | B2 not treated as identical authorized recipient generation |
+| MX-09 | B K-V and K-I complete; SABI rejects unknown resource | moved cap settled/closed, B's observed bytes not erased |
+| MX-10 | B receives live DeviceCap under T1; method malformed; B uses cap before decoder | only allowable if B intentionally granted bearer authority without needing SABI admission |
+| MX-11 | B receives inert DeviceCap under T2; B forges valid=true to release it | release refused absent trusted issuer/verifier evidence |
+| MX-12 | T2 trusted verifier unavailable while B holds claim and M0 waits on same channel | bounded denial/quarantine, no guaranteed progress from untrusted work |
+| MX-13 | R publishes B after K-S but before K-I or K-U | no new usable descendant rights after barrier; old effect reconciled separately |
+| MX-14 | B receives into overlapping byte/handle arrays via VA alias | reject or prove independent staged layout; no corrupted output field relied on |
+| MX-15 | last Channel handle closes while queued nested Channel cap points back | no unbounded kernel recursion/stack/charge leak |
+| MX-16 | A sponsor exits while terminalized message holds DMA pin | charge and quarantine continue until real R2-F |
+| MX-17 | backend file mutation completes, B dies before response, A times out | effect Unknown from A, not definitely None |
+| MX-18 | newly negotiated SABI P1 changes required consent while old P0 claim remains | live current issuer policy enforced before new effect or no work |
+
+## 7. Resource budgets and liveness — assumptions must be explicit
+
+### 7.1 Symbolic resource envelope, not measured values
+
+| Resource | Symbolic bound to choose later | Consequence if it is exhausted |
+|---|---|---|
+| per-Task outstanding SEND records and preidentified ticket slots | Q_send | reject precommit or return protected Unknown; cannot consume M0 reserve |
+| per-Channel queued bytes, caps and messages | Q_msg, B_msg, H_msg | fail precommit without destroying sender handles |
+| concurrent ReceiveClaim count and maximum age | Q_claim, T_claim | refuse/abort/terminalize per exposure, no unbounded claims |
+| staged kernel-private bytes and receiver cap slots | B_stage, H_slots | prior to K-V reject or reserve before publication |
+| terminal settlement records and possible disclosure history | Q_term, T_term | bounded policy; cannot drop safety-critical outstanding debt |
+| T2 inert escrow cap entries and authorized release tickets | Q_escrow, T_escrow | fail closed/revoke; protect trusted verifier from queue starvation |
+| cap ancestry/revocation and parent-issuer metadata | Q_anc | deny new grants or retain charged immutable existing ancestry |
+| queued Endpoint containment edges and cleanup work | Q_edges, K_cleanup | iterative bounded cleanup/quarantine, not recursive kernel stack |
+| pinned DMA/IRQ/ATS and outliving sponsor charges | Q_dma, M_pin | quarantine/fail-stop; never free while fence incomplete |
+| wired RecoveryAuthority CPU, stack, timer, Pager-independent IPC | M0_reserve | cannot be borrowed by untrusted protocol decode workload |
+
+The bounds are **placeholders only**: not memory sizes, latencies or feasibility evidence. Resource accounting must assign every live item a sponsor or designated quarantined owner with protected reserved budget. Even terminal-message metadata cannot grow unbounded; propose bounded final receipt/tombstone retention with exact safety invariants across GC. Reclamation of a status record cannot make an old public ticket ID authorize a new unrelated result (anti-ABA).
+
+### 7.2 What conditional liveness can reasonably mean
+
+Under an operating scheduler, bounded kernel critical work, resident M0 reserve, healthy Pager and fair service, each eligible request either completes, safely rejects, enters terminal settlement or returns a declared Unknown within a separately specified finite budget. A malicious receiver may force many terminal drops, but cannot pin the entire kernel indefinitely *if* claim expiry, accounting and cleanup are correct.
+
+**Not promised:** successful remote effect when service crashes; delivery after conservative K-V terminalization; hardware R2-F after an unresponsive device; recovery from corrupt firmware; true exactly-once external I/O across uncoordinated devices. A system can remain safe while it refuses work, quarantines hardware or enters fail-stop.
+
+### 7.3 Trust/TCB and M0 availability comparison
+
+**RCV-T1** requires protected claim, exposure, cleanup, bounded usercopy and correct cap install. This is already complicated; require small auditable kernel state and no arbitrary IDL parse in Ring 0.
+
+**RCV-T2** also requires inert grants, release authorization, verifier liveness, policy-epoch binding and more persistent kernel custody. Extra IPC to a verifier could depend on the same congested Channel/Pager and deadlock recovery. Trusting an *untrusted client* to attest validation voids T2's special benefit; trusting a parser/verifier enlarges an explicit user-space TCB. A small high-risk service may find that trade defensible, but do not apply T2 to every data-only RPC without evidence.
+
+## 8. Cross-RFC contract reconciliation register
+
+| Document | Contract owned there | Proposed constraint from this research |
+|---|---|---|
+| RFC-002 | cap lineage, DERIVE rules by type, sponsor, Handle anti-ABA, B/R1/R2-F/R2-O | queued/claimed/inert grants remain lineage-checked, single-custody and charged; no source restoration after K-S |
+| RFC-003 | E1 exclusive Endpoints, SEND/MOVE, ReceiverClaim, ReplyToken and critical queue credits | publish a separate K-V exposure guard, no foreign requeue after V, whole-vector K-I and Endpoint handoff order |
+| RFC-004 | copyin/out, memory aliases, Pager faults, pinned user pages and immutable snapshots | no assumption that pointer preflight, VA nonoverlap or attempted usercopy makes bytes atomic |
+| RFC-005 | scheduler, CPU/IRQ and critical budget / admission | ReceiveClaim/verifier/cleanup cannot indefinitely occupy entire critical reserve |
+| RFC-006 | M0 wired path, service restart and authenticated current incarnation | B versus B2 Task/ServiceIncarnation identity and fail-stop, no old-same-name claim revival |
+| RFC-007 | DeviceGroup, DMA/ATS/IRQ and true hardware R2-F | cap close/terminal drop does not prove stopped DMA or safe frame reuse |
+| RFC-008 | storage durability, dirty generation, external-effect receipts | IPC status/receive abort does not mean VFS operation rolled back |
+| RFC-009 | bounded KABI copyin/copyout, status loss, SDK ABI, guest/native entry | model SEND actual vs caller knowledge, no numeric opcode/status/struct freeze |
+| RFC-010 | Linux guest FD/errno/futex/exec/signal semantics | no automatic mapping of partial exposure/unknown effect into safe no-effect errno |
+| RFC-018 | SABI unknown-resource roles, issuer, ServiceIncarnation, PolicyEpoch | trusted verifier required for T2 promise, no kernel full IDL parser or user-forged resource release |
+| CAPIPC v0.2 | K-S, K-C, K-V, K-I and terminal after exposure | this finite model is a proposal refinement, not superseding parent RFC decisions |
+
+**Authority hierarchy:** Only architecture D1–D8 broad direction Accepted. CAPIPC v0.2 and all these RFCs remain Proposed; this document cannot silently settle their future ABI numeric layout or impose a universal kernel T2 parser. To change a source RFC, its own Proposed spec must be separately reviewed and updated.
+
+## 9. Proposed decisions (MD-01…MD-12) — NONE Accepted
+
+- **MD-01:** RCV-T1 is conditional first model target for general native IPC; no working implementation or approval claimed.
+- **MD-02:** A monotonic conservative exposure barrier K-V before the first attempted user-visible publication is an essential proof obligation.
+- **MD-03:** A message with exposure flag cannot be automatically requeued to a distinct receiver Task/ServiceIncarnation; terminalize or bound to same verified context.
+- **MD-04:** A conservative terminal decision may drop a message without actual byte publication and sacrifices delivery availability for a specified single-audience property.
+- **MD-05:** RCV-T2 is optional, composable with K-V/terminalization, and justified only if cap usability needs independent method-policy admission.
+- **MD-06:** An untrusted receiver cannot attest its own T2 release using a boolean, IDL string, plain RequestID or unchecked hash; independent verifier/issuer authority required.
+- **MD-07:** Every K-S/K-I/K-U/revoke/action admission has separately identified linearization and current live rights/epoch checks; no implied unified atomic usercopy.
+- **MD-08:** Candidate receive normal order is protected staging and slot reservation, K-V, usercopy, then all-or-none K-I; alternative ordering and inert escrow remain P0 tests.
+- **MD-09:** Lost SEND result needs preidentified protected query identity or fail-closed Unknown; a freshly returned lost ticket is not sufficient.
+- **MD-10:** Queued Channel/cap cycles, receiver death and DMA failure require bounded charged cleanup/quarantine, not unlimited recursive kernel work.
+- **MD-11:** A backend effect/FS receipt/guest errno is not inferred from kernel SEND/RECEIVE status; explicit reconciliation is method-specific.
+- **MD-12:** All design/model content remains Proposed; no source code, executable model, formal result, performance number, ABI freeze or security guarantee is authorized.
+
+## 10. Go/No-Go gates and research sequence
+
+**MODEL-R1 approval: OPEN / NOT PASSED.**
+
+1. Decide exact E1 endpoint ownership/in-flight invocation ordering, with sender and receiver endpoint halves **separately identified**, no shared-object assumption.
+2. Specify preflight snapshot/overlap/alias, type/source uniqueness, multiple-grant all-or-none K-S, concurrent revocation and queue-full precommit behavior.
+3. Provide a bounded trusted preidentified ticket/reconciliation policy for post-K-S lost status **or** explicitly fail closed as Unknown.
+4. Prove exclusive claim and eligibility/audience validation before K-V, with no unapproved bytes published by count/status probes.
+5. Define K-V conservative first-write point, immutable exposed state, possible prefix and no foreign redelivery under Task death/Endpoint transfer/service restart.
+6. Reconcile B1 versus B2 K-I placement after/before copyout with all-or-none vector install and no claim of all-or-none user-visible buffer writes.
+7. Choose T1 bearer-grant attenuation policy, or demonstrate T2 independently trusted exact-cap-vector release and bound issuer/PolicyEpoch; do not accept B self-attestation.
+8. Model current revoke B and independent roots through queue/claim/K-I/K-U, with old admitted work separate from device R2-F and object R2-O.
+9. Prove sponsor/queue/escrow/cleanup/tombstone/DMA pin conservation across death, cancellation, receiver manipulation and cyclic Channel containment.
+10. Explicitly model already applied remote file/network effect and truthful status/guest translation despite lost reply.
+11. Independently review state transition assumptions, security objectives and resource cost against RFC-002/003/009/018 before choosing any formal notation or implementation task.
+12. If a future approval **explicitly** authorizes executable formalization, select a bounded TLA+/Alloy model, run its counterexamples and only then consider a separate kernel implementation decision. No such approval exists today.
+
+**Next recommended design step:** independent re-review of this finite model's **K-V/R2-F/receive progress** details and a focused RFC-003 Proposed spec alignment. Do **not** label the model verified, do not freeze KABI call signatures, and do not claim at-most-once execution or guaranteed delivery.
+
+## 11. Primary technical sources and scope limits
+
+- **[S1] Fuchsia Channel object, unique endpoint ownership and transfer ordering:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/channel
+- **[S2] Fuchsia zx_channel_write, repeated handles, self-channel transfer rejection and consume-on-failure:** https://fuchsia.dev/reference/syscalls/channel_write
+- **[S3] Fuchsia zx_channel_read, whole-message semantics, byte-before-handle output, overlapping buffers and size errors:** https://fuchsia.dev/reference/syscalls/channel_read
+- **[S4] Fuchsia zx_channel_read_etc, actual handle type/rights validation:** https://fuchsia.dev/reference/syscalls/channel_read_etc
+- **[S5] Fuchsia FIDL language specification, strict/flexible and value/resource union:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
+- **[S6] Fuchsia Zircon Handles, Task-local numbers and in-transit ownership:** https://fuchsia.dev/fuchsia-src/concepts/kernel/handles
+- **[S7] Fuchsia current kernel object lifetime and garbage collection concepts:** https://fuchsia.dev/fuchsia-src/concepts/kernel/concepts
+- **[S8] seL4 IPC overview: synchronous badged endpoints and reply state as different design:** https://docs.sel4.systems/Tutorials/ipc
+- **[S9] Fuchsia zx_channel_write_etc, different move/duplicate and error dispositions:** https://fuchsia.dev/reference/syscalls/channel_write_etc
+
+**No guarantee transfers** from Fuchsia or seL4 to UniOS. Fuchsia basic zx_channel_write consumes source handles on failure, while UniOS E1's proposed true precommit NOT_COMMITTED retains handles; this is an intentional semantic difference. Fuchsia's read buffer overlap and invalid pointer documentation does not prove that arbitrary UniOS ReceiveClaim usercopy is all-or-none. This document did not license-audit or incorporate third-party source code and did not execute a proof/test.
+
+---
+
+**Document history:** 2026-10-25 proposed independent finite state model v0.1 synthesizing CAPIPC v0.2 and RFC-002/003/009/018. RCV-T1 chosen only as a *research leader*, RCV-T2 reserved as an independently trusted additional resource-admission profile. Twenty-one (21) proposed transition guards, twenty-two (22) candidate safety predicates, eighteen (18) unexecuted interleavings, twelve (12) Proposed decisions and twelve (12) unpassed Go/No-Go gates. No implementation, model checker, hardware test or validated compatibility.
