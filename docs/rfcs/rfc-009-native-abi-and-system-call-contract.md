@@ -477,3 +477,185 @@ A kernel Channel moves bytes and a separate vector of capabilities. It does not 
 | ABI-44 | A compatibility claim is tied to an explicitly tested target set of binaries, SDK/ABI versions and hardware, not extrapolated from one app. |
 | ABI-45 | Proposed operation families, machine registers and status labels are NOT Accepted ABI v1 or implementation authorization. |
 
+
+## 19. Trade-off and feasibility comparison
+
+| Approach | Benefit | Security/correctness cost | Candidate decision |
+|---|---|---|---|
+| ABI-A small typed KABI + versioned SABI + C-compatible SDK | preserves D5 microkernel, compartmentalized protocol evolution, native cross-language tooling | RPC lifetime, Pager recursion, service trust and compatibility broker are nontrivial | first conditional research target |
+| ABI-B IPC-minimal everything through servers | simple kernel surface, few direct traps | privileged VM/thread/IRQ still require kernel object semantics and boot self-dependencies; not necessarily faster/smaller proven | compare on equal full boot/security graph |
+| ABI-C kernel POSIX syscall support | apparent ease for source ports, conventional UNIX programs | filesystem/path/process/network semantics enlarge kernel TCB and legacy ABI surface | defer unless measured compelling case |
+| ABI-D Linux syscall ABI native | static Linux CLI easy in narrow cases | exposes Linux semantics to every native task and freezes guest policy into Ring 0 | not preferred |
+| G1 fixed kernel GuestDomain | simple non-bypass domain check | mixed native broker and guest code in same address space difficult | first guest dispatch comparison |
+| G2 controlled per-Thread native↔guest switch | flexible broker/thunks | reentrancy/exception/TLS/return state broadens privileged TCB | research only |
+| G3 user-mode emulator/binary translator | no direct raw guest trap to native dispatch | performance/coverage and self-modifying/instruction corner cases | fallback research |
+| G4 raw guest syscall multiplexing in kernel | close to guest entry | grows untrusted Linux ABI parser in kernel and still needs services | last resort |
+| Static native C ABI candidate | portable SDK baseline | toolchain/FFI, lifecycle and binary stability obligations | good staged research |
+| Immediate stable ABI v1 | convenient platform branding | changes become difficult; undocumented security semantics could become permanent | **reject before evidence** |
+
+**System-call count and early benchmarks are not objective security proofs.** Compare object handles, syscall entry, page-fault costs, queue/wait fairness, copy/zero-copy cost, guest syscall forwarding, native static ELF and failure/cap races under the same work. No performance threshold or ABI promise is selected from external published numbers.
+
+## 20. Open research blockers (O9-01…O9-36)
+
+| ID | Priority | Unresolved question / needed evidence | Co-review |
+|---|---|---|---|
+| O9-01 | P0 | KABI min object operation set and implementation-side TCB accounting, ABI-A vs ABI-B/C/D? | 001/002/009 |
+| O9-02 | P0 | x86_64 SYSCALL vs alternate entry/return, Sysret canonical RIP/RFLAGS, KPTI and kernel stack safety? | 001/004/009 |
+| O9-03 | P0 | Trusted Native/GuestDomain tag and G1/G2/G3/G4 handoff, malicious direct raw syscall bypass? | 001/009/010 |
+| O9-04 | P0 | Guest↔native transition reentrant signals/faults/TLS/stack and separate kernel typed issuer rights? | 002/009/010 |
+| O9-05 | P0 | User pointer copyin faults/TOCTOU, separate input descriptor snapshot and no recursive critical Pager path? | 003/004/006/009 |
+| O9-06 | P0 | Post-commit copyout fault, Task death, handle creation and NOT_COMMITTED/UNKNOWN status linearization? | 002/003/009 |
+| O9-07 | P0 | IPC MOVE+bytes atomic queue commit versus receive copyout/install, duplicated handles and quota failure? | 002/003/009 |
+| O9-08 | P0 | Handle numeric ABA, Task-local generation, reuse, revocation lineage and detached sponsor charge? | 002/009 |
+| O9-09 | P0 | Final return semantics for B/R1/R2-F/R2-O, status when DMA cannot quiesce and frame stays pinned? | 002/004/007/009 |
+| O9-10 | P0 | ReplyToken timeout, cancellation, client crash and already committed external storage/device effects? | 003/008/009 |
+| O9-11 | P0 | Private FaultWaiter and PagerReply integrity under VM unmap/Task kill/revoke concurrent event? | 003/004/009 |
+| O9-12 | P0 | M0 independently resident ABI/runtime, boot library and kernel parser/initial cap proof? | 004/005/006/009/017 |
+| O9-13 | P0 | Native SDK language-neutral C ABI/FFI, compiler/toolchain target, panic/unwind/TLS/stack exception rules? | 009/018 |
+| O9-14 | P0 | Native/SABI/SDK/Guest ABI versioning and strict unknown mandatory fields/status/cap roles? | 003/009/018 |
+| O9-15 | P0 | Linux x86_64 guest hardware trap and execution context routing without importing full Linux syscall handling? | 001/009/010 |
+| O9-16 | P0 | Kernel-owned feature query cannot be spoofed by SABI or downgraded to grant guest higher rights? | 002/006/009 |
+| O9-17 | P0 | User-facing service registry discovery versus native attenuated cap issuance and rights? | 001/002/003/009 |
+| O9-18 | P0 | Event/WaitSet edge-level/coalescing/cancel/peer death and wait registration memory/CPU sponsor caps? | 003/005/009 |
+| O9-19 | P0 | Monotonic clock/absolute deadline unit, overflow, suspend/resume semantics and timeout causality? | 005/006/009 |
+| O9-20 | P1 | 32-bit guest pointer conversion, x32 Linux overlap and future ARM/RISC-V syscall differences? | 009/010/018 |
+| O9-21 | P1 | Native static ELF loader, process startup vector, TLS, sysroot and build-chain license feasibility? | 006/009/011 |
+| O9-22 | P1 | Native dynamic linker, ELF relocations/RELRO, signed image content and library compatibility? | 004/009/011/017 |
+| O9-23 | P1 | POSIX source-port libc, Linux errno/signals/futex/clone/fork/exec/epoll and guest ABI coverage? | 009/010 |
+| O9-24 | P1 | Windows PE/Wine host service mapping, SEH/TLS, object semantics, documented vs NT native ABI? | 009/012 |
+| O9-25 | P1 | Darwin Mach-O/dyld/ObjC/Swift CLI and legal GUI limits under native cap enforcement? | 009/014 |
+| O9-26 | P1 | Multiple versions of SABI method/handle role/unknown-flexible fields and service restart coexistence? | 003/009/018 |
+| O9-27 | P1 | KABI stable-v1 policy, deprecation security fixes, supported arch/version matrices and test corpus? | 009/018 |
+| O9-28 | P1 | Optional zero-copy/batch/ring transport cap/IO generation and cancellation safety? | 003/004/008/009 |
+| O9-29 | P1 | Shared memory producer/consumer barrier and per-core status/ownership for asynchronous IO? | 003/004/009 |
+| O9-30 | P1 | Distinct FileSync/DirectorySync/commit receipt and guest POSIX errno/Windows/Mach translations? | 008/009/010 |
+| O9-31 | P1 | x86_64 CET/XSAVE/FS/GS/stack flags and selected reference PC feature/version contract? | 005/009 |
+| O9-32 | P1 | Guest vDSO/syscall restart and signals with blocked broker, native page-fault concurrency? | 004/009/010 |
+| O9-33 | P1 | SABI server compromise and signed service overgrant effect on file/boot security? | 001/002/009/017 |
+| O9-34 | P1 | Native status unknown newer enum and caller legacy error handling safe downgrade? | 009/018 |
+| O9-35 | P2 | Toolchain/build reproducibility, debug/unwind info, observability and SDK distribution provenance? | 009/015/018 |
+| O9-36 | P2 | Perf feasibility: IPC/copyin/guest broker/timer overhead p50/p99 and UI responsiveness vs expanded kernel? | 005/009/015 |
+
+## 21. Proposed decision register (ABI-D01…ABI-D24) — NONE Accepted
+
+- **ABI-D01:** ABI-A minimal typed KABI, versioned SABI and independent language-neutral SDK ABI is the first conditional research architecture.
+- **ABI-D02:** KABI owns kernel objects/rights, not POSIX paths, NT objects, Mach frameworks, filesystem parser or GUI methods.
+- **ABI-D03:** Linux/Windows/Darwin ABI are restricted compatibility personalities, not aliases of UniOS native syscall numbers.
+- **ABI-D04:** Kernel-owned execution-domain checks precede dispatch of guest/native traps, and raw user register/TLS cannot change the domain.
+- **ABI-D05:** Compare G1 fixed GuestDomain, G2 authorized per-Thread transitions, G3 emulator and G4 kernel Linux ABI on equivalent attack graphs.
+- **ABI-D06:** Keep x86_64 syscall register convention, IDs, raw return status, handle width and descriptor layout **unfrozen** until formal/experimental review.
+- **ABI-D07:** Raw user pointers, descriptor lengths, alignments and versions are checked with safe copyin/copyout under concurrent mapping/fault rules.
+- **ABI-D08:** Post-commit copyout failure cannot be reported as no effect; object/handle lifetime conserved under process death.
+- **ABI-D09:** Handles are Task-local opaque locators; rights/lineage/sponsor and creation authority are kernel-maintained and non-amplifiable.
+- **ABI-D10:** R0/B/R1/R2-F/R2-O and remote side-effect commit remain separate status/evidence levels.
+- **ABI-D11:** IPC E1 bounded Channel, MOVE and ReplyToken work with RFC-003's commit/receive/cancel ambiguity; no unconditional budget donation.
+- **ABI-D12:** Wait/Event/timeout has named clock/cancel/registration-generation/coalescing semantics and finite resource accounting.
+- **ABI-D13:** Pager fault uses private FaultWaiter+PageSupply rights and wired M0 to avoid self-deadlock.
+- **ABI-D14:** Kernel errors and guest errno/NTSTATUS/Mach result codes remain independent semantic namespaces.
+- **ABI-D15:** Service discoverability is separate from authorized Endpoint cap acquisition; user SABI payload cannot mint kernel privileges.
+- **ABI-D16:** SABI schema strict/flexible rules are versioned; unknown transferred handle resources require explicit close/reject/proxy policy.
+- **ABI-D17:** Native SDK research prefers a C-compatible FFI boundary and Rust/C/C++ bindings; Rust default ABI/layout never freezes OS contract.
+- **ABI-D18:** Native static ELF and minimal runtime before full libc/dynamic linker are research stages, not working app claims.
+- **ABI-D19:** Linux binary compatibility must be reported at executed semantic-coverage level; full Linux/POSIX parity and Wine/Mach GUI are unproven.
+- **ABI-D20:** Privileged device/boot/trust operations require independent typed capabilities, not guest administrator, UID0 or executable signature.
+- **ABI-D21:** FileSync/DirectorySync conditional durability and remote unknown effects follow RFC-008; no blanket "saved" syscall result.
+- **ABI-D22:** Feature/version negotiation distinguishes KABI, service SABI, SDK, guest ABI and immutable signed BootPolicy descriptors.
+- **ABI-D23:** Optional fastpath/zero-copy/batched ring operations only after they can be shown equivalent in security/commit and sponsor accounting.
+- **ABI-D24:** Stable v1 ABI, syscall numbers, compiler target, code implementation and any compatibility certification remain unauthorized while R1 gates open.
+
+## 22. Cross-RFC interface ownership and contradiction register
+
+| RFC | ABI boundary it owns/constrains | Potential conflict to resolve |
+|---|---|---|
+| RFC-001 | kernel object/security TCB and execution domain | adding POSIX or broad device policy to KABI violates default boundary |
+| RFC-002 | Task-local typed handles, creator/sponsor/lineage, R0/B/R1/R2-F/R2-O | closing handle vs global revoke and stale numeric ABI token |
+| RFC-003 | E1 bounded Channel and ReplyToken/Wait semantics | SABI wire version/role must not be mistakenly interpreted by kernel |
+| RFC-004 | PagerBinding/FaultWaiter, page faults, copyin and R1 | kernel copyin fault may deadlock on ordinary Pager or invalidate copyout status |
+| RFC-005 | CPU budget/weight/reservation and work charging | async broker or user driver must run when client is blocked; no automatic donation |
+| RFC-006 | signed/wired BootBundle M0 startup and restart | bootstrap ABI cannot require VFS/late libc runtime; Good status not app self-report |
+| RFC-007 | typed IRQ/MMIO/IOMMU DeviceGroup and R2-F | naive native DeviceMap without physical topology grants unsafe DMA |
+| RFC-008 | File/DirectoryCap, FileSync, writeback errors/UNKNOWN | kernel IPC COMMITTED must not become synchronous persisted FileWrite claim |
+| RFC-009 | per-arch KABI entry ABI, SDK FFI and guest separation | these need RFC-018 version/type/status stable schema decisions |
+| RFC-010 | Linux ELF/POSIX guest ABI and syscall forwarding | syscall number collisions cannot bypass trusted GuestDomain |
+| RFC-011 | native packaging/runtime/service manifests | service install/signer is not unconditional kernel cap |
+| RFC-012 | Windows PE/Wine/Win32/NT semantic coverage | NTSTATUS and Windows HANDLE aren't native KABI |
+| RFC-013 | desktop compositor and GPU buffer sharing | service protocol GPU/Window handles require native rights and DMA fences |
+| RFC-014 | Darwin/Mach-O/Mach/Objective-C/Swift feasibility | no assumption Apple GUI/Metal works from native C SDK |
+| RFC-015 | security test/fuzz/crash failure and source custody | model and fuzz KABI descriptors, IDL unknown fields and boot grant ceilings |
+| RFC-016 | permission portal, app grants, UI consent | user consent broker cannot bypass typed native capability checks |
+| RFC-017 | authenticated BootPolicyManifest, trust mode, floor | runtime ABI feature query cannot rewrite signed security policy |
+| RFC-018 | versioned IDL, status codes/ABI evolution | external numeric table cannot freeze before failure semantics verified |
+
+**Important status:** RFC-010 through RFC-016 and RFC-018 are future or separate research allocations in the original architecture index; this RFC does not assert any of their design/implementation has been completed.
+
+## 23. Research/model checking and design exit gates
+
+### 23.1 Minimal bounded model before any ABI acceptance
+
+Model two Tasks, two Threads and one restricted Linux guest; one legitimate and one malicious native client; one capability issuer, 2 handles with reuse across generations, one MemoryObject and PagerBinding, bounded Channel of capacity 1, one transferred Handle, one ReplyToken, one app-visible RPC to a simulated VFS server, one peer death/restart, one resource sponsor, one CPU running context and one zero-budget Pager. Include one physical DMA frame with R1/R2-F distinct.
+
+Transitions to analyze: preflight copyin, user modifies payload, sender queue commit, receiver copyout fault, handle install, client death, server death, ReplyToken timeout, cancel, invalid PagerSupply, handle close/recycle, transfer cap revoke B, CPU TLB R1, failed R2-F/quarantine, guest raw syscall with native opcode, guest→native transition spoof, SABI major mismatch, unknown handle role, double send, and OOM during cleanup.
+
+**Safety properties:** no kernel privilege amplification; no duplicate MOVE ownership; no stale reply/wake/handle after generation change; no false NOT_COMMITTED after irrevocable enqueue; no invented file durable receipt; no native cap from guest numeric ID; no leaked kernel raw pointers; no unbounded M0 resource drain by ordinary guest.
+
+**Conditional liveness:** given valid timer/IRQ/CPU budget, wired M0 and healthy Pager, bounded clean failure may complete. Absent those hardware conditions, stop safely rather than assert deterministic response time. A filesystem service may fail with UNKNOWN despite correct KABI behavior.
+
+### 23.2 Future ABI-specific tests (not performed)
+
+1. Controlled x86_64 entry/return state testing: noncanonical user RIP/RSP, RFLAGS/GS/TLS and safe kernel stack under SYSCALL, traps and interrupts.
+2. Pointer and layout property tests: mismatched size/version, zero/overflow length, 32-bit conversion, concurrent VA unmap/remap, double copyin mutation, faulty output pointer after commit.
+3. Capability state interleaving: grant rights attenuation, MOVE with duplicate list, sender and receiver death, handle ABA, revoke B then R1/R2-F, false complete-Fence.
+4. IPC/Wait operation semantics: E1 bounded message, ReplyToken one-shot/timeout, queue backpressure, duplicate registration/cancel/wake, peer restart and no unauthorized reset.
+5. Native C/Rust/C++ SDK FFI static test candidates: struct sizes/alignments, endian, panic/exception and allocation boundaries, target builds with multiple compilers (only after separate code authorization).
+6. Linux minimal ELF static CLI syscall smoke with explicit supported table; guest direct SYS call bypass tests, signal/futex/exec/dynamic linker as staged targets, no blanket parity.
+7. SABI golden payload compatibility corpus across versions, unknown strict/flexible field/handle roles, revoked service incarnations and schema fuzz.
+8. VFS FileSync/DirectorySync durability and IO uncertain result mapping to guest errno; never use production/user disk.
+9. Kernel IPC fastpath versus baseline and optional ring/shared-memory path observational equivalence for rights, crash state and CPU charge.
+10. Performance p50/p95/p99 under named QEMU/hardware configurations after correctness: syscall trap, copyin/out, endpoint ping-pong, Pager fault, guest forwarding, bandwidth and UX latency.
+11. Reference PC CPU feature, timer/IRQ/IOMMU/firmware boot profile for native ABI; QEMU is distinct evidence.
+12. Version change and old binaries: explicitly fail on unknown mandatory feature, no accidental old-client permission expansion, migration with two SABI server versions.
+
+No model, fuzzing, build, real computer test, software implementation or performance measurement has been run by authoring this design document.
+
+### 23.3 Exit criteria (R1 = OPEN)
+
+Before calling ABI-A Accepted or Stable v1:
+- Prove kernel-owned GuestDomain and the chosen Linux guest trap/return path, or defer direct Linux binary support explicitly.
+- Publish exact transition/linearization state model for handle move, syscall input/copyout, async send/receive, cancel/Reply and Task death.
+- Prove that SABI/SDK/version handling does not expand capability grants under unknown fields or forged ServiceID.
+- Bound critical copyin/Pager/IRQ/CPU/OOM paths and distinguish actual R2-F vs CPU mapping.
+- Select machine calling conventions and static native ABI layout through multi-compiler/toolchain validation and hardware proof; no Rust private ABI leakage.
+- Define FileSync/DirectorySync/unknown remote effect and guest error mapping without false success.
+- Name supported architectures, CPU features, stable vs experimental ABI versions and clear compatibility window.
+- Complete comparative architecture TCB/latency trade-offs based on **actual** measurements/verification, not external performance claims.
+- Review compatibility feasibility/legal constraints for native libc, POSIX, Wine and Darwin separately.
+- Record ADR approval independently of high-level D1–D8 accepted directions. Until then all ABI-D proposals remain **Proposed**, no implementation permission.
+
+**Future research recommendation:** RFC-009 v0.1 adversarial re-review to v0.2 (specifically syscall copyout after commit, GuestDomain trap/broker interleaving and SABI unknown-cap transfer), followed by RFC-010 Linux Personality and RFC-018 Versioned IDL/ABI compatibility matrix.
+
+## 24. Official primary technical references (researched 2026-10-24)
+
+- **[S1] seL4 IPC, endpoint, badges and fastpath:** https://docs.sel4.systems/Tutorials/ipc
+- **[S2] seL4 Reference Manual:** https://docs.sel4.systems/projects/sel4/manual.html
+- **[S3] Fuchsia Zircon process-local handles:** https://fuchsia.dev/fuchsia-src/concepts/kernel/handles
+- **[S4] Fuchsia Zircon Channel object contract:** https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/zircon/docs/objects/channel.md
+- **[S5] Fuchsia zx_object_wait_async:** https://fuchsia.dev/reference/syscalls/object_wait_async
+- **[S6] Fuchsia FIDL strict/flexible unknown fields and method compatibility:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
+- **[S7] Linux userspace syscall stable ABI (architecture-specific):** https://github.com/torvalds/linux/blob/master/Documentation/ABI/stable/syscalls
+- **[S8] Linux syscall(2) machine register conventions:** https://man7.org/linux/man-pages/man2/syscall.2.html
+- **[S9] Linux seccomp BPF and USER_NOTIF limits:** https://docs.kernel.org/userspace-api/seccomp_filter.html
+- **[S10] FreeBSD Capsicum capabilities and sandbox:** https://docs.freebsd.org/en/books/handbook/security/#capsicum
+- **[S11] Microsoft Libraries and Headers — Ntdll Nt/Zw user calls and documentation limits:** https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/libraries-and-headers
+- **[S12] Linux ABI stability levels:** https://docs.kernel.org/admin-guide/abi.html
+- **[S13] Fuchsia zx_handle_close and wait invalidation:** https://fuchsia.dev/reference/syscalls/handle_close
+- **[S14] Fuchsia FIDL wire format, handle placeholders and out-of-band transport:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/wire-format
+- **[S15] Linux io_uring_enter(2), split submit/completion and cancel:** https://man7.org/linux/man-pages/man2/io_uring_enter.2.html
+- **[S16] Linux fsync(2), directory entry persistence and fdatasync:** https://man7.org/linux/man-pages/man2/fsync.2.html
+- **[S17] seL4 faults and handler/resume:** https://docs.sel4.systems/Tutorials/fault-handlers.html
+- **[S18] Fuchsia FIDL language version/evolution rubric:** https://fuchsia.dev/fuchsia-src/development/api/fidl
+
+**Use limits:** These sources describe actual other OS kernel/user contracts and are informative only. No seL4 proof transfers to UniOS, no FIDL/Zircon compatibility is claimed, no Windows syscall stability beyond Microsoft's documentation, no Linux ELF program was run, no new license/source import authorized. External user-facing formats and interface implementations require separate version, license and security evidence.
+
+---
+
+**Document history:** 2026-10-24 — RFC-009 Proposed Specification v0.1 draft: native KABI vs SABI vs SDK/guest ABI, x86_64 entry/domain hypotheses, capability/IPC/VM/CPU/restart and storage error contracts, 45 candidate invariants, 36 open research issues and 24 proposed decisions. This document contains no executable implementation, compiler target, ABI freeze, successful compatibility run, formal proof or benchmark.
