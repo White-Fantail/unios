@@ -242,3 +242,322 @@ In Linux RT-mutex a higher-priority Thread waiting on a lock can temporarily boo
 
 **P0 choice:** disable universal IPC donation/automatic PI. Keep SCHED-C opt-in explicit lease on hold until a formal compare with seL4 MCS and the chosen Channel ReplyToken contract. Desktop interactivity should first be approached with correct service budget, demand fairness and bounded queueing.
 
+
+## 11. Deadline, timer, WaitSet and event ordering
+
+A user-visible **deadline is an event wait/timeout condition**, not automatically an EDF admission request or a guarantee that a reply arrives in time. RFC-003 WaitSet W1 one-shot observer vs W2 persistent-level observer is not decided and must not be hidden in the clock API.
+
+### 11.1 Time primitives research contract
+
+- Clocksource: monotonic counter used to measure elapsed execution/wall time; check stable rate, counter wrap and per-core consistency.
+- Clockevent: hardware local/global timer that raises an interrupt/request for scheduling and registered deadlines; different from the clocksource.
+- DeadlineWait/Timer: scoped token with ClockID (suspend-sensitive or suspend-inclusive), target instant, optional slack/tolerance, generation and owner.
+- Callback/completion: Woken/TimedOut/Cancelled/PeerDied/Replaced, not a universal exactly-once timer signal to application code.
+- Wall clock (UTC/calendar) may jump due to synchronization, user policy or RTC; must NOT be the direct authority for monotonic timeout comparisons.
+- A monotonic CPU scheduling clock is not the same as charged execution-time counter. A sleeping Thread's absolute deadline can expire while its executed CPU charge stays unchanged.
+
+### 11.2 Race rules
+
+1. Waiter registers before the readiness check linearization or uses an equivalent atomic lock/observer handshake, so ready signals are not lost between test and sleep.
+2. If timeout and object readiness become true concurrently, define an atomic winner/status ordering; a woken Thread always rechecks the underlying condition and grant validity.
+3. A timer cancellation may race with firing. It must retire/cancel a generation without waking a new Thread at the same numeric ID.
+4. Deadline expiry while Thread is throttled records logical expiry/available status when scheduler can safely process it. It cannot promise actual user handler execution at the exact timestamp.
+5. A server receiving a late reply after local client timeout must not turn expiration into remote-effect rollback. RFC-003 COMMITTED/UNKNOWN still applies.
+6. Coalesced Pager fault waiters may share page content but cannot inherit each other's wait deadline or CPU eligibility.
+
+### 11.3 Suspend, reset and time domains
+
+Linux distinguishes CLOCK_MONOTONIC (does not count suspend) from boottime elapsed including suspend [S10]. UniOS should provide explicit clock-domain semantics for timeout, resource replenishment and lease expiration before implementing suspend/resume. Do not use wall clock to extend expired execution grants by changing date/time. Hibernation and migrating CPUs require reconstruction/validation of timer state and new boot or resume generation. If monotonic source is unstable on a given PC, disable affected guarantees or choose a validated fallback.
+
+## 12. x86_64 timekeeping, preemption and CPU hardware
+
+Candidate inputs for first x86_64 VM: invariant TSC when explicitly supported and calibrated, APIC/local timer/HPET or platform alternative if validated; firmware/ACPI per-CPU topology; reschedule IPIs and interrupt delivery. No chosen tick frequency, timer calibration, nanosecond precision, guaranteed TSC sync or fixed PCID/APIC mode is asserted.
+
+- CPU frequency/power/thermal and virtualized clock offsets can distort naive cycle-count-to-nanosecond conversion. The clocksource needs calibration, overflow/wrap strategy, drift monitoring and suspend recovery.
+- **Tickless idle** is a future power optimization only; it still requires correct nearest scheduler replenishment and deadline timer programming. A timer can fail to fire or be delayed by interrupt masking/hardware.
+- Time-slice ending and a critical M0 deadline both need actual schedulable timer events. Firmware UEFI boot watchdog is **disabled after ExitBootServices** (RFC-006) and is not a permanent M0 availability mechanism.
+- Kernel syscall accounting must be sensible at user→kernel→user boundaries without allowing a malicious app to hide repeated expensive kernel work. Traps/interrupt attribution require budget or explicit bounded system overhead.
+- Counter overflow and rounding must be fail-safe: a huge user-provided period or negative duration cannot wrap into unbounded scheduling rights.
+- Clock metadata needs a trust root and hardware assumption. Task-supplied timestamps are not verified CPU usage records.
+
+**Separate hard assumptions:** scheduler can be correct with a stable clock but fail to meet a deadline because of long nonpreemptible MMU shootdown or device ISR. Temporal accuracy is an independent proof and hardware experiment.
+
+## 13. SMP scheduling, CPU affinity and hotplug
+
+### 13.1 Per-CPU runqueues and balance
+
+Initial research direction: per-CPU ready queues, well-defined eligibility and CPU affinity scope, selected load balancing/work steal, inter-processor reschedule signals and a global or hierarchical group charge record.
+
+- Runqueue state must satisfy a single-owner constraint: Thread is RUNNING on at most one CPU, RUNNABLE enqueued at most once, BLOCKED/THROTTLED not queued as runnable.
+- Wake/migration changes queue ownership atomically with generation validation. A late IPI, timeout, CPU offline and Task stop must not resurrect a retired Thread.
+- Task affinity requests are policy-constrained by valid currently online CPU set; guest affinity cannot override physical/critical CPU reservation. Invalid empty mask should return failure rather than trap a Thread in impossible runnable state.
+- Per-CPU fair debt vs group global CPU budget must be reconciled; a malicious multi-CPU Thread farm cannot spend group quota independently on each CPU as if total quota were multiplied.
+- On CPU offline/hotplug, move/reroute eligible Threads or explicitly fail the admission. Pinned IRQ, M0 watchdog CPU and scheduler timer require more than simply migrating ordinary threads.
+- QEMU virtual CPU oversubscription and host scheduling jitter invalidate hard timing claims even when guest kernel algorithm is conceptually correct.
+
+### 13.2 CPU capacity profile and asymmetric hardware
+
+D2 prioritizes x86_64 QEMU first plus actual Reference PC. CPU counts and simultaneous multi-threading capabilities are dynamic platform inputs. A later CPU could have heterogeneous capacity, SMT contention, variable thermals, NUMA and interrupt-affinity limits. Early policy should not promise strict utilization proof from "N logical CPUs" alone unless capacity assumptions are explicit.
+
+### 13.3 Priority inversion across CPUs
+
+Priority inheritance may need owner execution on another CPU, but a boosted priority that lacks runnable budget or whose owner is tied to an offline CPU cannot run. Dynamic affinity boosts or emergency CPU transfer need separate authority/feasibility proof. A blocked high-priority Thread waiting on unsafe DMA fence cannot be rescued by donation; hardware fence and resource dependency remain outstanding.
+
+## 14. Realtime and media policy — deferred SCHED-B
+
+SCHED-B studies combining general Fair with admitted Deadline/EDF/CBS-like jobs. Ordinary developer desktops may later need bounded audio processing, input event handling or video frame work, but a blanket hard realtime guarantee is **not justified**.
+
+### 14.1 Admission variables
+
+For each proposed deadline service i: execution runtime C_i, relative deadline D_i, minimum period T_i, online CPU/capacity domain, blocking bound B_i and affinity/device/IRQ dependencies. A simple feasibility criterion is C_i positive, deadline and period positive and C_i within D_i/T_i policy; global utilization under available CPU capacity is *necessary but not sufficient* in arbitrary SMP, lock, affinity and nonpreemptible conditions. Do not fix concrete percentage or milliseconds as proven.
+
+- Critical M0 CPU reserve and kernel/IRQ overhead reduce admissible capacity. Ordinary desktop Fair work must retain a documented minimum eligibility where product policy requires it.
+- Not all urgent tasks need kernel EDF: many soft deadlines can be handled by bounded fair groups and service-level queue priority.
+- Never promote arbitrary app or fake service to Deadline by setting a priority number or passing a task name.
+- In user space, a broken or malicious service can claim unrealistic WCET; the kernel can enforce caps but cannot guarantee useful work completed within the budget.
+- If admission fails, return a specific denied/degraded condition; do not silently accept and assert hard deadline guarantees.
+
+### 14.2 What is deferred
+
+No unbounded SCHED_FIFO/SCHED_RR root privilege, scheduler-specific POSIX errno emulation, deadline task fork semantics, kernel priority queues in a user C ABI or priority donation across opaque async RPC. Realtime scheduling can be separately enabled after SMP/hardware/time and WCET gates.
+
+## 15. Failure semantics and restart/revocation ownership
+
+### 15.1 Expended budget is not revoked authority
+
+Thread throttling stops CPU execution eligibility but does **not** close Task handles, invalidate MemoryObject mappings or cancel IPC queue content. RFC-002 R0/B/R1/R2-F/R2-O still governs those objects. Killing a Service Task ends that execution identity but may leave Pager/FaultWaiter, cap in-transit, CPU mapping and device DMA lifetimes.
+
+A SchedulingPolicyGrant revoke must block **new policy changes** and remove/attenuate now-invalid inherited scheduling privileges through a defined barrier. It must not arbitrarily erase already spent CPU cycles, retroactively undo server actions or free other live objects. If policy grant scope disappears while Thread currently runs, kernel needs a safe rescheduling/requeue boundary and effective policy recomputation.
+
+### 15.2 Service startup/restart budgeting
+
+- New service identity is a fresh Task and SchedulerAdmission generation; no implicit copy of old high-priority group by Registry name alone.
+- Parent ResourceGroup admission conserves total shares across restart. Simultaneously alive old zombie group and new service must not each spend full identical parent quota during overlap.
+- Supervisor can request a new budget only through typed allowed grants and a compatible manifest (RFC-006). B/R1 teardown may proceed in separate reserved cleanup context even if Task CPU quota exhausted.
+- M0 privileged recovery and DeviceGroup fences may require separately accounted kernel/IRQ time, especially when stop/kill is the action needed to release ordinary CPU and memory quotas.
+- A race between optional DonationLease return and Service death cannot refund donor time twice or let a new incarnation inherit the old lease.
+
+### 15.3 Distinguish status classes
+
+Potential logical statuses, **not KABI error numbers**: CLASS_NOT_AUTHORIZED, INVALID_BUDGET, ADMISSION_DENIED, THROTTLED, DEADLINE_EXPIRED, WAIT_CANCELLED, THREAD_DIED, CPU_UNAVAILABLE, TIMER_UNAVAILABLE, SERVICE_RESTARTED, UNRECOVERABLE_KERNEL_DELAY, POLICY_REVOKED. They are not all synchronous syscall errors: a Thread can be throttled without one return code, and a timer may expire while it is blocked.
+
+## 16. Failure and concurrency matrix
+
+| Case | Forbidden result | Contract/potential response |
+|---|---|---|
+| App spawns 10k Threads | multi-Thread group mints 10k CPU quota | hierarchical charge and bounded admission |
+| App repeatedly yields/wakes | negative fairness debt erased, others starve | scheduler eligibility preserves sleeper fairness state |
+| User requests Deadline class without cap | high priority escalates from untrusted bytes | typed SchedulingPolicyGrant denial |
+| Nested IPC calls with implicit donation | budget multiplied across services | no default donation; explicit lease only after proof |
+| Caller timeout while server still works | server side-effect magically cancelled | wall deadline distinct from CPU and service commit |
+| Two clients donate same budget object | server receives double CPU reservation | singular entitlement, conserved charge and caps |
+| Server dies while using donated CPU | donor time never returned or minted twice | scoped lease lifecycle and generation |
+| Passive Pager waits for client budget | critical page faults cannot progress | server-owned M0/Pager baseline or reserved credit |
+| Kernel handles attacker syscall storm | unlimited uncharged privileged CPU | bounded or attributed kernel execution |
+| IRQ flood from compromised device | recovery Thread never executes | bounded IRQ handling and mask/IRQ budget; hardware fallback |
+| Long capability revoke with lock held | high-priority M0 cannot preempt | segmented, bounded critical sections and lock audit |
+| IPC usercopy page fault under scheduler lock | Pager reentrancy deadlock | no faultable copy with forbidden scheduler locks |
+| WaitSet ready and timeout race | missed wake or duplicate runnable Thread | atomic linearization and generation validation |
+| Page supplied for 50 fault waiters | duplicate CPU charge or foreign wake | each waiter revalidated, actual runtime charged once per core |
+| Guest restricted normal-mode exit | guest obtains fresh CPU budget | same Task/Thread group charge through transition |
+| CPU offlined during M0 watchdog timer | timer lost and boot-good falsely reported | recalibrate/reroute or fail/degrade |
+| TSC skew across CPU migration | deadline goes backward/infinite | validated time domain, monotonic normalization |
+| Group quota exhausted before error path | OOM cleanup cannot run | protected finite cleanup and M0 reservation |
+| M0 hangs under high priority | permanent starvation of ordinary desktop | finite M0 budget and fail-stop/watchdog |
+| Driver DMA fence never returns | Thread boost releases hardware unsafely | quarantine DeviceGroup; CPU priority cannot replace fence |
+| Old Task dies while new service launches | double counted/uncounted CPU share | restart admission and sponsor conservation |
+| CLOCK_REALTIME moved back | timeout or lease never expires | monotonic domain used for elapsed deadlines |
+| Suspend time not counted | lease/fault deadline semantics ambiguous | explicit suspend-sensitive vs inclusive ClockID |
+| CPU capacity shrinks after admission | deadline guarantee incorrectly persists | re-admit/degrade and report changed assumptions |
+
+## 17. Proposed invariants — SCHED-01…SCHED-36 (NOT proved)
+
+| ID | Safety or bounded-liveness obligation |
+|---|---|
+| SCHED-01 | A Thread can execute on at most one CPU simultaneously and be on at most one runnable queue at a time. |
+| SCHED-02 | Only authorized typed policy grants can raise class/weight/budget/affinity beyond a Task's inherited envelope. |
+| SCHED-03 | Spawning additional Threads cannot multiply their ResourceGroup's aggregate CPU reservation. |
+| SCHED-04 | Child CPU entitlements and concurrent reservations never exceed the admitted ancestor/global envelope. |
+| SCHED-05 | Actual executed CPU time and wall-clock wait/deadline time have separate accounting. |
+| SCHED-06 | Untrusted repeated syscall/interrupt/guest transition cannot create free unbounded kernel CPU work. |
+| SCHED-07 | Budget refill/replenishment conserves aggregate entitlement and resists alias/migration/restart double spend. |
+| SCHED-08 | A Thread with no eligible budget cannot gain new runnable CPU execution solely via wake signal, unless explicit protected M0 policy. |
+| SCHED-09 | Priority/weight alone does not count as reserve/guaranteed deadline in any public contract. |
+| SCHED-10 | M0 execution reservation is finite and cannot be spent/minted by normal app grants. |
+| SCHED-11 | M0 liveness claims name online CPU, working timer, bounded kernel critical sections, IRQ progress and memory/IPC cut assumptions. |
+| SCHED-12 | Failure of these assumptions results in explicit degraded/fail-stop policy, not a false success response. |
+| SCHED-13 | Blocking on Wait/IPC/Pager does not charge unexecuted CPU time as actual Thread runtime. |
+| SCHED-14 | IPC asynchronous SEND never automatically transfers SchedulingContext or high priority to arbitrary destination. |
+| SCHED-15 | Any future DonationLease debits authorized donor and returns/settles bounded remaining time exactly once. |
+| SCHED-16 | Donation across calls has finite chain/depth, scoped request generation, cycle and fan-in handling. |
+| SCHED-17 | One client's high priority cannot mint additional M0/essential reserved runtime through untrusted Channel content. |
+| SCHED-18 | Server CPU charging, queued IPC memory sponsorship and reply commit status remain distinct ledgers. |
+| SCHED-19 | Waking/signal/timeout/cancel have a linearization that prevents lost wake and double dispatch. |
+| SCHED-20 | PagerSupply causes kernel-per-waiter rights/generation check, not unconditional runnable state. |
+| SCHED-21 | Terminated/revoked/old-generation Thread cannot be requeued or run under a fresh service incarnation. |
+| SCHED-22 | CPU migration and online/offline transitions preserve runtime charges, caps and runnable identity. |
+| SCHED-23 | Restricted guest→normal supervisor CPU execution doesn't reset native ResourceGroup budget. |
+| SCHED-24 | Monotonic deadline/ClockID and wall clock adjustments cannot be conflated. |
+| SCHED-25 | Suspend/inclusive timer semantics and lease expiry are explicit and generation-safe. |
+| SCHED-26 | Kernel nonpreemptible regions and IRQ top halves are finite under stated environment or their liveness guarantee is explicitly unsupported. |
+| SCHED-27 | No forbidden kernel lock is held across faultable usercopy, external Pager IPC or unbounded scheduler/cap teardown. |
+| SCHED-28 | One user's workload/IRQ storm cannot consume emergency critical reserve without separate authorized admission. |
+| SCHED-29 | Throttling/stopping a Thread doesn't imply cap/object R1/R2 teardown or data persistence. |
+| SCHED-30 | Reaping/zombie CPU budgets and replacing a service do not duplicate live parent CPU reservation. |
+| SCHED-31 | Device/IRQ completion and DMA fencing require hardware evidence; higher Thread priority is no substitute. |
+| SCHED-32 | Scheduler failure cannot be reported as repaired merely because watchdog event was armed. |
+| SCHED-33 | Realtime deadline admission includes CPU demand plus blocking/IRQ/affinity/online capacity conditions before any guarantee. |
+| SCHED-34 | Fair scheduler promises long-term weighted eligibility, not arbitrary strict latency without bounded runnable demand. |
+| SCHED-35 | Cross-CPU reschedule IPI, concurrent wake and hotplug cannot double-charge or run same Thread twice. |
+| SCHED-36 | Scheduler policy, budget descriptor and ClockID are not accidentally fixed as a stable native or guest ABI. |
+
+All are proposed properties; specific hardware clock, memory-order, lock and fairness assumptions still require counterexample review, modeling and measurement. **No invariant is claimed proven, tested or implemented.**
+
+## 18. Alternative study, likely costs and acceptance gates
+
+| Approach | Pro | Cost and proof risk | What could reject it |
+|---|---|---|---|
+| **SCHED-A weighted fair + bounded M0 reserve** | relatively modest kernel enforcement, general desktop fairness, no automatic donation | group hierarchy, IRQ/kernel charging and recovery capacity bound | M0 starves/monopolizes or fairness cannot survive multi-core load |
+| **SCHED-B fair + admitted EDF/CBS** | explicit time-sensitive media/driver jobs possible | WCET admission and IRQ/lock/hardware bounds; SMP complexity | no viable deadline validation for selected hardware |
+| **SCHED-C seL4 MCS-like contexts/passive server** | explicit spendable budget and efficient synchronous RPC context semantics | UniOS async IPC and multi-client concurrent message/lifetime mismatch | correct bounded loan/return unreasonably complex or broad TCB |
+| **SCHED-D user programmable policy with kernel failover** | workload adaptation without kernel policy rebuild | policy security/ABI, fallback switching races, code complexity | attacker-controlled policy causes deadlock or fallback loses recovery |
+| **Bootstrap simple group RR** | smaller first-step model and easier invariants | interactivity and weighted fairness quality unknown | cannot meet desktop behavior without costly redesign |
+
+**No accepted numeric choices:** timeslice, fair weight mapping, deadlines, IRQ limits, number of realtime classes, maximum donation depth, recovery reservation percentage, boost duration, and timer slack are left to quantitative study after hardware requirements. Do not turn invented example fractions into policy.
+
+## 19. Proposed formal design work and future experiment program
+
+### 19.1 Model checking before implementation
+
+Model finite two-core and one-core profiles, 3 normal groups, RecoveryGroup, 2 concurrent server clients, one passive candidate, 1 PagerBinding+two FaultWaiters, bounded IPC/IRQ queue, donor budget token, one timer, one CPU online/offline transition, normal/restricted guest Task, a kernel critical lock and service generation.
+
+Transitions: create/charge/refill/yield/block/wake/timeout/cancel, migrate, service crash/restart, cap revoke B, mapping R1, PagerSupply, interrupt storm, donation lease create/return/cancel and M0 watchdog expiry. Enumerate schedules where timer fires exactly when a waiter becomes ready and where all normal budget runs out while M0 must stop a dead Pager.
+
+**Safety counterexamples:** same Thread RUNNING on 2 CPUs; double donation; boot reserve spent by a low-trust App; old generation wake; RESET of budget on syscall; overwritten timer generation; unsafe reallocation on driver death; priority change without cap.
+
+**Liveness proof only under clear fairness/hardware assumptions:** admitted M0 work can reach a defined fail/cleanup terminal state if CPU, timer, IRQ and M0 wired resources are operational and maximum kernel nonpreemptible segments are bounded. Exclude indefinite corrupted hardware lock or firmware timer failures from a false bound.
+
+Suggested abstract tools: TLA+/PlusCal/Alloy or equivalent, but none has been executed as part of RFC-005; proposing to model is not modeling.
+
+### 19.2 Future performance and fault injection after separate Go
+
+- Controlled QEMU single-core vs SMP preempt/wake latency, p50/p95/p99 and worst observed scheduling delay; distinguish host scheduler jitter.
+- 1/10/100/10k Task Threads within and across 1/10/100 ResourceGroups, group cap conservation and fairness tail.
+- syscall/IRQ storm accounting and bounded critical-section hold time during 1/100/10k cap revoke/VM shootdown/IPC queue cleanup.
+- Two cores racing wake/timeout/cancel/service restart, Thread affinity/hotplug and PCID/TSC migration.
+- Pager crash under memory pressure, supervisor M0 rescue runnable but normal IPC queue full, blocked IRQ driver and Quarantined DMA.
+- Audio/visual frame workload with and without admitted deadline work to compare SCHED-A vs SCHED-B on equivalent security boundaries.
+- Explicit optional donation experiments compare server-owned vs leased CPU budget for nested RPC, many-client fan-in and cancellation without making data durability claims.
+- Reference PC TSC/HPET/APIC calibration, timer drift, suspend behavior and actual interrupt remapping/IOMMU hardware (separate RFC-007).
+- Separate CPU counter attribution for native Task, kernel synchronous work and guest normal↔restricted transitions; no optimistic zero-cost kernel accounting.
+
+Results must disclose physical/virtual hardware, CPU online count, IRQ load, power profile, clocksource, measured jitter and violated assumptions. **No such result presently exists for UniOS.**
+
+## 20. Open issues O5-01…O5-29
+
+| ID | Priority | Open design blocker | Related RFC |
+|---|---|---|---|
+| O5-01 | P0 | SCHED-A fair group policy + M0 reservation vs stronger contexts alternatives? | 001/005/006 |
+| O5-02 | P0 | M0 reserve amount, runtime/period guarantee and total CPU capacity with offline core? | 004/005/006 |
+| O5-03 | P0 | Kernel/IRQ/exception/spin busy work charging and source attacker budget? | 001/005/007 |
+| O5-04 | P0 | Max nonpreemptible kernel/IRQ duration and bounded cap/IPC/VM cleanup? | 002/003/004/005 |
+| O5-05 | P0 | CPU wake/block/throttle/stop single runqueue linearization under SMP? | 003/005/009 |
+| O5-06 | P0 | Firmware watchdog disabled after ExitBootServices: verified OS clockevent/IRQ source? | 005/006 |
+| O5-07 | P0 | Circular Pager/IPC/recovery wait-for graph including CPU/queue credits? | 003/004/005/006 |
+| O5-08 | P0 | Fairness/CPU budgets under malicious Thread amplification and guest syscalls? | 005/009/010 |
+| O5-09 | P0 | M0 itself running forever: finite cap and fail-stop after reserve consumption? | 005/006 |
+| O5-10 | P0 | Realistic hardware clocksource, time unit, overflow and per-core skew correctness? | 005/007/009 |
+| O5-11 | P0 | Scheduler policy/CPU entitlement cap rights and boot manifest admission trust? | 002/005/006 |
+| O5-12 | P0 | Budget exhaustion while executing kernel cleanup/IRQ ack or holding lock? | 002/005/006 |
+| O5-13 | P0 | Future request-specific donation vs default server-owned, ambiguous remote effects? | 003/005 |
+| O5-14 | P1 | Fair algorithm exact virtual time/sleeper lag, work stealing and fairness tail? | 005/015 |
+| O5-15 | P1 | Nested ResourceGroup weights vs caps, burst carryover and ancestor conservation? | 002/005 |
+| O5-16 | P1 | WaitSet W1/W2 and monotonic timeout/suspend/ClockID contract? | 003/005/009 |
+| O5-17 | P1 | Priority inversion with user-server IPC/futex ownership and capped PI chains? | 003/005/010 |
+| O5-18 | P1 | Deadline SCHED-B WCET, D/T and blocking/IRQ admission on SMP? | 005/007 |
+| O5-19 | P1 | CPU affinity, hyperthreading, hotplug and heterogeneous thermal capacities? | 005/007 |
+| O5-20 | P1 | Guest normal↔restricted same Thread CPU charge and scheduler-state identity? | 001/005/010 |
+| O5-21 | P1 | CPU charge during asynchronous server Pager work and fault coalescing? | 003/004/005 |
+| O5-22 | P1 | Thread/task restart budget reclaim, zombie objects and sponsor transfer? | 002/005/006 |
+| O5-23 | P1 | Timer cancellation/reply timeout cross-CPU ordering and stale wake prevention? | 003/005 |
+| O5-24 | P1 | IRQ/device storm mitigation, mask/ack, budget and driver crash? | 005/007 |
+| O5-25 | P1 | Stable Native KABI clock/time/group interfaces and version evolution? | 005/009/018 |
+| O5-26 | P1 | M0/normal policy-group fairness under congestion and power management? | 005/006 |
+| O5-27 | P1 | Policy grant revoke: active boost/class reset vs group throttling and B/R1? | 002/005 |
+| O5-28 | P2 | Scheduling plug-in/failover, real-time media improvements after design gates? | 005/015 |
+| O5-29 | P2 | Energy/thermal QoS, advanced NUMA and big.LITTLE equivalent future platforms? | 005/007/013 |
+
+## 21. Decision proposals SCHED-D01…SCHED-D17 — NONE Accepted
+
+- **SCHED-D01:** SCHED-A preemptive hierarchical weighted fair scheduling plus finite separately controlled M0 recovery service reservation is first research baseline.
+- **SCHED-D02:** SCHED-B admitted EDF/CBS, SCHED-C MCS-like contexts, and SCHED-D pluggable policy remain comparison alternatives.
+- **SCHED-D03:** Native kernel enforces actual CPU dispatch, typed policy grants, scheduling/group accounting and M0 eligibility; user service policy is bounded.
+- **SCHED-D04:** Creating additional Threads cannot mint CPU time; aggregate group/ancestor charges conserve admitted entitlement on every CPU and restart.
+- **SCHED-D05:** Priority, CPU budget, wall deadline, group cap and execution-time charge are distinct and have explicit meaning.
+- **SCHED-D06:** Async Channel uses server-owned budget by default; no automatic priority or SchedulingContext donation for IPC SEND/Reply.
+- **SCHED-D07:** Explicit leased budget donation, passive servers and PI are deferred pending scope, fan-in, multi-hop cycles, timeout, return/death proofs.
+- **SCHED-D08:** Kernel blocking/IRQ/fault/critical cleanup paths must be bounded and correctly charged or protected by a limited emergency envelope.
+- **SCHED-D09:** Thread state transitions/wake/stop/throttle and CPU migration require one-owner runqueue and generation invariants.
+- **SCHED-D10:** Monotonic clock and timer domain distinguish wall time, charged CPU runtime, suspend-sensitive vs inclusive deadline.
+- **SCHED-D11:** No post-UEFI watchdog promise based on disabled EFI Boot Services; timer/IRQ/hardware clocks are explicit feasibility gates.
+- **SCHED-D12:** M0 runnable reservation, IPC/memory wired cut and IRQ/timer progress are separate co-required recovery conditions.
+- **SCHED-D13:** Real-time deadline claims require explicit WCET/blocking/IRQ/affinity admission and selected hardware validation; no general hard RT claim.
+- **SCHED-D14:** A throttled/exited Thread does not imply cap or MemoryObject reclaim; RFC-002 B/R1/R2-F/R2-O stay separate.
+- **SCHED-D15:** Restricted guest/normal supervisor execution retains scoped Task budget and cannot mint priority via guest ABI.
+- **SCHED-D16:** Do not freeze numeric policy layout, timeslice, ClockID or realtime ABI before RFC-009/018 and hardware profile.
+- **SCHED-D17:** Correctness, fairness and recovery bounds must be modeled and tested before any accepted SCHED policy or implementation authorization.
+
+**Decision status:** Proposed only. None changes architecture D1–D8 or converts RFC-001/002/003/004/006 Proposed research decisions into accepted technical spec.
+
+## 22. Adjacent RFC handoff and key contradictions
+
+| RFC | Required shared test/contract |
+|---|---|
+| RFC-001 | kernel Thread/context switch, IRQ/timer KABI vs user policy/TCB split; restricted guest preemption |
+| RFC-002 | ResourceGroup sponsor and time budget hierarchy, typed scheduling grant, bounded preemptible revocation fan-out |
+| RFC-003 | async E1 and ReplyToken, WaitSet clock deadlines, shared queue fairness, no implicit IPC donation |
+| RFC-004 | coalesced Pager FaultWaiters, usercopy slow path, clean refill and OOM critical CPU/memory reserve |
+| RFC-006 | watchdog independence from UEFI, M0 RA runnable admission, finite restart vs RA own death and fail-stop |
+| RFC-007 | IRQ storm/mask, DMA active driver, DeviceGroup quarantine, CPU/timer physical platform |
+| RFC-008 | CPU not a storage durability promise; blocked writeback vs shutdown deadlines |
+| RFC-009 | native clock/Thread/Scheduler grant call semantics, usercopy validity and ABI evolution |
+| RFC-010 | Linux sched/affinity/futex/guest syscall, no guest priority escalation, G-R same-thread accounting |
+| RFC-013 | graphical interactive workloads, frame deadlines and power/latency preference hypotheses |
+| RFC-015 | security resource-exhaustion fuzz, fair-share/starvation and scheduling model proof goals |
+| RFC-016 | user/admin consent to privileged scheduling and app policy grant lifecycle |
+| RFC-018 | versioned clock IDs/units, group policy, native vs guest priority/errno and time type safety |
+
+**P0 integration cluster:** (003+005) IPC/Reply deadline and CPU budget; (003+004+005+006) runtime Pager/Recovery wait-for CPU/IPC/IRQ resource cut; (002+005) sponsor and scheduling caps; (005+007) real IRQ/timer hardware; (001+005+010) guest restricted execution charging. These are not independently solved by naming a Priority field.
+
+## 23. Design exit gates and next research
+
+**R1 Scheduling design gate FAIL/OPEN**, until:
+1. A complete Thread/block/throttle/wake/stop transition model with exactly-once CPU run ownership for 1 and multiple cores, including service restart and generation change.
+2. A concrete typed group/priority/clock policy authority graph and proof of no CPU entitlement duplication through cap copy, Thread creation, migration, IPC and service restart.
+3. A finite M0 runtime/IRQ/memory/IPC recovery cut with no self-Pager/CPU wait cycle, independently operable after ExitBootServices and with clear fail-stop conditions when kernel/timer broken.
+4. A justified accounting policy for kernel syscall work, deferred IRQ/driver CPU, Pager Server work and coalesced faults that limits attacker-amplifiable uncharged CPU cost.
+5. Timeout/wakeup and WaitSet race contract jointly with RFC-003, without promising remote cancellation or exact delivery timestamp.
+6. Competing SCHED-A/B/C/D comparison on equivalent workloads and security/availability assumptions, with no invented latency targets.
+7. Real x86_64 timer/CPU/IRQ feature gate and clock profile description from selected VM/Reference PC (research specification now, tests after Go).
+
+**Recommended next technical research:** RFC-007 User-space Drivers, DMA & IOMMU, since IRQ control and hardware fence are necessary to make scheduling and the M0 recovery claim realistic. RFC-008 Storage and RFC-017 Verified Boot/Update resolve related reboot, boot-good and dirty-data facts. Re-review RFC-005 before declaring it Accepted.
+
+## 24. Official first-party technical references (checked 2026-10-24)
+
+- **[S1] seL4 MCS scheduling contexts, passive servers and timeout:** https://docs.sel4.systems/Tutorials/mcs.html
+- **[S2] seL4 API SchedulingContext / MCS:** https://docs.sel4.systems/projects/sel4/api-doc.html
+- **[S3] Fuchsia Zircon scheduler overview:** https://fuchsia.dev/fuchsia-src/concepts/kernel/kernel_scheduling
+- **[S4] Fuchsia Zircon weighted fair scheduler:** https://fuchsia.dev/fuchsia-src/concepts/kernel/fair_scheduler
+- **[S5] Linux EEVDF scheduler:** https://docs.kernel.org/scheduler/sched-eevdf.html
+- **[S6] Linux SCHED_DEADLINE and CBS/EDF:** https://docs.kernel.org/scheduler/sched-deadline.html
+- **[S7] Linux PREEMPT_RT theory:** https://docs.kernel.org/core-api/real-time/theory.html
+- **[S8] Linux RT-mutex priority inheritance:** https://docs.kernel.org/locking/rt-mutex-design.html
+- **[S9] Linux clocksources and clockevents:** https://docs.kernel.org/timers/timekeeping.html
+- **[S10] Linux ktime get/boottime/real:** https://docs.kernel.org/core-api/timekeeping.html
+- **[S11] Linux sched_ext programmable scheduler and fallback:** https://docs.kernel.org/scheduler/sched-ext.html
+
+**Evidence and legal limitation:** These are cited as technical references for other independently implemented systems, not copied source code or proof of UniOS safety/performance. Verify future hardware and source versions before selecting a production policy. No third-party code imported.
+
+---
+
+**Document history:** 2026-10-24 — RFC-005 Proposed Specification v0.1 draft, architecture research only; no scheduler, driver, kernel code, benchmarks or formal proofs.
