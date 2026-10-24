@@ -33,7 +33,7 @@
 | RFC-008 v0.2 | durable receipt, dirty generation, hardware IO truth, A/B data, error ledger | §§5,8–12,15,25 |
 | RFC-009 v0.2 | native/guest trap, small KABI vs SABI, lost result, status | §§4–7,15–16,25 |
 | RFC-010 v0.2 | restricted Linux broker, atomic futex, FD/OFD, exec/epoll and guest errno | §§3,5–9,21 |
-| RFC-017 v0.2 | authenticated boot, independent Root/floor, Goood state, physical rescue/key/schema | §§3,5–10,20 |
+| RFC-017 v0.2 | authenticated boot, independent Root/floor, Good state, physical rescue/key/schema | §§3,5–10,20 |
 | RFC-018 v0.2 | delegated Endpoint/identity, cap-aware IDL, ServiceInstance/policy epoch, unknown fields/receipt/signed encoding | §§4–10,19 |
 | RFC-001/004/005/006 | kernel/parser TCB, private Pager fault, M0 budget, service A/B and trust graph | consulted as boundary controls |
 
@@ -219,3 +219,99 @@ At every boundary, Thread death, IPC timeout, Pager fault, FileSystemService cra
 
 **Required rule:** true public token nonreuse while stale Task copies remain callable, fail-closed exhaustion, distinct kernel invocation pin and lifecycle generations for Endpoint/Reply/Wait/Device/GuestFD/OFD/PID. Do not treat "has generation" as sufficient unless the public token comparison or equivalent reference isolation actually protects against old caller bits. P0 owner: 002+003+009+010+018.
 
+
+## 5. Canonical contract owners and normalized vocabulary
+
+No giant kernel-global state machine is prescribed here. This table assigns the **authoritative design description** of each state; actual enforcement may span smaller trusted components.
+
+| Object / phase | Canonical design owner | Consumers and necessary co-review |
+|---|---|---|
+| Task-local handle, lineage, issuer, controller, sponsor, anti-ABA | RFC-002 | 003/007/009/010/018 |
+| E1 Endpoint unique ownership and MOVE, ReceiveClaim, ReplyToken | RFC-003 with 002 type rights | 004/006/009/018 |
+| ServiceIncarnation, admission, policy grant, new Endpoint issuance | RFC-006 plus 018 protocol policy | 002/003/009/010 |
+| Actual issuer-attested caller identity vs bearer capability | RFC-002 and future policy/portal, RFC-018 method requirements | 003/006/009 |
+| CPU virtual memory R1 / PageFault / PagerBinding | RFC-004 | 002/005/007/008/009/010 |
+| Hardware DeviceGroup, ResetCouplingSet, IRQ/IOMMU/IOVA, R2-F evidence | RFC-007 with 002 stage names | 004/006/008/017/018 |
+| File and DirectorySync, DirtyGeneration, writeback-error epoch, durable receipt | RFC-008 | 003/007/009/010/018 |
+| Native trap/SDK ABI, guest/native isolation | RFC-009 | 003/010/018 |
+| Linux ELF, futex, FD/OFD, close/exec/signal errno | RFC-010 | 004/005/008/009/018 |
+| Signed boot root, floor, physical rescue/key/data schema compatibility | RFC-017 + 006 bootstrap | 007/008/018 |
+| SABI method/IDL version, actual cap-role binding, current policy epoch, effect outcomes | RFC-018 | 003/006/009/010/017 |
+
+**Proposed glossary to unify later revisions:**
+
+- Holder, issuer, revocation controller, budget sponsor and caller are separate identities, even when one Task originally filled them all.
+- Kernel Endpoint is a typed object; ServiceID is a logical name; ServiceIncarnation is the authorized running-service generation; PolicyEpoch is current issuer/service security rules; Session is a per-granted Endpoint negotiated feature/role agreement.
+- R0 means local handle close; B denies new scoped actions; R1 cuts grant-derived CPU mappings; R2-F physically fences the named family of DMA/IRQ/effects or safely quarantines unresolved hardware; R2-O permits object-wide sanitized reuse only after all independent roots/refs/fences retire.
+- Kernel SEND_COMMITTED, RECEIVE_CAP_INSTALLED, SABI_METHOD_APPLIED, FS_DURABLE_SCOPED and RESULT_OBSERVED name different predicates, not synonyms for success.
+- Boot image verified, independent witness Good, monotonic floor raised, and physically usable rescue are different evidence predicates. A valid signature does not prove all.
+
+## 6. Bounded common-state research model (none executed)
+
+Use a conceptual finite model with two senders, one receiving service, one rival receiver, one Pager, one DriverHost/DeviceGroup, one FileSystemService, wired M0, Boot SlotStateWriter and independent FloorWriter. Include one E1 Channel capacity 1, one MOVE FileCap, one ReceiveClaim, one ReplyToken, one DMA pin shared by two independent roots, one dirty file generation and sync, one service restart, one version/policy change and A/B DataVolume V1/V2.
+
+**Adversarial matrix to model later (not simulations performed now):**
+
+| Case | Interleaving | Safety property |
+|---|---|---|
+| JM-01 | SEND commits MOVE; sender loses result; old cap reused | no false NOT_COMMITTED or blind resend |
+| JM-02 | ReceiveClaim; partial secret byte copyout; cap installation fails; rival later receives | no unwarranted atomic/confidential receive claim |
+| JM-03 | Unknown DeviceCap decoded then handle closed; DMA continues | close is not physical R2-F |
+| JM-04 | Revocation B races with queued transit cap and receive | receiver cannot gain new revoked authority |
+| JM-05 | Old public Handle value reused for new object while Task alive | stale integer cannot authorize unrelated object |
+| JM-06 | SABI negotiated v1; security policy changes; cached session used | no downgrading authorization through old handshake |
+| JM-07 | Old StorageHost commits to journal then crashes; new instance sees same request | no duplicate/false exactly-once effect |
+| JM-08 | Group A R2-F done; independent group B still pins shared frame | no premature R2-O or frame reuse |
+| JM-09 | Driver reset of one group also destroys only wired M0 storage/IRQ path | no false independent recovery promise |
+| JM-10 | Guest futex compare read; other guest Thread wakes; broker blocks later | no missed wake from split RPC |
+| JM-11 | B Trial migrates data V2, floor advanced, only A signed rescue lacks key/schema | no incorrect guaranteed rollback |
+| JM-12 | Signed BootPolicy duplicate critical key parsed differently; executable changed after verification | no signed-but-ambiguous grant or mutable boot code |
+
+**Safety invariant candidates:** conserve live kernel cap ownership at every phase; never accept a revoked cap or recycle its old public token into fresh unrelated rights; never report hardware DMA/FS durability without hardware-relevant evidence; never import guest UID0 or schema version string as native rights; preserve current service PolicyEpoch; forbid security-floor promotion that strands every authorized usable rescue. **Conditional liveness** assumes actual CPU, timer/IRQ, Pager and hardware availability. This is a design model outline, **not** a completed formal model or proof.
+
+## 7. Prioritized design change requests and proposed ADR package
+
+| Priority | Suggested action | Authoritative files to reconcile |
+|---|---|---|
+| **P0 A-01** | Resolve CX-01 E1 ChannelEndpoint DERIVE rights table against no-DERIVE text; reserve E2 | RFC-003 §4 / RFC-002 type-grant policy |
+| **P0 A-02** | Define per-client E1 channel factory/dispatcher, actual caller proof vs bearer permission, policy epoch | RFC-003/006/009/018 |
+| **P0 A-03** | Unified SEND/ReceiveClaim/cap transit/copyout lost result and unknown-resource settlement state machine | RFC-002/003/004/009/018 |
+| **P0 A-04** | Explicit operation-ticket or fail-closed UNKNOWN result, including lost ticket identity and authenticated query | RFC-003/009/008/018 |
+| **P0 A-05** | Physical DeviceGroup versus ResetCouplingSet, R1/R2-F/R2-O, quota/quarantine and M0 independence | RFC-002/004/005/006/007/008 |
+| **P0 A-06** | Cross-service VFS/Pager/StorageHost effect ledger, writeback epoch, sync scope and restart reconciliation | RFC-003/007/008/009/018 |
+| **P0 A-07** | One A/B Good, slot retry, independent security floor, actual rescue/media, data format/key and power-cut graph | RFC-006/008/017/018 |
+| **P0 A-08** | Define signable manifest canonical grammar, parser equivalence and use-time immutable image authority | RFC-004/006/007/017/018 |
+| **P0 A-09** | Choose limited Linux guest futex kernel assist vs proved emulator vs explicitly unsupported threading | RFC-001/004/005/009/010 |
+| **P0 A-10** | Close caller identity/ServiceInstance/PolicyEpoch TOCTOU and unknown native status mapping to guest errno | RFC-002/003/006/009/010/018 |
+| **P1 A-11** | Harmonize cross-RFC glossary, status/effect naming and type-specific resource role descriptions | RFC-002/003/007/008/009/010/017/018 |
+| **P1 A-12** | Maintain evidence matrix for abstract model, actual test, reference hardware, security/legal review and Accepted ADR | README/architecture/RFC index |
+
+**Editorial exception:** CX-01 could be corrected immediately as a *separate, carefully reviewed design text change*. This audit deliberately **does not mutate any existing RFC**, so the original Proposed decisions remain traceable; do not silently upgrade a decision to Accepted.
+
+## 8. Research order and combined Go/No-Go
+
+| Stage | Cross-RFC work | Required exit (none yet met) |
+|---|---|---|
+| R1 — Ownership/IPC/IDL | 002+003+009+018: E1 endpoint, MOVE ticket, ReceiveClaim, unknown cap and actual caller | one complete cap/byte/claim/revoke/lost-output transition graph without double grant or unaccounted escrow |
+| R2 — Hardware/memory/recovery | 002+004+005+006+007: M0 reserve and IRQ, DeviceGroup, ResetCouplingSet, DMA/IOVA and physical reuse | quantified reference-platform isolation assumptions and honest R2-F versus R2-O |
+| R3 — Crash storage | 003+007+008+009+018: I/O, dirty generations, Device ACK, scoped File/DirectorySync and lost receipts | modeled crash-consistent state under named honest storage/flush hardware assumptions |
+| R4 — Boot/root/floor | 006+008+017+018: slot Good, root rotation, firmware/TPM floor, data schema/keys and actual rescue | post-promotion valid boot branch or documented fail-stop in every defined power-cut state |
+| R5 — Guest ABI | 009+010+018: trusted Linux trap/broker, futex, signal, FD/epoll and status translation | named exact guest compatibility tier, no unauthorized native grant or false app-semantic promise |
+| R6 — Independent consistency pass | all affected specifications/ADRs re-read after each bounded revision | no conflicting rights tables, each P0 obligation assigned owner/evidence and separate approval |
+
+**Decision: NO-GO** for stable syscall headers, native ABI v1, production secure-boot/recovery guarantees, default hardware driver safety or Linux binary support claims. **GO** for further written design research and targeted documentation corrections only.
+
+## 9. Official context and audit limitations
+
+Internal Git markdown is the authoritative **evidence of what the current UniOS proposals say**; its existence is not proof they are correct. Technical comparisons checked or already documented by prior RFC work:
+- [Fuchsia Channel kernel-object contract](https://fuchsia.dev/fuchsia-src/reference/kernel_objects/channel) — nonduplicable endpoint ownership in Fuchsia, not proof UniOS implemented E1.
+- [Fuchsia FIDL language](https://fuchsia.dev/fuchsia-src/reference/fidl/language/language) — unknown method strictness and value/resource types.
+- [Linux futex(2)](https://man7.org/linux/man-pages/man2/futex.2.html) — atomic compare-and-block requirement.
+- [Linux close(2)](https://man7.org/linux/man-pages/man2/close.2.html) — FD early release/error and retry hazard.
+- [CBOR RFC 8949](https://www.rfc-editor.org/rfc/rfc8949.html) — deterministic encoding profile and map duplicate policy considerations.
+
+**Scope limit:** cross-reading twelve large current Proposed RFCs is not an exhaustive formal consistency theorem. No kernel/source implementation was examined or modified, no generated artifacts/code, no QEMU or physical tests, no DMA or power-cut experiments, no proofs and no independent audit certification. All findings and recommended ADR packages remain research only.
+
+---
+
+**Audit history:** 2026-10-25 v0.1 first cross-RFC audit. One confirmed internal spec-text contradiction (CX-01), three ambiguities (CX-02…04), thirteen joint gaps (CX-05…17). Twelve conceptual race cases, shared phase/custodian chart, canonical contract owner table and research roadmap. Existing RFCs unmodified.
