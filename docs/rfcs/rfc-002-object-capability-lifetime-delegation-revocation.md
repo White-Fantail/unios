@@ -431,3 +431,13 @@ This is a specification/counterexample review of cited official resources, not a
 - **Resource sponsor:** reserved handle IDs, receipt/tombstone metadata, queue/claim and DMA pins each have independent accounting; receipt expiry/Task death is not proof that committed MOVE or device effect was rolled back.
 
 **P0 still open:** HN-A vs HN-B and finite overflow/Task-lifetime quota, exact public/partial-copyout exposure proof, preidentified receipt bootstrap and per-Task generation, independent roots and B/R1/R2-F/R2-O. This is design documentation only; RFC-002 stays **Proposed v0.2**.
+
+## 22. 2026-10-25 Finite public Handle budget and receipt GC follow-up — Proposed
+
+This is a **design-only** cross-reference to [CAPIPC Finite Handle Namespace, Receipt Ledger & GC v0.1](../models/capipc-finite-handle-namespace-receipt-ledger-gc-v0.1.md); it does not amend any Accepted direction, accept Handle widths or authorize OS code.
+
+- **Finite no-rebind:** HN-A monotonic issue budget and HN-B per-slot nonwrapping generation/slot retirement are coequal feasibility candidates. A hot slot can exhaust long before aggregate bit capacity; internal HandleSlot memory may still be recycled safely with current TaskGeneration+grant comparison.
+- **Explicit cost:** hypothetical 32-bit HN-A at 1,000 issued IDs/s exhausts in ~49.7 days, while a 16-bit public generation field on one recycled HN-B slot at 1,000 generations/s exhausts in ~65.5 seconds. These are arithmetic stress examples, **not** selected KABI bit widths or measured workload.
+- **No public token/receipt conflation:** a kernel Receipt high-water mark only fences duplicate operation admission; it does not replace native Handle anti-ABA or ensure persistent outcome evidence after final-record GC.
+
+**P0 OPEN:** finite token budget, concentrated slot churn, retirement fairness, sponsor isolation, public token partial exposure and TaskGeneration closure. RFC-002 remains Proposed v0.2.
