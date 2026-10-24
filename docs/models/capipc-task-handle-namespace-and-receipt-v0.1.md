@@ -192,3 +192,130 @@ After HPA-C Stage but before AcceptCommit, the claim's receipt can show staged/i
 | NR-25 | receipt collection exhausts memory, queue and M0 metadata | critical RecoveryAuthority starved by malicious outstanding operations |
 | NR-26 | Linux guest epoll old FD/OFD registration maps to same numeric native Handle due reuse | FD generation/confidentiality and event identity corrupted |
 
+
+## 7. Joint invariants (NR-I01…NR-I32) — NONE verified
+
+| ID | Proposed predicate |
+|---|---|
+| NR-I01 | Native public Handle lookup uses actual current TaskGeneration and kernel CapGrant, not just raw integer bits. |
+| NR-I02 | A once-valid or possibly published Task-local token cannot later authorize an unrelated grant within that live Task. |
+| NR-I03 | Kernel may reuse an internal HandleSlot only when externally visible identity comparisons still enforce NR-I02. |
+| NR-I04 | Public slot/generation identity cannot silently wrap back to a stale valid value; exhaustion fails closed. |
+| NR-I05 | Probabilistic token collisions don't satisfy deterministic no-rebind unless whole lifetime issuance history is checked. |
+| NR-I06 | Never-issued never-exposed provisional reservation may be reclaimed only under a proved no-alias/no-live/nonpublication precondition. |
+| NR-I07 | A user-supplied numeric token or nonce does not independently mint, move or widen a native capability. |
+| NR-I08 | Native Handle tokens and guest Linux FD/OFD/PID namespaces are never equated. |
+| NR-I09 | A nonrecycling Handle namespace does not imply object memory or internal slot cannot be reused safely. |
+| NR-I10 | Protected receipt identity exists or is reliably discoverable BEFORE the irreversible operation cut it claims to reconcile. |
+| NR-I11 | Receipt query access is authorized by actual TaskGeneration and a separate scoped right surviving SEND MOVE when necessary. |
+| NR-I12 | Request nonce is correlation, never bearer permission; guest UID0/ServiceID/IDL field cannot query another Task's receipt. |
+| NR-I13 | Same receipt identity cannot admit two independent irreversible operations, including concurrent same-Task submissions. |
+| NR-I14 | A receipt slot's original immutable operation class/Endpoint/grant identity and policy scope cannot be changed after admission. |
+| NR-I15 | Before K-S/K-I/K-U, kernel reserves record capacity; committing mutation and authoritative record phase are one consistent cut. |
+| NR-I16 | Query PENDING is not final NOT_COMMITTED and does not grant safe replay, since original operation may still commit. |
+| NR-I17 | Final NOT_COMMITTED means that exact operation can never later commit, not merely that a record is absent. |
+| NR-I18 | COMMITTED_KS, COMMITTED_KI and COMMITTED_KU are distinct actual transitions and never imply external service effect. |
+| NR-I19 | Losing return/status doesn't rewind committed source Handle MOVE or installed receiver caps. |
+| NR-I20 | A K-I receipt never reissues, duplicates or resurrects native grants; committed historic Handle ID can now be revoked/closed. |
+| NR-I21 | Receipt reads are linearizable against pending->final transition or explicitly return a safe pending/unknown state. |
+| NR-I22 | ACK/retirement never retroactively changes committed cap/resource ownership or remote effect history. |
+| NR-I23 | Expired/missing result evidence can never be reported as definitive no-commit unless another protected source proves it. |
+| NR-I24 | Receipt identity reused after GC requires an externally distinct never-wrapping generation and no ambiguous stale query/replay. |
+| NR-I25 | Task termination invalidates ordinary Task-only receipt access; any Supervisor recovery visibility needs a separately authorized narrow grant. |
+| NR-I26 | Outstanding sender queue, receive claim, ReplyToken, physical DMA pin and external effect survive unrelated receipt expiry according to their own custody. |
+| NR-I27 | Protected receipt data cannot disclose other Task's message size, cap rights, Endpoint identity or terminal reason to a guessed nonce. |
+| NR-I28 | Public token partial copyout conservatively treats potentially visible identifier as exposed for later nonreuse. |
+| NR-I29 | Terminal/expired/error status does not claim previous payload exposure can be retracted or external effect proven absent. |
+| NR-I30 | Receipt/Handle metadata and tombstones remain sponsor charged and bounded, without taking protected M0 resources. |
+| NR-I31 | Any mandatory receipt record absent under capacity pressure rejects *before* irreversible cut; no commit is falsely marked safe retry. |
+| NR-I32 | These are Proposed design invariants, without formal verification, selected KABI fields or implementation guarantees. |
+
+## 8. Blocking decisions and feasibility questions (NR-O01…NR-O20)
+
+| ID | Priority | Question | Joint owner |
+|---|---|---|---|
+| NR-O01 | P0 | Pick native public no-rebind granularity: exactly published token vs all issued tokens, with a valid security boundary for same-Task untrusted code | 002/009 |
+| NR-O02 | P0 | Choose HN-A versus HN-B under finite namespace and conservative worst-case Task lifetime; any generation width is OPEN | 002/009 |
+| NR-O03 | P0 | Define per-Task token-exhaustion fail-closed policy, ResourceBudget and recovery options without granting ABA through wrap | 002/005/006 |
+| NR-O04 | P0 | Prove internal token reservation has never been published through copyout, alias, async mapping or prior active state before reclaim | 002/003/004 |
+| NR-O05 | P0 | Define Task-generation under Process/Thread model and operation scope, without borrowing Linux fork/exec FD semantics | 002/009/010 |
+| NR-O06 | P0 | Choose KR-A1/A2 known-before-cut receipt slot/nonce bootstrap when the bootstrap result is itself lost | 003/009 |
+| NR-O07 | P0 | Define Task receipt-query right surviving MOVE without becoming ambient permission to read other Task/Endpoint metadata | 002/003/009 |
+| NR-O08 | P0 | Define authenticated operation fingerprint and concurrent nonce conflict behavior without full SABI parser in Ring 0 | 002/003/009/018 |
+| NR-O09 | P0 | Coherently update protected receipt and K-S/K-I/K-U mutation under SMP, fault, Task death and revocation B | 002/003/004/009 |
+| NR-O10 | P0 | Clarify PENDING vs FinalNotCommitted vs Committed vs Terminal vs ExpiredEvidence and result-lost observer state | 003/009 |
+| NR-O11 | P0 | Determine bounded receipt ACK/expiry/tombstone retention without false old-nonce reuse or new-operation confusion | 002/003/009 |
+| NR-O12 | P0 | Receiver K-I token-history query after another same-Task Thread closes or MOVEs installed caps | 002/003/009 |
+| NR-O13 | P0 | Guard status/receipt metadata against unauthorized Task, stale Endpoint, ServiceIncarnation and TaskID reuse | 002/003/006/018 |
+| NR-O14 | P0 | Preserve queued cap custody, DMA fence and backend-effect ledger after source Task and result namespace die | 002/003/007/008 |
+| NR-O15 | P0 | Prove finite reserved CPU/IPC/Memory for receipts under malicious slots, outstanding operations and timer expiry | 003/005/006 |
+| NR-O16 | P0 | Truthfully translate kernel receipt and guest Linux errno/FD reuse without claiming guest exactly-once effects | 009/010/018 |
+| NR-O17 | P1 | Decide if shared completion ring has safe SMP acquire/release protocol and overflow resilience without user-controlled authoritative data | 003/004/009 |
+| NR-O18 | P1 | Evaluate per-Task monotonic and slot+generation memory/perf overhead and a long-lived malicious Task churn model | 002/005/009 |
+| NR-O19 | P1 | Decide authorized narrow Supervisor post-death receipt access, if any; default Task-only query dies with Task | 002/006/009 |
+| NR-O20 | P1 | Choose future developer-facing APIs and SDK behavior only after contract proof, no public bit layout freeze | 009/018 |
+
+## 9. Candidate decision register (NR-D01…NR-D16) — NONE Accepted
+
+- **NR-D01:** Keep native Task-local no-stale-rebind as a Proposed stricter security profile than Fuchsia integer reuse; analyze benefit/cost before Accepted ADR.
+- **NR-D02:** Research HN-B public slot+nonwrapping generation first, with HN-A monotonic namespace as coequal simple comparator; choose no bit allocation yet.
+- **NR-D03:** Treat HN-C random IDs as additional guessing resistance, not deterministic uniqueness without lifetime issued-history.
+- **NR-D04:** Reclaim only provisional reservations proved never valid and never potentially published; permanently distinguish formerly active/published token identities under current Task lifetime.
+- **NR-D05:** Separate HandleSlot memory reuse from the exact public handle integer validity guarantee.
+- **NR-D06:** Keep guest FD/OFD/PID namespace and reuse rules separate from native CapHandle and ReceiptSlot.
+- **NR-D07:** Prefer KR-A preknown Task-scoped operation slot/nonce receipt with protected kernel record for HPA-B+ and HPA-C; no new ticket-only return dependence.
+- **NR-D08:** Nonce is correlation, never authorization; receipt query requires live scoped Task/Endpoint rights and privacy protection after cap MOVE.
+- **NR-D09:** Do not admit two irreversible operations against one live nonce/slot identity; duplicate concurrent submission rejects or safely shows same existing outcome.
+- **NR-D10:** Record and operation commit linearize coherently; protected storage reserved before K-S/K-I/K-U mutation.
+- **NR-D11:** PENDING is not final NOT_COMMITTED; no blind retry of cap MOVE or non-idempotent SABI effect after incomplete observation.
+- **NR-D12:** Receipt expiry/ACK/GC must not imply no commit, nor silently map an old receipt key to a different operation.
+- **NR-D13:** A native K-I historical receipt never reissues cap grants or claims current rights merely from old committed token numbers.
+- **NR-D14:** Protect M0 reserve and bound all claim/receipt/tombstone/sponsor metadata; Task death removes ordinary query rights but doesn't rewind physical effects.
+- **NR-D15:** Keep io_uring user_data/CQE a useful caller-preknown correlation precedent, not a proof of secure or durable exactly-once UniOS receipt.
+- **NR-D16:** All candidates remain Proposed; no public numeric Handle layout, syscall signature, SDK, OS implementation or executable model is approved.
+
+## 10. Bounded future validation model (design only)
+
+**Finite participants:** Task A sending, Task B receiving (two Threads), new Task B2 with possibly reused human-readable TaskID but different TaskGeneration; one E1 Channel with two Endpoint halves; protected Kernel; independent controller R; one queued message with cap vector length 2; one independent root to the same backing object; one public HandleSlot reused twice and its generation allowed to approach artificial maximum; two ReceiptSlots, each with one preknown nonce; one sender K-S and one receiver K-I with possible result loss. Guest FD reuse and storage backend effect are separate comparison actors, not encoded as a native Handle.
+
+**Transition candidates:** AllocateGrant, ReservePublicToken, PublishMaybeToken, CloseHandle, ReuseInternalSlot, GenExhaust, TaskDie, TaskSpawn, PrepareReceipt, AdmitOperationFingerprint, DuplicateNonceRace, SendK-S, ReceiveK-I, OptionalReleaseK-U, QueryReceipt, QueryRacesCommit, ReturnLost, AckReceipt, ExpireEvidence, RevokeB, ClaimTerminal, PhysicalFencePending and RemoteEffectApplied.
+
+**Assertions to evaluate in a future *approved* formal model:** no stale public value maps to a different grant while TaskGeneration lives; real one-custodian cap MOVE; no duplicate K-S/K-I from same receipt identity; no false final NOT_COMMITTED; safe PENDING read concurrent with future commit; lost result does not change ownership; expired record never claims no effect; receipt query cannot retrieve foreign Task rights/meta; Task death doesn't free in-flight device/queue debt; M0 resources remain reserved. Quantitative conditions (handle space turnover, per-Task max claims/receipts, IPC timeout/critical cleanup quota) MUST be selected before performance/security claims; don't invent numerical values here.
+
+**No executable model is created by this outline.** Paper transition names do not authorize changing the repo's OS source or granting runtime features. Model success cannot be claimed from an unexecuted scenario list.
+
+## 11. Go/No-Go and recommended next design sequence
+
+**NR-R1: OPEN / NOT PASSED.** Need each of the following before exact Native Handle/Receipt ABI acceptance:
+
+1. Agree precise native stale token threat and end-of-Task boundary; decide whether strong no-rebind is truly worth space exhaustion versus explicit user-space handle hygiene.
+2. Compare HN-A and HN-B with symbolic slot/generation/worst-case operations per Task and upper-bound arithmetic. If any width/slot wraps or quota exhausted, define fail-closed disposition; no current number chosen.
+3. Specify a bounded, known-before-first-cut Task receipt bootstrap and a separate scoped query grant not requiring the already MOVEd source handle.
+4. Show atomic receipt state+K-S/K-I update and ability to query actual state after return loss under concurrent close/revoke/task death, no pageable global-lock reliance.
+5. Prove nonce collision/double-use, expected generation monotonicity, identifier GC and expiry cannot cause different operation association or replay.
+6. Model Handle token partially published in B's user buffer then committed/aborted, without assigning stale bits new native rights.
+7. Define bounded fixed ordinary receipt/claim/tombstone quotas, sponsor and cleanup independent of wired critical M0 CPU/IPC/Memory.
+8. Clarify native receipt vs userspace remote effect receipt, Linux FD/errno/EINTR/SA_RESTART and durability on storage crash.
+9. Independent cross-RFC 002/003/009/010/018 review of terminology and no conflicting rights/error table before any Accepted ADR.
+10. If executable model, prototype, QEMU, benchmark or kernel implementation is wanted later, obtain separate explicit authorization; **this document is design research only**.
+
+**Recommended next targeted paper:** quantify **finite public-token exhaustion, generation rollover and Task receipt ledger/GC** with symbolic worst-case bounds and explicit policy alternatives. Another security-focused question is whether no-stale-rebind should be a strict kernel contract or a scoped opt-in namespace. The present document makes no release claim.
+
+## 12. Technical source links, evidence and limits
+
+- **[S1] Fuchsia Zircon Handles (explicitly permits numeric Handle reuse):** https://fuchsia.dev/fuchsia-src/concepts/kernel/handles
+- **[S2] Fuchsia zx_channel_read:** https://fuchsia.dev/reference/syscalls/channel_read
+- **[S3] Fuchsia Channel kernel object:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/channel
+- **[S4] Linux close(2) and FD reuse caveat:** https://man7.org/linux/man-pages/man2/close.2.html
+- **[S5] Linux epoll(7) and OpenFileDescription semantics:** https://man7.org/linux/man-pages/man7/epoll.7.html
+- **[S6] Linux io_uring(7) known request user_data ↔ CQE correlation:** https://man7.org/linux/man-pages/man7/io_uring.7.html
+- **[S7] seL4 official IPC tutorial:** https://docs.sel4.systems/Tutorials/ipc
+- **[S8] Linux Kernel Hacking: user copy and sleeping/faults:** https://docs.kernel.org/kernel-hacking/hacking.html
+- **[S9] Fuchsia zx_channel_read_etc:** https://fuchsia.dev/reference/syscalls/channel_read_etc
+- **[S10] UniOS parent Proposed RFCs:** internal links in header, Git main docs only.
+
+**Method limitations:** live source documents and source-page reference comparisons were read; nothing was implemented, benchmarked, proven or run. No third-party source code was imported. Linux io_uring CQE uses user_data for correlation, **not** kernel Capability issuance and not proof of exactly-once effects after reboot. Fuchsia integer Handle reuse is not automatically unsafe in Fuchsia's designed API; it is a different promised contract from UniOS's proposed stronger Task-lifetime property.
+
+---
+
+**History:** 2026-10-25 v0.1 Proposed research: Handle namespace comparison HN-A/B/C/D/E; separate KR-A1/A2/B/C/D/E receipt candidates; public token never-rebind vs safe internal slot reuse; lost initial ticket and repeated nonce; coherent receipt with K-S/K-I/K-U, PENDING vs final NOT_COMMITTED vs EXPIRED evidence; post-ACK GC and native-vs-guest effects. **26 paper-only attacks, 32 unproved predicates, 20 open issues, 16 decision candidates.** No implementation, formal model, tests or ABI selection.
