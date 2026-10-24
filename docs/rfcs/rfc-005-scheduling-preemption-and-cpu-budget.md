@@ -384,17 +384,17 @@ Potential logical statuses, **not KABI error numbers**: CLASS_NOT_AUTHORIZED, IN
 | Suspend time not counted | lease/fault deadline semantics ambiguous | explicit suspend-sensitive vs inclusive ClockID |
 | CPU capacity shrinks after admission | deadline guarantee incorrectly persists | re-admit/degrade and report changed assumptions |
 
-## 17. Proposed invariants — SCHED-01…SCHED-36 (NOT proved)
+## 17. Proposed invariants — SCHED-01…SCHED-45 (NOT proved)
 
 | ID | Safety or bounded-liveness obligation |
 |---|---|
 | SCHED-01 | A Thread can execute on at most one CPU simultaneously and be on at most one runnable queue at a time. |
 | SCHED-02 | Only authorized typed policy grants can raise class/weight/budget/affinity beyond a Task's inherited envelope. |
 | SCHED-03 | Spawning additional Threads cannot multiply their ResourceGroup's aggregate CPU reservation. |
-| SCHED-04 | Child CPU entitlements and concurrent reservations never exceed the admitted ancestor/global envelope. |
+| SCHED-04 | **Guaranteed reservations** do not exceed admissible ancestor/global physical capacity; configured **maximum caps** may exceed parent capacity in aggregate while actual execution is parent-limited. |
 | SCHED-05 | Actual executed CPU time and wall-clock wait/deadline time have separate accounting. |
 | SCHED-06 | Untrusted repeated syscall/interrupt/guest transition cannot create free unbounded kernel CPU work. |
-| SCHED-07 | Budget refill/replenishment conserves aggregate entitlement and resists alias/migration/restart double spend. |
+| SCHED-07 | Cap/refill/optional burst policy conserves **actual charged runtime across all cores**, with no alias/migration/restart extra consumption or silent guaranteed-reservation double sale. |
 | SCHED-08 | A Thread with no eligible budget cannot gain new runnable CPU execution solely via wake signal, unless explicit protected M0 policy. |
 | SCHED-09 | Priority/weight alone does not count as reserve/guaranteed deadline in any public contract. |
 | SCHED-10 | M0 execution reservation is finite and cannot be spent/minted by normal app grants. |
@@ -424,6 +424,15 @@ Potential logical statuses, **not KABI error numbers**: CLASS_NOT_AUTHORIZED, IN
 | SCHED-34 | Fair scheduler promises long-term weighted eligibility, not arbitrary strict latency without bounded runnable demand. |
 | SCHED-35 | Cross-CPU reschedule IPI, concurrent wake and hotplug cannot double-charge or run same Thread twice. |
 | SCHED-36 | Scheduler policy, budget descriptor and ClockID are not accidentally fixed as a stable native or guest ABI. |
+| SCHED-37 | Group scheduling weight, maximum cap, protected minimum reservation, and actual CPU runtime use four separate ledgers with explicit semantics. |
+| SCHED-38 | Configured child cap overcommit is not incorrectly rejected as reservation overcommit; effective consumption still respects applicable ancestor caps. |
+| SCHED-39 | Concurrent execution of one group on different CPU cores is charged as a **sum of CPU runtime**; no wall-time undercount and no double physical-charge across ancestor breakdowns. |
+| SCHED-40 | Independent M0 dispatch requires finite limits on IRQ, kernel nonpreemptibility, timer/CPU availability and dependency path; reservation alone is not liveness. |
+| SCHED-41 | Scheduler state decomposes Thread wait/stop, quota eligibility, and CPU ownership to avoid lost state during timeout, fault, throttling and wake races. |
+| SCHED-42 | At exhausted ordinary quota, bounded deny/error/cleanup/IRQ-ack paths remain possible without unbounded exempt attacker CPU work. |
+| SCHED-43 | Boot-essential Pager/IPC/storage CPU starvation is treated as a scoped admission/dependency problem; no assumed generic client-to-server budget transfer. |
+| SCHED-44 | Protected CPU reservation, optional burst usage and fair borrowing of spare capacity remain distinct after CPU offline/affinity/SMT changes. |
+| SCHED-45 | CPU-time replenishment records and future donation leases cannot be used to promise continuous service or refund already-executed time. |
 
 All are proposed properties; specific hardware clock, memory-order, lock and fairness assumptions still require counterexample review, modeling and measurement. **No invariant is claimed proven, tested or implemented.**
 
@@ -467,7 +476,7 @@ Suggested abstract tools: TLA+/PlusCal/Alloy or equivalent, but none has been ex
 
 Results must disclose physical/virtual hardware, CPU online count, IRQ load, power profile, clocksource, measured jitter and violated assumptions. **No such result presently exists for UniOS.**
 
-## 20. Open issues O5-01…O5-29
+## 20. Open issues O5-01…O5-39
 
 | ID | Priority | Open design blocker | Related RFC |
 |---|---|---|---|
@@ -500,14 +509,24 @@ Results must disclose physical/virtual hardware, CPU online count, IRQ load, pow
 | O5-27 | P1 | Policy grant revoke: active boost/class reset vs group throttling and B/R1? | 002/005 |
 | O5-28 | P2 | Scheduling plug-in/failover, real-time media improvements after design gates? | 005/015 |
 | O5-29 | P2 | Energy/thermal QoS, advanced NUMA and big.LITTLE equivalent future platforms? | 005/007/013 |
+| O5-30 | P0 | Precise weight/cap/guaranteed-minimum/resident CPU runtime ledger, hierarchy and numeric units? | 002/005/009 |
+| O5-31 | P0 | Child max cap overcommit vs non-overcommittable reserved-min admission incl. burst/spare borrowing? | 005/006 |
+| O5-32 | P0 | SMP per-core runtime delta and ancestor atomic charge: simultaneous concurrency without overspend? | 001/005 |
+| O5-33 | P0 | M0 finite service floor vs IRQ/NMI/locks/timer failures and independent watchdog fail-stop? | 005/006/007 |
+| O5-34 | P0 | Kernel/IRQ basic error/cleanup at zero quota vs attacker-amplified uncharged work? | 002/003/005 |
+| O5-35 | P0 | Pager/IPC/driver budget inversion with queued work + fault worker while clients retain CPU? | 003/004/005/006 |
+| O5-36 | P0 | Orthogonal wait/wake/fault/throttle/stop/CPU ownership state machine and wake generation? | 003/004/005 |
+| O5-37 | P1 | CPU hotplug/SMT/thermal capacity changes after protected CPU admission, re-admission policy? | 005/007 |
+| O5-38 | P1 | Replenishment chunk fragmentation and priority/wall deadline versus actual guaranteed execution? | 003/005 |
+| O5-39 | P1 | CPU reserve budget propagation and validation after recovered service restart and R1/R2-F overlap? | 002/005/006/007 |
 
-## 21. Decision proposals SCHED-D01…SCHED-D17 — NONE Accepted
+## 21. Decision proposals SCHED-D01…SCHED-D23 — NONE Accepted
 
 - **SCHED-D01:** SCHED-A preemptive hierarchical weighted fair scheduling plus finite separately controlled M0 recovery service reservation is first research baseline.
 - **SCHED-D02:** SCHED-B admitted EDF/CBS, SCHED-C MCS-like contexts, and SCHED-D pluggable policy remain comparison alternatives.
 - **SCHED-D03:** Native kernel enforces actual CPU dispatch, typed policy grants, scheduling/group accounting and M0 eligibility; user service policy is bounded.
-- **SCHED-D04:** Creating additional Threads cannot mint CPU time; aggregate group/ancestor charges conserve admitted entitlement on every CPU and restart.
-- **SCHED-D05:** Priority, CPU budget, wall deadline, group cap and execution-time charge are distinct and have explicit meaning.
+- **SCHED-D04 [revised]:** Creating extra Threads cannot mint minimum reservation or evade effective cap. Concurrent CPU runtime is aggregated across cores; maximum child caps can be configured over parent capacity, whereas guaranteed minimum reservations cannot be double-committed.
+- **SCHED-D05 [revised]:** Weight, hard cap, protected minimum reservation, actual executed CPU-time, wall deadline and privilege to configure these are separate contracts; do not sell a maximum cap as a minimum guarantee.
 - **SCHED-D06:** Async Channel uses server-owned budget by default; no automatic priority or SchedulingContext donation for IPC SEND/Reply.
 - **SCHED-D07:** Explicit leased budget donation, passive servers and PI are deferred pending scope, fan-in, multi-hop cycles, timeout, return/death proofs.
 - **SCHED-D08:** Kernel blocking/IRQ/fault/critical cleanup paths must be bounded and correctly charged or protected by a limited emergency envelope.
@@ -520,6 +539,12 @@ Results must disclose physical/virtual hardware, CPU online count, IRQ load, pow
 - **SCHED-D15:** Restricted guest/normal supervisor execution retains scoped Task budget and cannot mint priority via guest ABI.
 - **SCHED-D16:** Do not freeze numeric policy layout, timeslice, ClockID or realtime ABI before RFC-009/018 and hardware profile.
 - **SCHED-D17:** Correctness, fairness and recovery bounds must be modeled and tested before any accepted SCHED policy or implementation authorization.
+- **SCHED-D18 [new]:** SCHED-A accounting has independent weight, overcommittable maximum child caps, admission-controlled minimum guarantees and physical executed-time charge; all still Proposed.
+- **SCHED-D19 [new]:** SMP aggregate CPU execution is sum of concurrent per-core runtime; ancestor accounting is inclusive but never physically double-counted.
+- **SCHED-D20 [new]:** M0 CPU guarantee is conditional on bounded nonpreemptible/IRQ/timer plus wired IPC/memory and dependency graph; failure falls back to explicitly allowed safe-stop, not an invented deadline.
+- **SCHED-D21 [new]:** Blocked/fault/throttled/wake/CPU-ownership are orthogonal lifecycle dimensions and need model-checked generation/linearization rules.
+- **SCHED-D22 [new]:** At exhausted ordinary budget, bounded kernel error/cleanup/IRQ paths remain charge-protected without unlimited exempt work; server-owned Pager time requires independent admission and producer caps.
+- **SCHED-D23 [new]:** CPU offline/capacity changes and seL4-like replenishment fragmentation are explicit feasibility questions, not grounds to claim a constant guaranteed service floor.
 
 **Decision status:** Proposed only. None changes architecture D1–D8 or converts RFC-001/002/003/004/006 Proposed research decisions into accepted technical spec.
 
@@ -545,7 +570,7 @@ Results must disclose physical/virtual hardware, CPU online count, IRQ load, pow
 
 ## 23. Design exit gates and next research
 
-**R1 Scheduling design gate FAIL/OPEN**, until:
+**R1 Scheduling design gate FAIL/OPEN** (v0.2 adds explicit cap-versus-reservation and physical run accounting blockers), until:
 1. A complete Thread/block/throttle/wake/stop transition model with exactly-once CPU run ownership for 1 and multiple cores, including service restart and generation change.
 2. A concrete typed group/priority/clock policy authority graph and proof of no CPU entitlement duplication through cap copy, Thread creation, migration, IPC and service restart.
 3. A finite M0 runtime/IRQ/memory/IPC recovery cut with no self-Pager/CPU wait cycle, independently operable after ExitBootServices and with clear fail-stop conditions when kernel/timer broken.
@@ -569,9 +594,11 @@ Results must disclose physical/virtual hardware, CPU online count, IRQ load, pow
 - **[S9] Linux clocksources and clockevents:** https://docs.kernel.org/timers/timekeeping.html
 - **[S10] Linux ktime get/boottime/real:** https://docs.kernel.org/core-api/timekeeping.html
 - **[S11] Linux sched_ext programmable scheduler and fallback:** https://docs.kernel.org/scheduler/sched-ext.html
+- **[S12] Linux cgroup v2 hierarchy, CPU weight/cap/burst and distribution models:** https://docs.kernel.org/admin-guide/cgroup-v2.html
+- **[S13] Linux capacity-aware scheduling, CPU IRQ loss/thermal DVFS:** https://docs.kernel.org/scheduler/sched-capacity.html
 
 **Evidence and legal limitation:** These are cited as technical references for other independently implemented systems, not copied source code or proof of UniOS safety/performance. Verify future hardware and source versions before selecting a production policy. No third-party code imported.
 
 ---
 
-**Document history:** 2026-10-24 — RFC-005 Proposed Specification v0.1 draft, architecture research only; no scheduler, driver, kernel code, benchmarks or formal proofs.
+**Document history:** 2026-10-24 v0.1 original design retained in Git; 2026-10-24 v0.2 adversarial review corrected CPU cap/reservation overcommit, SMP accounting, M0 progress conditions, server budget inversion and lifecycle modeling. No scheduler, driver, kernel code, benchmarks or formal proofs.
