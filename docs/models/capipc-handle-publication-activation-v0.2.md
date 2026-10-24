@@ -273,3 +273,31 @@ A C caller may lose the ClaimID return on Stage, the AcceptCommit return, or the
 - **H2-D13:** Native UNKNOWN, remote effect and durable backend receipt are distinct; Linux guest cannot infer clean rollback or SUCCESS from kernel recv status.
 - **H2-D14:** This re-review updates Proposed research priority only; no accepted decision, code, executable model, ABI freeze or product assurance.
 
+
+## 11. Acceptance refusal criteria and next targeted design sequence
+
+**HPA v0.2 R1 verdict: RESEARCH PRIORITY REVISED, ACCEPTANCE NO-GO.** Neither B+ nor C has passed the gates:
+
+1. Prove a specific E1 receive/Handle slot reservation/K-I contract under concurrent threads, endpoint ownership MOVE, cap revocation B, Pager usercopy fault and Task death; cap vector all-or-none and source K-S irreversibility.
+2. Specify *which* output token IDs can be retired/reclaimed safely and when user or shared mapping may have seen a value; preserve public anti-ABA without inventing a fixed integer width or infinite namespace.
+3. Define a preidentified, generation-bounded result/claim record that works for **both B+ and C** even when the receipt identifier itself would be lost in a return, with bounded privacy-preserving enumeration if required.
+4. Compare the actual security objectives of B+ and C under a malicious bearer receiver. If C claims policy isolation, demonstrate the independently trusted issuer/verifier and immutable message/grant-binding that B+ lacks; Task self-acceptance is not enough.
+5. Define K-Vm/K-Vp and post-exposure no-foreign-requeue under same and different Task/ServiceIncarnation, plus precise confidentiality scope. Do not promise global no-copy or zero effect after exposure.
+6. Prove that abnormal C Stage holds, cancellation and T2 verifier waits cannot capture all channel quota, IPC credits or M0 recovery budgets. Enumerate wait-for cycles and finite terminal/ticket/sponsor cleanup.
+7. Model external file/network effects before C Commit, after K-I or during result loss. No RECEIVE state may fabricate rollback, idempotency or durable backend receipt.
+8. Compare HPA-B+, HPA-C, HPA-A and restricted register-only options under measured-or-explicitly-unmeasured CPU, resident memory, queue head-of-line blocking, service throughput and critical TCB. Do not assume C is measurably slower solely from conceptual stages.
+9. Obtain independent cross-RFC 002/003/004/005/006/007/008/009/010/018 alignment after future revisions, and separate approval before any source implementation or executable model.
+
+**Suggested next research paper:** a focused **Task Handle namespace and receive-result receipt** study comparing (a) monotonic public token IDs, (b) slot+nonwrapping generation identities and (c) limited pre-identified result mailboxes; demonstrate generation reuse and malicious stale-token denial without selecting actual bit layouts. This unresolved fundamental affects **both** B+ and C more than adding an extra Stage/Commit call.
+
+**No-go:** No selected ABI signature or public numeric status. No claim of formal verification, Fuchsia-equivalent behavior, secure third-party identity, guaranteed delivery, guaranteed M0 recovery, real-time latency, working device driver or Linux compatibility. All decisions remain Proposed.
+
+## 12. Independent review record, references and limitations
+
+**Date:** 2026-10-25, independent second-pass adversarial reading of HPA v0.1 and parent CAPIPC/RFCs. Reviewed public reference behavior from Fuchsia Channel read/write/handles and seL4 IPC, plus official Linux user access constraints [S1–S7]. Their API guarantees and legal rights do not become UniOS design proofs or authorization to import code.
+
+**What changed since v0.1:** HPA-C is no longer universally preferred merely because explicit AcceptCommit can be written as an extra step. HPA-B+ is the *first general bearer receive research target*, while C remains an optional deferred-activation/trusted policy path. Tightened first-ClaimID loss, burnt-token exhaustion versus provably unseen reservations, Task-wide consent limitations, malicious Stage queue retention, T2 immutable-original-message binding, effects before K-I, and the fact that a result record benefits B+ too. The full review contains **24 unexecuted counterexample schedules, 28 unproved predicates, 18 open design gates, and 14 Proposed decision candidates**.
+
+**What was NOT done:** no program files, no kernel/runtime/SDK changes, no TLA+/Alloy formal transition system, no model checking, no hardware IOMMU/CPU or filesystem simulation, no performance measurements. The open counterexamples are *designed schedules*, not bugs observed in a running UniOS.
+
+**Authority:** Prior v0.1 is preserved for history. The higher-level architecture remains accepted only at broad D1–D8. RFC-002, RFC-003, RFC-009, RFC-018 and both HPA drafts continue as Proposed. This report changes **research advice, not formal architecture acceptance**.
