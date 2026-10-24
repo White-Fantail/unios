@@ -1,6 +1,6 @@
 # UniOS RFC-008 — Storage, VFS, Filesystems & Crash Durability
 
-> **Status:** Proposed — Specification v0.1 (design research ONLY; no code, formal proof, hardware test or accepted filesystem choice)
+> **Status:** Proposed — Specification v0.2 (adversarial re-review, NOT accepted/implemented/verified)
 > **Date:** 2026-10-24 NZDT
 > **Baseline:** [Architecture v0.2](../architecture/unios-architecture-v0.2.md)
 > **Prior proposed contracts:** [RFC-002](rfc-002-object-capability-lifetime-delegation-revocation.md), [RFC-003](rfc-003-ipc-wire-protocol-and-synchronization.md), [RFC-004](rfc-004-virtual-memory-pager-cache-and-oom.md), [RFC-005](rfc-005-scheduling-preemption-and-cpu-budget.md), [RFC-006](rfc-006-boot-trust-chain-service-startup-and-recovery.md), [RFC-007](rfc-007-user-space-drivers-dma-and-iommu.md).
@@ -10,11 +10,13 @@
 
 **STORE-A: an independently verified, immutable read-only BootBundle/SystemImage + a separately authorized and crash-consistent writable DataVolume + userspace VFS/FileSystem service backed by restricted BlockStorageHost.** The kernel only enforces memory/caps/IPC/IRQ/DMA boundaries and earliest wired bootstrap, not POSIX inode/path traversal, full filesystem parsers, huge journal replay or arbitrary disk/RAID management in Ring 0.
 
-**Strong split:** no code name, image checksum, PageSupply reply, IPC COMMITTED state, NVMe completion, device Flush return, filesystem log commit, user file handle close, or GUI "Saved" notification is by itself interchangeable with another layer's success. Durable data means a specifically promised set of bytes+namespace edges can be recovered after specified failures, **conditional on a correctly functioning block device and independently verified flush/order semantics**. A disk that lies about flush or suffers physical loss is not rescued by logical file transactions. Crash consistency is not necessarily durability, authenticity, confidentiality, availability or backup.
+**Strong split:** no code name, image checksum, PageSupply reply, IPC COMMITTED state, NVMe completion, device Flush return, filesystem log commit, user file handle close, or GUI "Saved" notification is by itself interchangeable with another layer's success. A strong DurableReceipt **attests software pipeline completion under declared hardware assumptions; it cannot independently verify that the drive told the truth about power-loss persistence**, survived physical destruction or avoided silent FTL corruption. Durable data means a specifically promised set of bytes+namespace edges can be recovered after specified failures, **conditional on a correctly functioning block device and independently verified flush/order semantics**. A disk that lies about flush or suffers physical loss is not rescued by logical file transactions. Crash consistency is not necessarily durability, authenticity, confidentiality, availability or backup.
 
 **Why this form:** RFC-006 M0 cannot demand-page its own storage executable; RFC-004 M0/M1 read-only Pager should precede M3 writable file mappings; RFC-007 NVMe DMA fences must be valid before buffer reuse, yet successful DMA is not durable media storage. A separate DataVolume limits A/B system release rollback coupling, although shared boot metadata, encryption keys, package state and user-data migration still require cross-layer design.
 
-**Other live candidates, not straw men:**
+**v0.2 independent decision axes:** STORE-A is a trust/volume split, STORE-B/C/D are *combinable filesystem implementation/consistency choices*, STORE-E is a temporary read-only feature stage. A verified SystemImage and a writable DataVolume can use STORE-B, C or D. Treating STORE-A versus STORE-C as exclusive alternatives conflates topology and on-disk algorithms. A third separate axis is durability tier and actual device flush/atomicity profile.
+
+**Other live candidates (combinable axes, not mutually exclusive):**
 - **STORE-B** — mature existing filesystem format and trusted user-space implementation/adaptation, subject to license, completeness and hardware flush interface verification. Reusing a *format* is not the same as inheriting that filesystem kernel's crash-consistency implementation and testing.
 - **STORE-C** — new native copy-on-write/checksummed filesystem with transactional roots/snapshots. Potential cohesive model but enormous correctness, garbage collection, metadata, ENOSPC and recovery risk before a desktop exists.
 - **STORE-D** — conventional metadata-journaled filesystem (new or adapted) with explicit data/writeback+barriers. Often simpler than full CoW but journaling metadata alone does **not** promise the newest user file data survives a power cut.
@@ -63,16 +65,16 @@ No status implies another unless a separate proven ordering/recovery contract co
 | Linux block volatile writeback cache [S1] | write completion may precede nonvolatile media write; preflush and FUA have distinct semantics | flush/order honored by entire device stack before a strong durable receipt |
 | Linux fsync(2) [S2] | syncing file contents/inode does not necessarily sync directory entry | directory sync/namespace receipt required for create/rename/unlink persistence |
 | Linux ext4 jbd2 journal [S3] | default ext4 journaling protects metadata, not all new file data; journal commit/replay has ordering | no "journal = every user write is durable" claim |
-| SQLite atomic commit [S4] | correctness assumes certain filesystem/sector write and powersafe overwrite properties | expose storage assumptions; torn writes and failure windows demand tested transaction model |
-| SQLite WAL / checkpoints [S5] | WAL commit and checkpoint are separate; readers can hold checkpoints; sync policy changes durability | write-ahead log and checkpoint need independent growth/recovery/flush rules |
-| SQLite synchronous pragma [S6] | WAL NORMAL can preserve consistency yet lose recent committed transactions under power failure; FULL sync adds durability | a database/app may need a stronger receipt than ordinary write completion |
+| SQLite atomic commit and PSOW [S4,S19] | powersafe overwrite means bytes **outside** the target region are not corrupted on failure; it does NOT make the target write all-old or all-new | distinguish PSOW, torn write, atomic granule, write ordering and cache PLP |
+| SQLite WAL and checkpoint [S5,S20] | WAL sync before copying home pages, DB sync before WAL reset; readers can pin WAL, and 2026 WAL-reset race illustrates version-specific implementation defects [S18] | add exact checkpoint/reader/space and version/bug audit proof gates |
+| SQLite synchronous pragma [S6,S22] | WAL NORMAL may lose recent commits, WAL FULL adds per-commit sync, while rollback-journal FULL may fail to make the final DELETE commit durable until directory sync (EXTRA) | mode and namespace metadata affect the promise; FULL is not a universal mode-independent power-loss guarantee |
 | Linux iomap writeback [S7] | dirty pages, writeback and later error sampling have independent lifecycle; writeback error can surface at fsync | track dirty generation and delayed writeback error, not just last syscall success |
 | Linux fs-verity [S8] | immutable file reads checked against Merkle tree; root authentication is separate | read-only verified image as option, not writable data consistency or boot auth by itself |
 | Linux dm-verity [S9] | read-only block integrity may fail I/O on mismatch; root hash needs independently trusted provenance | read-only system verified backing; do not add all hash-parser code to kernel automatically |
 | Android Virtual A/B [S10] | snapshots and interrupted merge can resume; userspace daemon startup itself is a boot dependency | independent update crash state and wired initial snapshot reader; don't import Android topology |
 | PostgreSQL WAL settings [S11] | multiple WAL sync strategies exist and fsync hardware/OS assumptions govern crash safety | journal commit must be tied to explicit durable backing, not a "COMMIT" string |
 | NVMe official NVM command set [S12] | command-set standards and device feature negotiation define host persistent I/O semantics | require hardware-specific Flush/FUA/volatile-cache feature evidence, no universal controller behavior |
-| Linux errseq [S13] | writeback errors are sampled by independent observers and reported later | close/reopen/restart cannot silently erase prior failed write generations |
+| Linux errseq and VFS [S13,S17] | address_space records writeback error epochs and independent file-description observers sample cursors | do not claim only failing writer sees errors; separate in-memory service-restart continuity from power-loss durable error log |
 | Linux ext4 orphan file [S14] | open-unlinked/truncate orphan cleanup is a crash-recovery concern | no naive immediate free on unlink or uncommitted truncate |
 | Linux DMA and group reset [S15] | device DMA completion, quiesce and pin reuse differ from storage durable flush | storage failure must observe RFC-007 R2-F separately |
 | PostgreSQL WAL introduction [S16] | write-ahead logging separates record durability and deferred data-file write | bounded replay and precisely defined commit point |
@@ -167,6 +169,8 @@ App Write -> VFS_ACCEPTED -> Pager/FS DIRTY_VISIBLE
 
 Linux's block cache interface distinguishes a preflush (complete earlier writes to nonvolatile medium before next operation) and FUA (completion only after this write reaches nonvolatile storage) [S1]. The Linux block layer may emulate FUA using an additional Flush if hardware supports the required semantics. **UniOS must not imply every NVMe controller supports identical flags, protects its cache on power loss, or serializes unrelated queues automatically**. Verify actual NVMe NVM command set support, VWC and flush behavior for selected hardware [S12]. If a driver reports unsupported/not-trustworthy flush, deny or downgrade a requested strong DurableReceipt rather than fabricate success.
 
+**Additional native sync requirement:** SQLite rollback-journal `synchronous=EXTRA` synchronizes the directory after deleting its commit journal, unlike FULL in DELETE mode [S22]. WAL sync mode has a different commit/metadata cut. UniOS's native file/DirectorySync contract must specify both journal-deletion persistence and filename metadata, rather than use a generic strong fsync label for unrelated modes.
+
 Multi-queue devices and caches introduce write ordering: dependent data and journal commit records must be ordered across relevant queues/transport layers and flushed correctly. A mere completion of one command or a CPU memory barrier is not a persistent-media barrier; CPU DMA fence and IOMMU R2-F are separate. Discard/TRIM, write zeroes, zoned append and write-protect operations may not share standard write-ordering semantics; initial scope excludes their strong guarantees.
 
 ### 5.4 Crash and timeout classification
@@ -193,6 +197,10 @@ A metadata journal can produce a coherent inode/directory allocation state after
 
 Write-ahead logging can make a logical transaction durable after verified append+commit marker+flush; home blocks/checkpoint can be written later without losing already committed facts **only when log preservation, replay ordering, barriers and device assumptions actually hold**. Correctness requires finite record format, sequence numbers/generations, checksums/integrity, idempotent replay, bounded recovery scan, checkpoint and storage-space reservation under ENOSPC.
 
+**WAL checkpoint proof:** before copying records from WAL to home database, the relevant log must be durably synced. Before truncating, resetting or overwriting WAL, updated home/database pages must be durably synced. Long-lived readers can pin older WAL generations and prevent checkpoint completion; budget/checkpoint must account it. SQLite documents this sequence [S5,S20].
+
+**2026 implementation-version caution:** SQLite's WAL documentation records a rare concurrent checkpoint/reset corruption bug in versions through 3.51.2, corrected in 3.51.3 on 2026-03-13 (with certain backports) [S18]. This is an example of why mature writers need exact-version advisories and targeted concurrency tests; UniOS has not selected or integrated SQLite.
+
 WAL is not intrinsically durable at every COMMIT call. SQLite WAL's synchronous=NORMAL can lose recent acknowledged transactions in power failure while staying consistent; synchronous=FULL adds sync for every transaction commit under its documented VFS/hardware assumptions [S6]. A UniOS FS journal must not hide its chosen durability policy inside generic names.
 
 ### 6.3 Copy-on-write transactional roots (STORE-C)
@@ -203,7 +211,7 @@ CoW writes new blocks, computes metadata/root and publishes an ordered root comm
 
 ### 6.4 Existing mature format (STORE-B)
 
-Consider using known format and independently audited user-space reader/writer after legal/license and implementation correctness research, rather than rushing a new experimental FS. It must provide a compatible writeback transaction/durability implementation, not merely a parser for the on-disk data structure. An untrusted third-party filesystem parser is still asset-specific TCB-S when allowed to edit user data. No third-party code/source adoption is approved by this RFC.
+Consider using known format and independently audited user-space reader/writer after legal/license and implementation correctness research, rather than rushing a new experimental FS. It must provide a compatible writeback transaction/durability implementation, not merely a parser for the on-disk data structure. An untrusted third-party filesystem parser is still asset-specific TCB-S when allowed to edit user data. No third-party code/source adoption is approved by this RFC. Any re-use candidate must record exact upstream version, concurrency fixes, known corruption advisories, runtime platform assumptions, journal implementation—not just the disk format name—and legal/provenance feasibility.
 
 **Proposed conditional pick:** defer native writable filesystem algorithm. For S1 read-only boot research, prefer an independently verified immutable byte/extent image; for S2–S3 data choose between STORE-B/D/C via failure model and legal feasibility, not preference for a novel FS name.
 
@@ -230,7 +238,7 @@ create temp file in destination directory
  -> sync destination directory and any separately changed parent directories
  -> report durable named replacement (conditional on FS and disk support)
 ~~~
-This is a **logical dependency checklist, not code**; exact old/new parent and link durability under crash need filesystem-specific proof and model. Merely calling rename() successfully guarantees neither post-crash new name nor persistence of replacement bytes [S2].
+This is a **logical dependency checklist, not code**; exact old/new parent and link durability under crash need filesystem-specific proof and model. A native DirectorySync capability must either cover the exact namespace metadata and old/new parent commit edges or return not-supported/failed; it is not an unconditional synonym for POSIX durability on all mounted volume formats. Merely calling rename() successfully guarantees neither post-crash new name nor persistence of replacement bytes [S2].
 
 ### 7.3 Cross-volume/external effects
 
@@ -258,9 +266,9 @@ Concurrent writer -> Dirty(v+2) independent from v+1 in-flight
 
 A page mapped into multiple Tasks or a shared MemoryObject may be modified while older contents are in flight. If new dirty generation v+2 is blindly marked clean by v+1 completion, subsequent fsync can lie and data is lost. A truncation, hole punch, COW or snapshot while writeback in flight needs explicit generation/offset version recheck before releasing references, reusing physical blocks or completing FileSync. A returning PagerSupply and file backing Snapshot identity cannot change another Task's mapping without kernel validation (RFC-004).
 
-### 8.3 Error epoch survives service restart
+### 8.3 Error epoch scopes — service crash versus power loss
 
-Buffered write() returning length N does not establish a durable result. Asynchronous writeback may later fail; Linux iomap documents recording errors to report via later fsync [S7] and Linux errseq documents error cursors for multiple observers [S13]. UniOS needs an error ledger keyed to file/mapping/volume generation and observer sync epoch, **not simply a volatile flag owned only by one dying Pager Task**.
+Buffered write() returning length N does not establish a durable result. Asynchronous writeback may later fail; Linux iomap documents recording errors to report via later fsync [S7] and Linux errseq documents error cursors for multiple observers [S13]. UniOS needs an error ledger keyed to file/mapping/volume generation and observer sync epoch, **not simply a volatile flag owned only by one dying Pager Task**. Service crash while kernel stays alive can preserve a separately owned in-memory error epoch; **OS crash/power loss cannot preserve volatile error logs, unsynced dirty pages or original writer attribution**. To claim after-reboot observability, use a distinct crash-consistent persistent error journal and admit its own write failures; otherwise return unrecoverable/unknown and avoid false replay. Linux VFS reports errors to potentially multiple open descriptors, not necessarily only the writer [S17].
 
 If the storage controller reset loses dirty buffers with no durable log, a fresh Pager service may be running but user data unrecoverable. Report LOST/UNKNOWN and prevent recycling the old FileDirtyGeneration as clean. An old FileSync result from a dead service must not be accepted as receipt of the new service incarnation's durable write.
 
@@ -280,6 +288,8 @@ Charge dirty frames, metadata log records, pending flushes, pinned DMA, device q
 - controller reset, fatal error, thermal throttle, hot removal, namespace format change and shared reset collateral (RFC-007);
 - M0 read-only essential storage bootstrap independence;
 - device checksum/ECC error reporting, media health and physical failures (not confidentiality/security by itself).
+
+**Distinct device assumptions:** Powersafe overwrite (PSOW) excludes collateral damage outside requested range but not torn/partially new bytes **inside** it [S19]. Atomic update granule, sector tear, media ECC, cache/barrier, FUA, truthful controller, PLP and namespace/queue behavior each require separate predicates. A CRC only helps detect corruption under its assumptions and cannot restore destroyed data.
 
 Do not infer "NVMe" means PLP or atomic 4KiB sector writes in every failure. The official NVMe spec [S12] covers command set; selected devices/firmware must be examined separately. Lost/garbled command completion means result UNKNOWN, not automatically failed/no-write.
 
@@ -419,6 +429,8 @@ Disk byte space/extent allocation, in-memory dirty page count, writeback queue/r
 
 ### 14.2 Space reclamation vs new writes
 
+**Checkpoint starvation and log space:** WAL readers may indefinitely pin old snapshots so no complete checkpoint/WAL reset is legal; unbounded writer append can fill the device despite otherwise healthy IO. Bound WAL/log capacity, reader epochs, emergency log space, and options to cancel/deny new work without invalidating a still-live reader [S5,S20].
+
 If low disk space prevents log checkpoint or CoW root completion, aggressive background GC can be blocked by the same shortage and may require even more scratch space to move live extents. Analyze bounded emergency free-space reserve and reserve-only transaction behavior; if unrecoverable, fail cleanly without modifying previously committed state in ways that prevent mount.
 
 Snapshots share extents and may prevent freeing data that a user just deleted. A malicious client cannot create unbounded snapshots, mount replicas or orphan files on a global system budget; quota hierarchy and ownership remains separate from rights to enumerate or overwrite other files.
@@ -454,6 +466,8 @@ Write data/extent new version
   -> DurableReceipt for scope if no recorded error
   -> Later checkpoint/home-block update / old-root GC
 ~~~ 
+
+**Multiple device boundaries:** do not infer one Volume Flush completes writes to other controllers/namespaces or distinct storage caches. If on-disk state depends on several devices, document a distinct multi-device ordering/recovery protocol or explicitly deny global atomicity.
 
 The actual DAG depends on journal vs CoW choice: a full WAL may persist log records and commit before home data blocks; a metadata journal/ordered data needs different ordering. **Do not freeze the schematic above as one universal write algorithm.** It is a proof checklist for dependency edges and the point after which the result becomes observable as durable.
 
