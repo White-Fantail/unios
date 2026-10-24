@@ -270,3 +270,57 @@ A malicious receiver can repeatedly stage a message, cause a fault after just on
 - **HA-D11:** Keep terminal, orphan, token and DeviceGroup debt sponsored to true cleanup and fencing.
 - **HA-D12:** Keep all decisions Proposed, with no code, executable model, benchmark, syscall signature or ABI freeze.
 
+
+## 8. Source-RFC alignment and compatibility caveats
+
+| Existing Proposed document | Compatibility finding | Action to carry into next design review |
+|---|---|---|
+| RFC-002 §7/§9 | Public Task Handle anti-ABA and true MOVE ownership are aligned with inert reserved token identities | prove burned tokens on failed stage, distinct lineage/current sponsor, cap invoke after K-I |
+| RFC-003 §§5–6/§23 | all-or-none cap install + queue retirement and ReceiveClaim remain coherent IF activation K-I is the sole live install cut | clarify HPA-C staging/claim may exist before K-I; explicit successful receive or terminal failure; do not requeue after exposure |
+| RFC-003 §13/§14 | BUFFER_INVALID/UNKNOWN and IPC-06/09/28 do not fully describe staged token publication | identify additional logical, not numeric, states TOKEN_RESERVED, PARTIAL_PUBLISHED, STAGED, COMMIT_UNKNOWN, RECEIPT_QUERY and TERMINAL |
+| RFC-004 Pager/VM | public buffer validity at preflight does not make future usercopy atomic; shared aliases and page faults possible | bounded staging, no global lock across usercopy and conditional admission/terminalization |
+| RFC-005/006 | two-phase staging holds claims longer and adds quota/verifier critical path | finite CPU, IPC, timer, M0 reserve and fail-stop model |
+| RFC-007 | closure of DeviceCap after terminalized receive cannot imply IOMMU DMA quiescence | preserve R2-F fence/quarantine and sponsor charge separate from token close |
+| RFC-008 | K-I/QueryReceipt reports kernel grant commit, not FS/remote effect | separate durable backend journal, IO completion and scoped File/Directory receipt |
+| RFC-009 §§5–7/§25 | ABI copyout and status lost after irreversible transition are known P0 issues | do not prematurely choose numeric KABI, syscall layout or register result semantics |
+| RFC-010 | guest Linux FD/errno/signal may lack exact native pending claim state | independently scope guest profile or refuse unsupported mapping rather than fake success/no-effect |
+| RFC-018 | protocol role/issuer PolicyEpoch checks remain in user space | T1 cap grant already authorized on bearer receive; T2 independent verifier, never generic evolving IDL parser in kernel |
+
+**Important contract preservation:** under HPA-C for T1, K-I MUST atomically install the complete cap vector **and retire the queue claim/message** to honor RFC-003's all-or-none receive contract. Intermediate staging is kernel custody, not a completed Receive. On post-exposure terminalization an explicit *separate* discard event removes the message with caps closed/quarantined, not a half-successful K-I. A stale ticket or partial user buffer is not an independent Native Cap grant.
+
+## 9. Audit exit, performance feasibility and research roadmap
+
+**HPA-R1: OPEN / NOT PASSED.** A design-paper preference is not mathematical proof, a running kernel or a supported ABI.
+
+1. Prove the never-recycled public token namespace under Task lifetime, numeric exhaustion and duplicate slots; must be feasible on bounded x86_64 profile or refuse grant requests safely.
+2. Choose precise K-I ordering with Endpoint MOVE, revocation B, claimant death, double AcceptCommit and current issuer audience, including release of precommitted reserved quota.
+3. Demonstrate preidentified ClaimReference discovery if *initial claim result itself is lost*, not just final AcceptCommit return; define permission to query and tombstone lifetime.
+4. Model byte/metadata/token exposure and usercopy faults with unmap, remap, aliases, concurrent Threads and Pager; no hidden global lock or statement of atomic multi-store.
+5. Prove one queue record/one custodian at all times: sender K-S committed before receiver Claim; token stage cannot move actual native grant; K-I installs all caps or none; K-T terminalizes separately.
+6. Define T1's maximum authorized bearer rights independent of future SABI decoder and T2's separately trusted verifier/release cut, including current policy and revoke B.
+7. Prove finite budgets for K-C, staged output, burned token reservations, pending receipts and orphaned G, plus M0 resident IRQ/IPC/CPU cleanup under malicious repeated aborts.
+8. Distinguish K-I success from initiating Thread observing results and from actual file/network effect, then demonstrate truthful guest Linux fallback/refusal.
+9. Compare T1 HPA-B one-call candidate against HPA-C two-phase on **named** microkernel TCB cost, CPU round trips, queue head-of-line blocking and copyout failure frequency. There are no measurements yet; don't assert HPA-C is automatically best.
+10. Obtain separate review of updated RFC-002/003/009/018 Proposed contracts and resolve new status/receipt definitions without freezing ABI numbers.
+11. Any executable finite model, simulator, QEMU harness or kernel implementation requires *new explicit approval* beyond this research document.
+
+**Prioritized next step:** independently adversarially review this HPA-C proposal, especially **lost initial ClaimReference, public token exhaustion, same-Task malicious concurrency, and staged queue starvation**. If HPA-C's TCB and liveness cost cannot be kept within the independent M0 reserve, a simpler HPA-B with honest ambiguity and protected Task-level reconciliation may be superior for the desktop IPC baseline.
+
+## 10. Technical references and evidence limits
+
+- **[S1] Fuchsia Channel kernel object:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/channel — different established atomic message/handle transfer design and nested Channel references.
+- **[S2] Fuchsia zx_channel_read:** https://fuchsia.dev/reference/syscalls/channel_read — byte output before handles; buffer overlap; size/count results.
+- **[S3] Fuchsia zx_channel_read_etc:** https://fuchsia.dev/reference/syscalls/channel_read_etc — kernel-sourced object type/rights in receiver output.
+- **[S4] Fuchsia zx_channel_write:** https://fuchsia.dev/reference/syscalls/channel_write — basic write consumes handles even on failure, unlike UniOS proposed true precommit NOT_COMMITTED.
+- **[S5] Fuchsia Zircon handles:** https://fuchsia.dev/fuchsia-src/concepts/kernel/handles — Task-local handle values, in-transit ownership and object lifetime.
+- **[S6] Linux kernel User Access documentation:** https://docs.kernel.org/kernel-hacking/hacking.html — copy_to_user/copy_from_user may leave uncopied data and can sleep; ordinary multi-value usercopy not an all-or-none transaction.
+- **[S7] Linux kernel Memory Management API:** https://docs.kernel.org/core-api/mm-api.html — user access can fault/sleep under allowed context.
+- **[S8] seL4 IPC tutorial:** https://docs.sel4.systems/Tutorials/ipc — explicit receiver CSpace path and IPC buffers as contrasting architecture, not E1 semantics.
+- **[S9] Fuchsia FIDL wire format:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/wire-format — serialized handles are represented separately from actual kernel handle vector.
+- **[S10] Fuchsia zx_channel_read_etc rights/type validation advice:** https://fuchsia.dev/reference/syscalls/channel_read_etc — untrusted sender resource claims cannot replace actual cap metadata.
+
+**Reference interpretation limits:** These links document *other* kernels and APIs. Neither Linux usercopy semantics nor seL4 and Fuchsia can prove a native UniOS receive cut. Some Fuchsia semantics explicitly differ from the UniOS design and must not be silently imported. The proposed two-phase HPA-C protocol, resource bounds, exact kernel code/locking behavior and real latency have **not** been modeled or measured.
+
+---
+
+**Document history:** 2026-10-25 Proposed v0.1 specialized research on exact Handle Publication versus Capability Activation order, following [CAPIPC state model v0.2](capipc-send-receive-revoke-state-model-v0.2.md). HPA-C preferred for *proof research*, with HPA-A/B/R maintained as countermodels. Twenty (20) unexecuted adversarial schedules, twenty-four (24) unproved safety invariants, fourteen (14) open research blockers, twelve (12) Proposed decisions, and fourteen (14) guarded transition candidates. No OS/source code, executable model, formal proof, ABI stabilization or performance test.
