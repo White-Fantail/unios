@@ -357,3 +357,375 @@ System A Good, DataVolume schema V1
 
 Slot attempt count/Good/Failed+rollback floor is a boot policy ledger. User app files and WAL are general user-data ledgers. These should not share unlimited writer rights or trust user-space VFS to change the trusted boot key/floor. A corrupt user volume should not silently make the boot authority accept an insecure older OS.
 
+
+## 12. Crash, service restart, pending IO and reconciliation
+
+### 12.1 IPC and disk effects are not exactly once
+
+RFC-003's asynchronous Channel COMMITTED status only means that a message/handles were successfully enqueued. StorageHost may already have submitted DMA or durable log writes by the time the client learns nothing and times out. FileSystemService or StorageHost restart cannot distinguish "write never issued" from "write reached media" merely by an old ReplyToken. Recover by durable transaction IDs and on-disk replay, not blind repetition.
+
+- File write to a fixed offset with identical data may *look* idempotent yet not be safe if concurrent writes, truncate, encrypt-nonce, checksums, snapshot refcounts or external side effects differ.
+- Metadata create/link/unlink/rename and allocate/free transactions are not generally replayable twice without coherent transaction generation/intent logs.
+- A successful fsync call followed by a lost reply may be durable but UNKNOWN to the caller. A durable transaction ID/recovery query can establish state only if its recovery ledger itself survived and is trusted for that volume.
+- Flush completion messages from a replaced StorageHost must not be accepted for a later incarnation. Verified device/volume epoch and mapped writeback generation are prerequisites.
+
+### 12.2 Crash classes and expected state
+
+| Failure | What may remain | What must not be falsely asserted |
+|---|---|---|
+| App Task crash, OS/FS healthy | previously buffered pages and queued writebacks may survive; handle refs remain | every prior buffered write was durable |
+| VFS namespace service crash | kernel Task/Cap objects live; committed log may be on disk; volatile namespace cache lost | new VFS name/endpoint inherits old requests and is equivalent |
+| File Pager crash | existing resident dirty pages may remain depending RFC-004; backing faults may fail | Pager detach = writeback completed |
+| StorageHost crash | I/O may be in flight/committed, DMA still active; controller cache dirty | old host stopped so old DMA gone |
+| Device reset with supported R2-F | hardware no longer writes old frames after physical fence, under assumptions | on-disk transaction rolled back / fsync honored automatically |
+| Controller volatile-cache loss | unflushed acknowledged writes may vanish | DEVICE_COMPLETED = durable |
+| Sudden power loss | on-disk durable prefix and arbitrary unsynced writes according to model | all writes are last-in-first-out or sector atomic by default |
+| Hostile/tampered storage | signed read-only image may detect mismatch | checksum detects purposeful rollback of entire valid image |
+| ENOSPC during log/checkpoint | older committed state, uncommitted temporary extents, perhaps unrecoverable low free space | log always has space to finish commit/recover |
+| Corrupt journal/superblock | read-only inspection, selected valid root if authenticated and safe | arbitrary automatic repair retains all file bytes |
+| A/B B boot fails after schema V2 migration | verified A code but unreadable V2 data | A fallback restores pre-upgrade user state |
+
+### 12.3 Recovery receipt semantics
+
+A **DurableReceipt** is a *conditional statement* tied to (volume identity/version, FileID or namespace transaction, exact content/metadata commit generation, defined dependency closure, storage device identity and verified flush profile, and the completed on-disk evidence point). It must NOT be a bearer token that grants new file rights. Signing a receipt may help auditing but cryptography cannot make a dishonest device truthful. A persistent transaction ledger can support application idempotency across service restart only if it includes enough on-disk data to reject duplicate requests and itself respects durable ordering.
+
+**Error surfaces:** if a sync call returns an error, some or all bytes may nonetheless have persisted. Returning an error cannot assert rollback; caller may need reread/reconcile. A timeout may be even more ambiguous. An error class "NOT_SUBMITTED" requires actual proof no external effect occurred.
+
+## 13. Integrity, verification, encryption and permission boundary
+
+### 13.1 Verified read-only system vs writable files
+
+RFC-006 verifies the boot chain and signed manifests, but the loader's verification of one image does not transitively authenticate every page later faulted from disk. A read-only content-addressed SystemImage or per-file/block Merkle tree may check bytes when loaded, using authenticated roots from trusted boot state [S8,S9]. **A hash tree alone is integrity verification, not authorization:** root hash trust comes from RFC-017 signer/floor and authenticated file identity policy.
+
+If a malformed/failed read returns a zero page or an attacker-substituted block without reporting verification failure, app isolation can fail even though BootBundle was signed. A verified-image Pager that can supply arbitrary raw bytes without an independent check is a potential trusted asset TCB-S. Reverify on use or hold cryptographically authenticated immutable backing under the declared policy.
+
+### 13.2 DataVolume checksums vs malicious rollback
+
+Journal CRC/checksum can detect accidental torn records and corruption under assumptions, not resist an attacker who substitutes a consistent older set of data+metadata/checksum. A mutable DataVolume needs anti-rollback *if* the product claims it, which requires a separately trusted monotonic epoch/root or an authenticated external log and failure policy. Most general consumer filesystems do not promise malicious rollback protection; don't silently add it.
+
+Encryption is separate. A successful filesystem mount does not grant access to an unwrapped user key; key lifecycle and encrypted volume format/access control need independent security research (RFC-016/017 or new RFC). Device encryption without integrity may permit malicious bitflips; integrity without encryption may reveal private data.
+
+### 13.3 Namespace and compatibility boundary
+
+A native FileCap cannot be generated from an untrusted POSIX path/UID integer. Linux guest root is a property of a guest personality, not a capability to mount host EFI partition or overwrite BootSlotMetadata. A Linux process can request fsync() and expect documented guest semantics; it must receive failure/not-supported when native backing cannot guarantee the requested sync contract. Windows FlushFileBuffers, macOS full-fsync and future APFS/NTFS compatibility deserve independent documented mapping; do not promise parity with POSIX fsync based on a single FileSync primitive.
+
+## 14. Resource budgets, concurrent writers and sustained ENOSPC
+
+### 14.1 Distinct budgets
+
+Disk byte space/extent allocation, in-memory dirty page count, writeback queue/range count, journal commit-space/headroom, filesystem metadata transaction slots, snapshot refcounts/GC work, mounted-volume capability objects, outstanding device DMA pins, CPU/IRQ time and protected M0 reserve are separate resources. Every Task and Service sponsor remains charged until references/effects are safely retired; deleting an on-disk file that remains open or snapshotted may reclaim zero disk blocks.
+
+**Dangerous success under overcommit:** virtual allocation or an accepted buffered write can succeed while physical disk reservation to persist it fails later. The API should distinguish reserved-space write modes vs overcommit mode and surface final FileSync NO_SPACE/IO_ERROR. Never represent accepted dirty RAM as guaranteed durable free disk capacity. Journal itself must reserve enough emergency metadata/log space to perform cleanup/replay or enter read-only.
+
+### 14.2 Space reclamation vs new writes
+
+If low disk space prevents log checkpoint or CoW root completion, aggressive background GC can be blocked by the same shortage and may require even more scratch space to move live extents. Analyze bounded emergency free-space reserve and reserve-only transaction behavior; if unrecoverable, fail cleanly without modifying previously committed state in ways that prevent mount.
+
+Snapshots share extents and may prevent freeing data that a user just deleted. A malicious client cannot create unbounded snapshots, mount replicas or orphan files on a global system budget; quota hierarchy and ownership remains separate from rights to enumerate or overwrite other files.
+
+### 14.3 Concurrent write ordering
+
+- Two writers to same file range need actual serialization/last-write policy, dirty generation and conflict semantics; pagecache lock alone does not imply multi-file transaction.
+- mmap changes and buffered write must coordinate with truncation, extent replacement and snapshot root publication; a prior fsync must not accidentally claim bytes written concurrently *after* its sync range snapshot.
+- A successful delete/rename while a buffer is pinned for storage DMA must not reuse that extent for another file before IO/ref and dependency settlements.
+- FileSync needs a **snapshot/barrier of the set of changes covered** and a completion point; if writers continue indefinitely, sync must either report exactly which prefix was durable or use a defined bounded serialization method.
+
+## 15. Cross-layer orderings, linearization and explicit state proof
+
+### 15.1 Transaction cut points
+
+1. **WRITE_VISIBLE:** bytes become readable through VFS/FilePager cache under a precise file generation; crash may lose them.
+2. **IO_ACCEPTED:** block request is admitted to driver queue and sponsor charged.
+3. **DEVICE_ACK:** host receives completion. Flush/FUA and cache semantics still determine persistence.
+4. **PERSIST_BARRIER:** relevant data+metadata writes ordered to stable storage under hardware assumptions.
+5. **FS_COMMIT:** commit record/root point has become durable under verified dependency graph.
+6. **RECEIPT_OBSERVED:** client learns sync success or receives an unknown/failure status.
+7. **REPLAY_RECOVERED:** after reboot, valid on-disk state is rederived without relying on volatile client/driver state.
+
+FS_COMMIT can precede a successful reply that gets lost; thus receipt-observed is *not* a physical commit marker. A crash at any boundary requires a defined surviving state and cannot result in contradictory allocated/free metadata or accepting invalid authentication.
+
+### 15.2 Formal ordered dependency DAG candidate
+
+~~~text
+Write data/extent new version
+  -> Sync data blocks needed for next root
+  -> Sync allocator/inode/extent/necessary namespace metadata
+  -> Journal/root commit with suitable barrier and version
+  -> DurableReceipt for scope if no recorded error
+  -> Later checkpoint/home-block update / old-root GC
+~~~ 
+
+The actual DAG depends on journal vs CoW choice: a full WAL may persist log records and commit before home data blocks; a metadata journal/ordered data needs different ordering. **Do not freeze the schematic above as one universal write algorithm.** It is a proof checklist for dependency edges and the point after which the result becomes observable as durable.
+
+### 15.3 Queue and shutdown race
+
+An IRQ for write completion can race storage DriverHost death, device reset, timeout, Pager rebind, FileSync cancellation, user Task termination or revoke B/R1/R2-F. Every event must test volume/device/driver generations. An old completion cannot pay down a new generation's durability barrier. Device DMA pin releases follow RFC-007 physical fences independent of the filesystem's commit status.
+
+### 15.4 Time and recovery deadlines
+
+Storage might not respond within any bounded time after power failure or controller hang. RFC-005 M0 minimum CPU entitlement may allow an error/fail-stop response while a critical store waits, but does not guarantee disk contents, flush completion or whole-volume repair. A timeout should terminate retry attempts; it is not evidence that hardware has stopped writes or a transaction has not persisted.
+
+## 16. Failure/attack matrix
+
+| Scenario | Forbidden shortcut | Required proposed response |
+|---|---|---|
+| App BufferedWrite successful, sudden power loss | "Saved" implies bytes survive | visible/dirty only unless separate durable sync |
+| NVMe write completion with volatile cache | device completion = persistent | explicit flush/FUA and device trust conditions |
+| Device has no known flush support | silently return fsync success | UNSUPPORTED_SYNC/degraded or read-only |
+| Two NVMe queues reorder log and data | journal commit first -> dangling pointers | enforce cross-queue ordering/barriers |
+| Controller firmware lies about Flush | fsync guaranteed universally | label hardware trust assumption, deny stronger profile |
+| Rename replacement then power loss | rename atomicity = on-disk name survives | file+affected directory dependency sync |
+| Temp file data fsync, directory not fsynced | new filename promised durable | explicit DirectorySync/namespace durability |
+| File unlink while open | immediately reclaim same blocks | orphan references + crash cleanup |
+| fdatasync after allocate extent | contents persisted but metadata omitted | include metadata needed to read bytes |
+| User modifies mmap page during writeback | old completion marks new dirty gen clean | per-generation snapshot/recheck and sync barrier |
+| Pager dies with dirty pages | detach guarantees writeback | report pending/lost, preserve if possible |
+| StorageHost restarts during Flush | old reply satisfies new sync | epochs, hardware evidence and reconciliation |
+| IPC COMMITTED after client timeout | durable transaction succeeded | result UNKNOWN; query persistent journal |
+| Transaction written but receipt lost | blind resubmit commit | idempotency key + recovery lookup |
+| Metadata journal valid, latest file bytes lost | full user data durable claimed | clearly separate metadata consistency vs data |
+| Log header torn write | replay random bytes as valid | checksum/version and safe valid-prefix/abort |
+| Malicious disk returns old valid checksum root | checksum = malicious rollback prevention | trusted epoch/authenticated root or no claim |
+| Disk flips bit inside system executable | signed loader enough | read-time verity check; failure safe |
+| Snapshot retention fills volume | delete appears to free bytes | account snapshot refs; bounded emergency GC |
+| ENOSPC while committing CoW root | overwrite last known good root | reserve commit space, atomic root policy |
+| Read-only rescue mounting corrupt user disk | replay with full write privilege automatically | explicit separate auth + safe RO inspection |
+| A/B B migrates V1→V2 before Good | A rollback guarantees data readable | schema-compatible fallback/snapshot or deny |
+| Floor raised while rescue not bootable | old slot still guaranteed usable | gate floor on actual rescue+media and data format |
+| Unexpected reset takes down storage+Pager | CPU recovery equals storage recovery | safe error/fail-stop per reset-coupling |
+| DMA quiesce fails | pinned page can be cleaned/reused | RFC-007 quarantine and no forged persisted result |
+| Data under encryption key revoked | valid disk means readable | key availability independent |
+| Linux guest root passes raw LBA | native filesystem access granted | typed device/volume caps only |
+| Cross-filesystem rename attempted | one atomic native filesystem operation | no cross-volume atomic guarantee |
+| Recovered FS has orphan extents | leak forever or double free | bounded replay/refcount correction |
+| App tries path traversal through symlinks | DirectoryCap scope bypassed | component-by-component namespace cap authority |
+| QEMU power-cut simulation success | production SSD PLP confirmed | explicit simulated evidence label |
+| Device removed mid-fsync | success with fabricated durable receipt | lost/error/unknown, hardware trust failure |
+| Malicious rollback of valid FS root | checksum detects old-but-valid data | define anti-rollback separately if required |
+| Persistent boot retry counter stored in normal VFS | dying VFS controls secure floor | separate trusted boot metadata writer |
+| Recovery daemon itself demand-paged by broken drive | deadlock during repair | M0 wired critical path or fail-stop |
+
+## 17. Proposed correctness/security invariants FS-01…FS-42 — NOT verified
+
+| ID | Proposed invariant — no validation claim |
+|---|---|
+| FS-01 | IPC COMMITTED, buffered-write visible, storage IO completed, FS committed and durable receipt are distinct predicates. |
+| FS-02 | FileSync success covers a declared file byte/metadata dependency set and compliant hardware persistence profile. |
+| FS-03 | File contents synced does not imply directory entry synced; naming durability needs explicit namespace commit. |
+| FS-04 | Atomic runtime rename visibility is not equated with persistence or a cross-volume transaction. |
+| FS-05 | Flush/FUA ordering is enforced across relevant queues and layer boundaries before any strong durable receipt. |
+| FS-06 | Unsupported/failed device flush cannot silently produce a strong durable receipt. |
+| FS-07 | Controller volatility/PLP/sector atomicity are explicit hardware assumptions, not inferred from an NVMe label. |
+| FS-08 | Torn log writes and checksum failures cannot be replayed as known-valid committed metadata. |
+| FS-09 | Crash recovery under declared block behavior yields a valid prior committed state or explicit corrupt/unavailable status. |
+| FS-10 | Journal or snapshot metadata consistency never automatically claims survival of every unsynced user byte. |
+| FS-11 | On-disk transaction replay is idempotent across multiple repeated crashes/power cuts. |
+| FS-12 | Journal root/commit sequence guards ABA and rejects stale generations under stated checksum assumptions. |
+| FS-13 | DurableReceipt does not grant FileCaps or new I/O authority and is bound to file/volume/epoch/scope. |
+| FS-14 | Old StorageHost/FS service generation completions cannot mark new work as flushed or durable. |
+| FS-15 | Buffered writeback errors persist as observable error epochs until legitimately acknowledged by every relevant client. |
+| FS-16 | File Pager detach, Task exit or object close does not silently discard dirty data while reporting durable success. |
+| FS-17 | Concurrent new dirty writes survive earlier writeback completion without incorrect CleanDurable transition. |
+| FS-18 | mmap faults and PagerSupply cannot authorize a foreign MemoryObject or suppress file backing generation checks. |
+| FS-19 | Outstanding DmaPin/IRQ/DeviceGroup refs and safety fences remain independent of storage command completion. |
+| FS-20 | Dirty RAM, unflushed journal and snapshots have bounded charged budgets, distinct from protected M0 reserves. |
+| FS-21 | ENOSPC/QUOTA_DENIED does not destroy a provably committed prior FS state through unchecked allocation/reclaim. |
+| FS-22 | Multi-volume operations cannot claim one atomic commit without a separate proven coordination protocol. |
+| FS-23 | Path traversal and mount operations respect DirectoryCap/NamespaceRoot and do not follow hostile links outside scope. |
+| FS-24 | FileID/inode reuse/renamed mount does not resurrect stale capabilities of another security owner. |
+| FS-25 | Unlink/truncate with live references preserves needed extents or reconciles orphan refs after crash. |
+| FS-26 | Data authenticity relies on authenticated root/manifest; a checksum alone cannot resist adversarial rollback/substitution. |
+| FS-27 | Read-only signed image pages are authenticated on load/use under approved trust policy, not by name-only lookup. |
+| FS-28 | Encryption/key availability and volume integrity/durability/availability have separate predicates. |
+| FS-29 | A signed A/B slot does not imply old software can read user data migrated by new B. |
+| FS-30 | Secure floor/slot writer authority is not granted to normal VFS/DataVolume writer by registry identity. |
+| FS-31 | Power cut after an observed strong durable receipt retains promised file/namespace state under stated device assumptions. |
+| FS-32 | Failed/timed-out operation does not assert absence of side effects or safe blind retry. |
+| FS-33 | Non-idempotent replay requires durable transaction identity and deduplication or exposes UNKNOWN_REMOTE_EFFECT. |
+| FS-34 | FileSync/DirectorySync/Transaction scope is explicitly named, not inferred from generic close() or GUI "Saved". |
+| FS-35 | Corrupt volume may enter read-only rescue/failed state without running a writable parser in Ring 0. |
+| FS-36 | Critical recovery filesystem/StorageHost path has wired executable, IRQ, queue, DMA and CPU resources or fails boundedly. |
+| FS-37 | A file system replay/repair deadline is conditional on functioning hardware; timer expiration does not invent success. |
+| FS-38 | Checkpoint/CoW GC does not silently discard still-live snapshot/older valid root until proven safe. |
+| FS-39 | Disk block address and untrusted POSIX UID/path never authorize access to host boot metadata or foreign volumes. |
+| FS-40 | Storage reset/DMA fencing cannot retroactively undo already persisted writes or restore corrupted data. |
+| FS-41 | Physical disk loss and dishonest firmware are stated exclusions from software-only durable recovery proof. |
+| FS-42 | Emulator power-cut result is distinguished from physical NVMe cache/PLP and reboot/rescue reliability evidence. |
+
+## 18. Comparative feasibility/TCB decision matrix
+
+| Candidate | Advantage | P0 risk | Possible refusal reason |
+|---|---|---|---|
+| STORE-A immutable system + separate data service | trust/update separation, simple early verified boot, scoped writable risks | real block flush/rollback/data schema; userspace FS crash TCB | fails if no independent wired boot storage reader |
+| STORE-B adapted existing format | mature on-disk ecosystem, data tooling potential | licensing/reader-writer correctness, parser and journaling parity, compatibility | only read parser exists, unsupported license or no crash-consistent writer |
+| STORE-C new CoW/checksum FS | snapshots, on-disk root model, checksum opportunity | ENOSPC, GC/refcount, space amplification, root durability, many unsolved races | proof surface dominates rest of OS before basic desktop |
+| STORE-D metadata journal with explicit data ordering | known recovery ideas and bounded normal paths | data vs metadata exposure, journal resource and flush ordering | cannot define persistent semantics on selected hardware |
+| STORE-E read-only early-only | smallest write integrity TCB, signed image possible | not full general-purpose user desktop | insufficient end-state features |
+
+**Comparative gates:** no algorithm selection without (1) signed/verified read-only image provenance, (2) crash-state model, (3) selected device flush/atomic write assumptions, (4) file/namespace sync API, (5) allocation/ENOSPC proof, (6) isolated user-space VFS attack surface, (7) license and third-party artifact provenance, (8) physical PC plan. Native storage format and POSIX facade can evolve independently only if precise semantic mapping is documented.
+
+## 19. Formal state model and future fault injection plan
+
+### 19.1 Finite state space (research only)
+
+Model 2 files+2 directories, 1 parent FileCap, 2 client writers, 1 shared mapped page with dirty gen v/v+1, 2 device queues, 1 volatile write cache, 2 journal/CoW roots, 2 service incarnations, 1 DMA pin, a small ENOSPC space budget, 1 snapshot, A/B slots+DataVolume schema v1/v2, 1 hardware Flush that can fail/lie and 1 persisted writeback error epoch.
+
+Transitions: create, buffered write, rename, unlink, truncate, mmap write, fault, FileSyncData, DirectorySync, transaction begin/commit, IO enqueue/completion, cache flush/FUA, queue reorder, partial sector write, process crash, controller reset, power cut, replay valid-prefix selection, failed journal checkpoint, snapshot GC, rollback from B to A, secure floor promotion.
+
+### 19.2 Safety counterexamples to enumerate
+
+- FileSync acknowledges but after power cut written bytes unreachable because directory entry not persisted.
+- Rename new path visible and previously closed old file lost after power cut, despite no namespace sync.
+- Journal commit record persisted before referenced data/extent due to queue reorder.
+- New dirty page modification v+2 falsely marked clean by older v+1 completion.
+- FileSystemService restarts while old device writes in flight and reuses old buffer without physical fence.
+- fsync delayed write error overwritten/forgotten by new handle or service generation.
+- Power failure at 2-phase CoW root/boot slot update picks an unauthenticated/half-written root.
+- Snapshot reference leaks block after unlink or double-free on repeated replay.
+- Power failure during checkpoint causes old WAL/log to be garbage-collected before durable home blocks.
+- DataVolume schema V2 blocks older A after B fails, although A's boot binary verified.
+- Encrypted user volume key unavailable: mount appears "successful" without readable user data.
+- One logical transaction commits in RAM but its receipt lost; client retries and performs external effect twice.
+- Malicious app tries to open raw host boot partition through forged VolumeID/path/guest UID0.
+- Corrupt mount metadata triggers unbounded recursive parser and consumes M0 recovery reserve.
+
+### 19.3 Future experiments after separate Go only
+
+1. Deterministic simulated block backend with random command reordering, volatile cache, drop/reorder flush, partial/torn sectors and "device lies" mode to characterize claims. Model failure only—not actual user data operations.
+2. Every instruction/log stage power-cut campaigns against a *sacrificial test image*; recover independent checker and replay multiple consecutive crash cycles.
+3. Reference PC dedicated removable/sacrificial NVMe/SSD: verify controller VWC/FUA/Flush features and power-loss behavior against known good data, with user storage never in scope.
+4. Disk full while preserving journal reserve, snapshot retention and CoW checkpoint; verify old committed root never incorrectly discarded.
+5. Storage driver restart + DMA R2-F fail/quarantine, dirty Pager, disconnected FS service, IRQ storms and post-UEFI timer assumptions.
+6. File rename/create/unlink over two directories, fsync file and directory combinations; compare observed exact persistence envelope.
+7. Virtualized guest requests fsync and errors through POSIX interface: no false success on unsupported hardware, no guest root/native volume escalation.
+8. A/B trial during user schema migration, floor advancement and interrupted snapshot merge; confirm physical rescue readability if targeted.
+9. Future throughput/latency p50/p95/p99 write, FileSyncData/DirectorySync, metadata journal/WAL/CoW root, rebuild time and write amplification on specified hardware.
+10. Security and memory-safety reviews of chosen existing filesystem parser/library, format fuzz and full license/provenance audit prior to code import.
+
+**None have been executed for UniOS**. Formal model language TLA+/Alloy or equivalent is a future decision; proposing a model is not a completed proof.
+
+## 20. Open design blockers O8-01…O8-36
+
+| ID | Priority | Unresolved research question | Co-review |
+|---|---|---|---|
+| O8-01 | P0 | STORE-A separate immutable SystemImage/DataVolume and whether writable FS STORE-B/C/D? | 004/006/008 |
+| O8-02 | P0 | End-to-end bounded DurableReceipt state and exact trusted issuer/scope? | 003/004/007/008 |
+| O8-03 | P0 | Selected NVMe/other drive VWC/Flush/FUA and error/partial write ordering? | 007/008 |
+| O8-04 | P0 | Write/cache/metadata/journal ordering across queues/namespaces with verified barrier? | 007/008 |
+| O8-05 | P0 | FileSyncData/metadata vs DirectorySync/rename/create post-crash contract? | 008/009/010 |
+| O8-06 | P0 | Torn sector/atomic write size/partial overwrite and recovery log root consistency? | 008/015 |
+| O8-07 | P0 | Dirty-generation snapshot vs mmap/truncate/COW concurrency, Pager rebind? | 004/008 |
+| O8-08 | P0 | Delayed writeback error delivery across multiple handles/client epochs/service crashes? | 003/004/008 |
+| O8-09 | P0 | StorageHost reset and R2-F DMA memory quarantine vs disk commit uncertainty? | 006/007/008 |
+| O8-10 | P0 | Bounded journal/CoW replay with ENOSPC, corrupted log and repeated power cut? | 006/008 |
+| O8-11 | P0 | Wired storage driver/Pager bootstrap, program bytes and protected buffer/CPU/IRQ cut? | 004/005/006/007/008 |
+| O8-12 | P0 | A/B floor vs rescue/image physical durability and user-data schema migration? | 006/008/017 |
+| O8-13 | P0 | Boot/slot metadata durable writer independent of ordinary VFS and UEFI NVRAM claims? | 006/008/017 |
+| O8-14 | P0 | Power loss "sync success" under dishonest device/FTL/controller firmware? | 007/008/015 |
+| O8-15 | P0 | File namespace cap/path traversal/symlink TOCTOU, mount authority and guest root scope? | 002/008/009/010 |
+| O8-16 | P0 | Full crash-consistency contract of existing format/third-party filesystem implementation and license? | 008/015/018 |
+| O8-17 | P0 | Transaction replay/dedup query following ambiguous IPC/device completion? | 003/008 |
+| O8-18 | P0 | Trusted immutable SystemImage per-page verification root/key authority and failed page behavior? | 004/006/008/017 |
+| O8-19 | P1 | File/DirectoryCap lifetime, inode reuse and orphan blocks after unlink/restart? | 002/008 |
+| O8-20 | P1 | Concurrency of FileSync snapshot vs later app writes and background writeback? | 004/008 |
+| O8-21 | P1 | Async journal commit batching/performance vs actual durability semantics? | 005/008 |
+| O8-22 | P1 | GC/CoW snapshot quota, emergency free space and root rollback? | 004/008 |
+| O8-23 | P1 | System partition vs user DataVolume mounts and mutable package/app state? | 006/008/011 |
+| O8-24 | P1 | Full KABI/vfs user API errors on partial/unknown sync, fdatasync and msync? | 008/009/010 |
+| O8-25 | P1 | Block LBA/partition/volume grant narrowing and compromised FilesystemService? | 002/007/008 |
+| O8-26 | P1 | Data integrity checksums vs malicious rollback protection and encryption keys? | 008/016/017 |
+| O8-27 | P1 | Multi-volume snapshot and transaction expectations for compatibility guests? | 008/010 |
+| O8-28 | P1 | Physically honest hardware fault reporting, ECC, bad sectors, namespace format? | 007/008 |
+| O8-29 | P1 | Suspend/hibernate/writeback and power-loss caches/clock domain semantics? | 005/006/008 |
+| O8-30 | P1 | Safe read-only degraded mode, replay on corrupted volume and user consent to repair? | 006/008/016 |
+| O8-31 | P1 | File and directory metadata normalization/case/symlink native vs guest semantics? | 008/009/010 |
+| O8-32 | P1 | Power-loss testing harness evidence and comparator oracle/false passes? | 008/015 |
+| O8-33 | P1 | Durable user-data migration and rollback compatibility after B Trial and user writes? | 006/008/017 |
+| O8-34 | P2 | TRIM/discard, thin provisioning, deallocated reads and advanced NVMe namespaces? | 007/008 |
+| O8-35 | P2 | Remote filesystem/net storage and independent server/fsync guarantees? | 008/010 |
+| O8-36 | P2 | Whole-volume backup, incremental snapshot replication, ransomware rollback, recovery key UX? | 008/016/017 |
+
+## 21. Proposed decision register FS-D01…FS-D20 — NOT Accepted
+
+- **FS-D01:** STORE-A immutable verified SystemImage and separately scoped writable DataVolume with userspace FS/VFS is primary research hypothesis, not final filesystem selection.
+- **FS-D02:** STORE-B mature format, STORE-C native CoW, STORE-D metadata journal and STORE-E read-only remain evidence-driven alternatives.
+- **FS-D03:** Kernel enforces caps/memory/IPC/DMA/IRQ, not general inode/path/journal parsers by default; FS is asset-specific user-space TCB-S.
+- **FS-D04:** Distinguish accepted buffered write, storage device ACK, filesystem commit, hardware flush/FUA and scoped strong DurableReceipt.
+- **FS-D05:** Strong sync return requires declared file bytes/inode/directory namespace dependency plus compliant hardware barrier; unsupported flush denies strong durability.
+- **FS-D06:** Namespace rename visibility and crash persistence differ; FileSyncData and DirectorySync/Transaction must be explicit.
+- **FS-D07:** Default metadata journaling alone cannot advertise full user-data power-loss durability; chosen algorithm requires precise guarantee.
+- **FS-D08:** Writes and mmap dirty/writeback carry generation and sponsor; old completion does not clean newer dirty contents.
+- **FS-D09:** Async writeback errors must be observable after successful buffered writes and survive relevant client/server changes until accounted.
+- **FS-D10:** StorageHost/FilesystemService death does not undo committed IO, drain DMA or make old pending FS requests atomic rollback.
+- **FS-D11:** R0/B/R1/R2-F/R2-O and DeviceGroup isolation remain separate from persistent media order or filesystem commit.
+- **FS-D12:** Journal/WAL/CoW replay must be idempotent and bounded or return corruption/read-only/fail-stop rather than fabricate repaired user data.
+- **FS-D13:** User path resolution/mount/namespace access derives from File/DirectoryCaps; guest UID0 doesn't grant whole disk/root native rights.
+- **FS-D14:** Verified SystemImage needs authenticated content hash roots and on-read checks under RFC-017 policy; integrity not equivalent to confidentiality.
+- **FS-D15:** A/B slot-good and floor writer stay outside ordinary DataVolume; data schema versions and rollback eligibility jointly considered.
+- **FS-D16:** M0 must not depend on a demand-paged storage/VFS/Pager path to load/recover itself; fatal media failure can stop safely.
+- **FS-D17:** Snapshot/GC and ENOSPC are budgeted; space reclamation cannot break committed prior root/refcounts.
+- **FS-D18:** No stable POSIX/Windows/Darwin mapping, on-disk FS format, atomic block size or numeric timings adopted before RFC-009/010/018 and real device evidence.
+- **FS-D19:** Product claims name the hardware/power fault model; QEMU results and physical NVMe PLP/Flush reliability have distinct evidence levels.
+- **FS-D20:** All FS choices and R1 exit gates remain Proposed; no implementation, boot metadata writes, real power-cut test or third-party code imports authorized.
+
+## 22. Cross-RFC integration and conflict register
+
+| RFC | Interface/proof needed |
+|---|---|
+| RFC-001 | kernel vs userspace FS parser/TCB, ring-0 privileged IO only through typed authority |
+| RFC-002 | Directory/File/Volume capabilities, sponsor and actual shared block/pin/file lifetime |
+| RFC-003 | queued IPC COMMITTED/UNKNOWN vs durable transaction; rebind/idempotency after service death |
+| RFC-004 | PagerBind/FaultWaiter generations, M0–M3 staging, writable mmap dirty/writeback, OOM dirty frame safety |
+| RFC-005 | bounded dirty/replay/flush worker CPU/IRQ and recovery reservation, no implicit client→server CPU donation |
+| RFC-006 | boot trust/immutable image, M0 read-only bootstrap, A/B trial/Good/floor/eligible real rescue |
+| RFC-007 | NVMe I/O/DMA/IRQ, device cache vs physical R2-F, reset impact, volume IOVA/dirty pin sponsor |
+| RFC-009 | native FileCap/FileSync/DirectorySync/DurableReceipt semantics and ABI versioning |
+| RFC-010 | Linux POSIX fsync/fdatasync/msync/rename, fd tables and errno without global guest hardware rights |
+| RFC-011 | packaging/update and app install on verified vs mutable volumes, permission and version migrations |
+| RFC-015 | malicious FS image parser fuzz, power-cut failure state model, delayed writeback error and data-corruption detection |
+| RFC-016 | user portal/file permission and recovery encryption/user-data consent |
+| RFC-017 | system image root authenticity, boot floor/slot counters, authenticated rescue, keys and data rollback |
+| RFC-018 | persistent format version, FileID/reply/gen, logical errors, transaction records and native vs guest statuses |
+
+**Joint P0 groups:** (003+004+007+008) writeback→DMA→storage completion→FileSync result; (006+008+017) slot/floor/crash metadata, signed image/rescue and data schema; (002+008+009+010) namespace capability vs guest VFS API; (004+005+006+008) M0 boot storage/Pager deadlock. No single service declaring "Ready" proves these integration boundaries.
+
+## 23. Design research exit gates and next review
+
+**RFC-008 v0.1 R1 storage-design gate: OPEN/NOT PASSED.** Before selecting writable FS/claims:
+1. Draw typed File/Directory/Volume/BlockDevice authority and sponsor graph including raw block escalation and hostile guest path.
+2. Build complete durability partial-order graph for write, file create, rename, multi-file transaction, journal/CoW root, Flush/FUA and directory sync; identify exact reply commit point.
+3. Model honest volatile cache, failed Flush, reordered queues and torn/partial sectors; enumerate every power-cut point, recovery outcome and ambiguous reply.
+4. Formally separate metadata crash consistency, latest data survival, malicious rollback/authenticated image, confidentiality and independent backups.
+5. Verify dirty page generations, concurrent mmap writers/truncate and delayed writeback errors after Pager/StorageHost restart, ENOSPC and forced RO.
+6. Cost staged M0 immutable boot and reserved early storage stack without file self-Pager dependency.
+7. Compare STORE-B/C/D with equivalent failure assumptions, user-space filesystem asset TCB, legal/third-party code licensing and real hardware usability.
+8. Propose exact Reference PC/drive VWC, Flush/FUA, PLP, atomic unit, controller reset and DMA conditions; emulator is not physical assurance.
+9. Model A/B trial good/secure floor vs user schema migration, snapshot space, physically accessible rescue and independent trusted slot writer.
+10. No approval until explicit Go/No-Go and comprehensive adversarial v0.2 review; do not use real user data disks in any future tests.
+
+**Next research:** Adversarial second review RFC-008 v0.1→v0.2 (as done for RFC-001…007), then prioritize RFC-017 Boot Trust/Update and RFC-009 Native ABI/File API interface alignment. The overall eight D1–D8 accepted directions remain unchanged. This is a proposal, not a statement that tests or products exist.
+
+## 24. Official primary references and interpretation notes (researched 2026-10-24)
+
+- **[S1] Linux block volatile write cache / REQ_PREFLUSH and REQ_FUA:** https://docs.kernel.org/next/block/writeback_cache_control.html
+- **[S2] Linux fsync(2), fdatasync and directory entry durability:** https://man7.org/linux/man-pages/man2/fsync.2.html
+- **[S3] Linux ext4 JBD2 journaling and metadata/data distinction:** https://docs.kernel.org/filesystems/ext4/journal.html
+- **[S4] SQLite atomic commit and powersafe overwrite assumptions:** https://www.sqlite.org/atomiccommit.html
+- **[S5] SQLite WAL checkpoint and crash lifecycle:** https://www.sqlite.org/wal.html
+- **[S6] SQLite PRAGMA synchronous durability policy:** https://www.sqlite.org/pragma.html
+- **[S7] Linux iomap file writeback and error accounting:** https://docs.kernel.org/filesystems/iomap/operations.html
+- **[S8] Linux fs-verity read-only Merkle content authentication:** https://docs.kernel.org/filesystems/fsverity.html
+- **[S9] Linux dm-verity read-only block verification:** https://docs.kernel.org/admin-guide/device-mapper/verity.html
+- **[S10] Android current Virtual A/B snapshots/merge and boot dependency:** https://source.android.com/docs/core/ota/virtual_ab
+- **[S11] PostgreSQL WAL writer and fsync methods:** https://www.postgresql.org/docs/current/runtime-config-wal.html
+- **[S12] NVM Express official NVM Command Set (2026 Revision 1.3):** https://nvmexpress.org/specification/nvm-command-set-specification/
+- **[S13] Linux errseq_t and multiple observer writeback error sampling:** https://docs.kernel.org/5.16/core-api/errseq.html
+- **[S14] Linux ext4 orphan file cleanup after crash:** https://docs.kernel.org/filesystems/ext4/orphan.html
+- **[S15] Linux DMA API mapping vs hardware operation lifecycle:** https://docs.kernel.org/core-api/dma-api-howto.html
+- **[S16] PostgreSQL introduction to WAL and crash recovery:** https://www.postgresql.org/docs/current/wal-intro.html
+
+**Interpretation:** Official external documents describe existing systems and standards. They do not prove UniOS safety or authorize copying third-party filesystems. License/provenance review is separate from selecting a design idea. Actual device behavior and correctness require verified platform-specific evidence.
+
+---
+
+**History:** 2026-10-24 — RFC-008 v0.1 Proposed Specification drafted for architecture research; no code, filesystem implementation, driver, boot, disk formatting, hardware experiment, power interruption test, model checking or validated performance result.
