@@ -133,3 +133,140 @@ HPA-B is *not* automatically insecure because public token values appear before 
 
 K-Vm must account for confidential length/count/type/rights/status metadata when issuer classifies it as private. K-Vp precedes any possibly observable payload store/map. K-HP may reveal numeric token values and authorized native cap metadata even if K-I is denied; such publication must be charged to the same recipient audience and possibly terminalize redelivery if metadata is secret. Count/size errors are not automatically safe public oracles. Under Endpoint MOVE, Task death, policy floor change or ServiceIncarnation transition, revalidate the claim's intended audience before each new disclosure and at K-I.
 
+
+## 5. Finite custody state and guarded transitions — paper model only
+
+This is **human-readable contract research, not runnable pseudocode**. B is the legitimate receiving Task, C a different Task, B2 a later service incarnation, R a grant controller. A Channel contains two **distinct E1 Endpoint halves**. Only the intended receiver Task-generation may accept a claimed message. A message has at most two MOVEd grants and one bounded queue slot.
+
+| State | Actual custodian | User token bits | Native cap usability |
+|---|---|---|---|
+| HS-00 Queued | kernel Channel queue | none | no new B grants |
+| HS-01 Claimed | kernel exclusive receiver claim escrow | none | inert |
+| HS-02 Reserved | same claim, charged fixed recipient token IDs | token values not yet published | inert |
+| HS-03 Exposed | claim; first sensitive store/map may have happened | none/some/all copied | inert |
+| HS-04 Staged | claim; complete output-copy attempt recorded | all copied *when attempted*, can later mutate | inert |
+| HS-05 CommittedT1 | B Task owns complete vector; queue retired | reserved IDs resolve to native B grants | all-or-none live if not revoked |
+| HS-06 InertT2 | receiver-specific escrow, issuer validated | reserved IDs can be visible | inert until independent K-U |
+| HS-07 ReleasedT2 | B live vector after trusted release | same appropriate public IDs | current scoped grants live |
+| HS-08 Terminal | all grants closed, pending cleanup, or charged quarantine | old IDs never reused for unrelated grants | none newly activated |
+| HS-09 ObserverUnknown | **epistemic condition only**, not another actual kernel ownership state | any | query or fail closed |
+
+Expose and terminal flags are orthogonal to custody state: a message can be terminalized after some data was observable but before any cap becomes active.
+
+| Step | Mandatory guard / event | Authoritative transition |
+|---|---|---|
+| HP-01 | valid current ReceiveHalf owner and issuer-approved audience; protected slot preidentified | establish K-C exclusive claim |
+| HP-02 | Task public token capacity + escrow memory/queue credits available | K-HR reserve distinct nonrecycled inactive destination token IDs |
+| HP-03 | authorization for confidential size/type/rights data, same Task/Endpoint epoch | K-Vm mark possible metadata visibility prior to disclosure |
+| HP-04 | immutable bounded bytes staging and valid audience, before first payload/map store | K-Vp mark possible byte disclosure |
+| HP-05 | claimed receiver output ranges/alias policy and M0-safe usercopy | K-HP may copy some or all tokens; token bits **do not activate rights** |
+| HP-06 | entire staged output copy attempt completed; claim still current | mark K-STAGE; cannot assert caller Thread read or retained output |
+| HP-07 | explicit receiver AcceptCommit on genuine scoped claim; owner/rights/lineage/revoke and quota current | **K-I** installs entire native T1 grant vector AND retires queue/claim atomically, or none |
+| HP-08 | optional T2 independent trusted release on exact cap vector and latest PolicyEpoch | K-U activates only approved inert grants after live B recheck |
+| HP-09 | authenticated preidentified Task scoped claim-slot result query | K-Q returns actual kernel K-I/terminal truth, not external effect truth |
+| HP-10 | claim abort before any secret metadata/payload exposure, original eligibility still valid | optional bounded requeue; burn token reservations |
+| HP-11 | exposure possible or receiver death/owner changed after exposure | K-T terminal settlement, **never** deliver same message to C/B2 automatically |
+| HP-12 | B revoke wins before K-I/K-U | no new native authority from revoked lineage; escrow settles |
+| HP-13 | K-I wins before B, then controller publishes revoke | existing admitted work handled by R1/R2-F and effect receipt separately |
+| HP-14 | stale claim or resource cleanup cannot finish, device fence pending | sponsor-charged quarantine/bounded M0 cleanup, no false R2-O |
+
+K-I and R-B must have one defined linearization order. K-I versus terminalization and two concurrent AcceptCommit calls must also have a **single winner**. Claim reservation and output preflight cannot be assumed to pin mutable user mappings forever; however usercopy must never run under a global kernel lock which can deadlock the Pager. K-STAGE does not imply the initiating Thread read any value: a malicious Task can AcceptCommit without looking, and another Thread can copy the token array.
+
+### 5.1 Receive result and lost-return contract
+
+A ClaimReference must be *known before the vulnerable return* (a preauthorized Task-local slot) or recoverable through authorized bounded enumeration. A fresh ClaimID only supplied in a result whose delivery can fail is **not** sufficient. Once K-I commits, losing the AcceptCommit return cannot undo grants. K-Q can truthfully answer whether K-I happened for that scoped claim, but cannot prove the original Thread observed success, nor that a remote write was durable. Query must enforce Task generation and ClaimReference anti-ABA, message secrecy, bounded retained receipts and expiration. An expired ticket must never be recycled into an unrelated operation.
+
+### 5.2 Public token exhaustion and denial of service
+
+A malicious receiver can repeatedly stage a message, cause a fault after just one token-number store, abort, and attempt again. Strict never-reuse of exposed token identities can consume a finite public-token namespace without transferring a single live cap. **Fail-closed token exhaustion is a safety result**, but usable desktop availability requires proof of admission budget, expiration/terminalization, aggressive prevention of unnecessary publication and a sufficiently large Task token space. Never silently weaken anti-ABA to rescue performance.
+
+## 6. Counterexample schedules (HA-01…HA-20) — none executed
+
+| ID | Adversarial schedule | Forbidden result |
+|---|---|---|
+| HA-01 | B copies token #1, faults on token #2 before K-I | #1 later used to authorize unrelated grant |
+| HA-02 | Another B Thread tries published token before K-I | unauthorized native use from inert identifier |
+| HA-03 | K-STAGE completes; B mutates/unmaps output before AcceptCommit | proof that initiating Thread retained values |
+| HA-04 | K-I commits then return report lost | false no-install result / source rollback |
+| HA-05 | New ClaimID generated only in lost return path | claim magically discoverable |
+| HA-06 | Two B Threads simultaneously AcceptCommit one claim | duplicated cap vector or double-dequeue |
+| HA-07 | B holds queue claim forever without accepting | unbounded queue/Pager/M0 starvation |
+| HA-08 | ReceiveHalf moved B→C during stage before K-I | stale B receives active caps without new authorization |
+| HA-09 | B saw payload prefix; claim terminated; B2 started under same ServiceID | automatic confidential message replay to B2 |
+| HA-10 | Controller B barrier revokes G2 just before K-I on [G1,G2] | half-vector install or newly usable revoked G2 |
+| HA-11 | Controller B barrier after K-I but before new invocation | old Task allowed new revoked use merely due earlier receive |
+| HA-12 | T2 verifier authorizes claim X, attacker reuses permit for Y | wrong vector or wrong Endpoint rights release |
+| HA-13 | T2 verifier accepts P0, new issuer floor P1 before K-U | stale permit activates revoked/forbidden right |
+| HA-14 | guest reads message size without RECEIVE rights | metadata confidentiality breach via error/status |
+| HA-15 | byte/count/token buffers alias same backing pages | output corruption despite distinct virtual address ranges |
+| HA-16 | B Task killed, token bits copied, Task ID reused by B2 | token/claim/receipt valid in unrelated Task generation |
+| HA-17 | A sender dies after K-S while B stages | moved cap falsely returned to A; transit charge lost |
+| HA-18 | repeated aborted claims drain public handle token namespace | reuse vulnerable stale token rather than fail closed |
+| HA-19 | terminated claim closes DeviceCap while DMA pin still active | R2-F/R2-O falsely declared / frame prematurely recycled |
+| HA-20 | guest errno after K-I result lost implies no rights/effect | unauthorized blind retry or hidden native grants |
+
+## 7. Safety invariants and research decisions
+
+### 7.1 Twenty-four unproved properties (HA-I01…HA-I24)
+
+| ID | Unproved property |
+|---|---|
+| HA-I01 | Each E1 half has one effective owner; SendHalf and ReceiveHalf distinct. |
+| HA-I02 | K-S source MOVE remains committed even on later receive/activation errors. |
+| HA-I03 | Reserved Task-public token bits are never reused for an unrelated grant after possible publication. |
+| HA-I04 | An inactive published token number cannot invoke any native cap before authorized K-I/K-U. |
+| HA-I05 | K-I installs the entire moved grant vector in B or none and retires claim/queue in one cut. |
+| HA-I06 | Terminalization and K-I cannot both commit for one message/claim. |
+| HA-I07 | Concurrent AcceptCommit attempts cannot duplicate grants or create second receiver. |
+| HA-I08 | K-I must revalidate current Task/Endpoint generations, cap revocation and grant rights. |
+| HA-I09 | R-B revocation and K-I/K-U each have a definable total order and no post-B new authority. |
+| HA-I10 | Lost K-I result does not falsely signal no installation; protected query or Unknown. |
+| HA-I11 | A query ticket is preidentified or securely enumerable; lost newly minted ID alone is not sufficient. |
+| HA-I12 | Claim/status query cannot access another Task's results or fresh Task via ABA. |
+| HA-I13 | K-STAGE is copy-attempt completion, not a guarantee of user observation/retention. |
+| HA-I14 | Sender and receiver KABI states are not equivalent to external SABI effect completion. |
+| HA-I15 | K-Vm/K-Vp guard sensitive metadata and payload exposures before publication. |
+| HA-I16 | After exposure to B, same message is not silently requeued to different C/B2 audience. |
+| HA-I17 | Current issuer-approved audience is pinned/rechecked on Endpoint MOVE and service restart. |
+| HA-I18 | T1 bearer rights are limited to grants B is allowed even if schema invalid. |
+| HA-I19 | T2 K-U requires independent trusted verifier of live kernel grant identity and current policy. |
+| HA-I20 | Inert escrow and T1 staging are not equivalent to IDL method authorization. |
+| HA-I21 | Unreported live rights, terminal tombstones and unfenced DMA remain sponsor charged. |
+| HA-I22 | Handle close/terminal receive never proves device R2-F or storage effect rollback. |
+| HA-I23 | Critical M0 CPU/IPC/memory reserve not exhaustible by staged or abandoned claims. |
+| HA-I24 | Every property remains unproved and does not freeze code, a syscall or public ABI. |
+
+### 7.2 Open research gates (HA-O01…HA-O14)
+
+| ID | Priority | Question |
+|---|---|---|
+| HA-O01 | P0 | Can reserved token values be permanently nonreused and sponsor charged under Task exhaustion? |
+| HA-O02 | P0 | Is K-I all-or-none linearizable with R-B, owner MOVE and claimant death? |
+| HA-O03 | P0 | Is a preidentified scoped ClaimReference recoverable even when its initial reply is lost? |
+| HA-O04 | P0 | What explicit actor may AcceptCommit Task-scoped rights, and do identity-sensitive methods need narrower issuer consent? |
+| HA-O05 | P0 | How can copyout preflight/alias/Pager fault avoid global lock and partial token leaks? |
+| HA-O06 | P0 | Are staged queue slots and critical M0 costs bounded against malicious claimant stalling? |
+| HA-O07 | P0 | Does K-STAGE status semantics remain truthful under concurrent user-memory mutation? |
+| HA-O08 | P0 | How are caps, escrow and queue charge/accounting retained across sender/receiver death? |
+| HA-O09 | P0 | What is the exact separate trusted T2 verifier/issuer model at K-U vs B revoke? |
+| HA-O10 | P0 | Can terminalize-on-exposure avoid foreign redelivery without promising lossless availability? |
+| HA-O11 | P0 | Can HPA-C justify extra TCB and IPC relative to HPA-B without measured latency/memory budget? |
+| HA-O12 | P0 | How can signed/current issuer policy bind the Task+Endpoint audience without kernel SABI parser? |
+| HA-O13 | P1 | Which register-only fast path and batching alternatives preserve the core contract? |
+| HA-O14 | P1 | How should guest Linux fd/errno results report completed K-I with a lost userspace result? |
+
+### 7.3 Proposed decisions (HA-D01…HA-D12) — NONE Accepted
+
+- **HA-D01:** Keep E1/typed native Capability with full-vector MOVE as proposed baseline.
+- **HA-D02:** Study HPA-C as the first explicit activation cut model; not a chosen future shipping API.
+- **HA-D03:** Preserve HPA-A/B/R as serious candidates and compare TCB/performance without made-up measurements.
+- **HA-D04:** Reserve destination token numbers as inert before publication and never recycle possibly published ones.
+- **HA-D05:** Keep G in kernel escrow during HPA-C stage; source sender never regains G after K-S.
+- **HA-D06:** Treat T1 AcceptCommit's K-I as **the** RFC-003 atomic receive install/dequeue cut.
+- **HA-D07:** Use an authenticated preidentified Task claim/slot or safely scoped enumeration for lost return.
+- **HA-D08:** Do not call K-STAGE proof that any user Thread observed the payload.
+- **HA-D09:** Enforce monotonic K-Vm/K-Vp potential exposure and no automatic foreign requeue.
+- **HA-D10:** Distinguish T1 bearer acceptance from optional T2 trusted K-U authorization.
+- **HA-D11:** Keep terminal, orphan, token and DeviceGroup debt sponsored to true cleanup and fencing.
+- **HA-D12:** Keep all decisions Proposed, with no code, executable model, benchmark, syscall signature or ABI freeze.
+
