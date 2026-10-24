@@ -314,3 +314,83 @@ All cases are **paper counterexamples**, not tests, formal witnesses or bug repo
 - **RV-D15:** Preserve exact transport/receive exposure/method effect/scoped durability status without false no-effect guest errno.
 - **RV-D16:** Remain Proposed: no KABI signatures, syscall number, protocol byte format, model execution, code or product promise approved.
 
+
+## 11. Joint finite-model verification and phase ownership
+
+### 11.1 Minimal bounded model (future work only)
+
+Actors: sender A, initially authorized receiver B, competitor C, privileged kernel K, controlled revoker R, a Pager, finite-cap sponsor, SABI service incarnation S1 and successor S2, and optional device with never-fenced DMA.
+
+State per moved Grant: public source token validity, source rights, revocation family active/B, queue reservation and SEND cut, current transit custodian, ReceiveClaim claimant identity+generation, Exposed bit, bytes-prefix-written count, whole-vector installed/none, sponsor charge and resource terminal/physical cleanup. Separate Endpoint owner+invocation generation, cap type, mutable user buffer mapping, operation request slot and observable result state. Service effect state is intentionally **independent** from kernel message state. Use two grants (same source duplicated versus distinct independently derived grants), one Endpoint and one nested Channel graph for cycle check.
+
+Proposed actions:
+1. SnapshotBytes, Preflight, RevokeB, CloseHandle, MoveEndpoint, SendCommit, ReturnStatusLost.
+2. Claim, QuerySize, PrepareReceiverBuffer, MarkExposed, WritePrefix, FaultOnNextPage, InstallAllHandles, AbortClaim.
+3. RequeueIfUnexposed, TerminalizeIfExposed, ContinueSameClaimant, ReceiverDies, NewServiceIncarnation, CloseQueue, SettleUnknownResource.
+4. HoldClaimForever, SponsorDies, QuarantineDMA, ReleaseAfterFence, StatusQueryWith/WithoutKnownTicket, ReplyTimeout, BackendEffectBeforeReply.
+
+**Model assumptions needing explicit representation:** different authoritative generations (Task, Endpoint, claim, SABI instance); finite quotas/queue credit; no implicit atomic user buffer write; CPU scheduling and fairness; independent object roots; pre/post barrier B; hardware may never fence. The abstract model is not executable in this document and no state model was run.
+
+### 11.2 Safety checks
+
+- **MOVE conservation:** at most one custodian owns each moved specific Grant; independent derived roots are distinct grants, not duplicate MOVE outcomes.
+- **No rollback lie:** sender NOT_COMMITTED iff this queue operation truly failed pre-K-S; lost status doesn't establish that; unknown source handle not blindly retried.
+- **No second observer via queue replay:** once Exposed(M), no requeue/delivery to unrelated Task or new ServiceIncarnation. A duplicate already made **within same authorized Task** is irreversible and included in threat claim limits.
+- **Typed authority:** malformed SABI role, raw handle integer, reused public token and revoked queued grant cannot mint new rights or bypass current policy.
+- **Receive correctness:** full cap vector K-I or none, but any prefix output exposure is irreversible and tracked separately. No false all-or-nothing user buffer claim.
+- **P0 progress containment:** malicious claims/cyclic queues/receiver death do not consume all protected M0 cleanup/IPC/CPU capacity. Conditional liveness requires actual Pager/IRQ/hardware.
+- **Physical honesty:** closing moved DeviceCap never proves DMA R2-F, and closing queue never undoes backend storage/network effect.
+- **Report truth:** receive terminalization/exposure, service method admission, external effect and observed/durable receipt are distinct, including in guest ABI translation.
+
+### 11.3 Concrete proof dependencies
+
+| Joint work item | Authoritative owner | Follow-up textual correction or proof |
+|---|---|---|
+| Endpoint MOVE, self-send, cap-vector K-S | RFC-002/003 | type-specific rights and ownership linearization before/after E1 MOVE |
+| Exclusive claim, Exposed(M) and terminalization | RFC-003/009 | choose RCV-T1/T2, define bytes vs handle K-I, no foreign requeue |
+| Pointer aliases/Pager fault and pinned buffers | RFC-004/009 | copyin/out and task memory faults with no irreversible secrecy falsehood |
+| Preidentified ticket, status loss, anti-ABA | RFC-002/003/009 | protect discoverability and finite Task-scoped record enumeration |
+| Unknown resource role, cap usability and session policy | RFC-018 + 002/003 | userspace schema security under exact transfer semantics |
+| M0 CPU, queue cleanup, sponsor and device fence | RFC-005/006/007 | bounded critical reserve and hardware-quarantine debt |
+| File durability and non-idempotent effects | RFC-008 | ensure no SEND/RECV failure maps to remote effect rolled back |
+| Linux guest status/FD/exec semantics | RFC-010 | decline binary profile if an operation cannot truthfully represent ambiguous result |
+| Signed boot trust/Root | RFC-017 | not derived from transport ticket, ServiceID, ELF or IDL schema name |
+
+## 12. No-Go / design acceptance and revised roadmap
+
+**Joint CAPIPC R2 exit: OPEN / NOT PASSED.** The original RFC-003 E1 DERIVE inconsistency was editorially fixed before this review, but the remaining proof gates are much harder. Before considering a detailed E1 IPC contract Accepted:
+1. Document/send-commit linearization including source-vector snapshot, duplicate/revoke race, Endpoint MOVE, peer-closed/queue-full conditions and multi-cap all-or-none.
+2. Decide whether an Endpoint can enter its own/outgoing peer Channel payload; prove bounded cyclic queue/message cleanup or forbid permitted cycles.
+3. Pick and model a result-loss contract that remains meaningful **when any newly minted ticket ID was lost in the same return**; no blind MOVE retry.
+4. Define ReceiveClaim exclusive Task+Endpoint generation binding, source bytes/handle cap-vector staging and fixed quotas; no pageable lock/critical M0 deadlock.
+5. Prove conservative Exposed before first user-visible write and no requeue to *different* Task/incarnation after publication. Account for shared mappings and concurrent Threads.
+6. Prove full-vector K-I/cap rights while documenting non-atomic user-memory copyout and buffer-overlap failure behavior.
+7. Explicitly select CAP-BEARER received rights usable before SABI method decode or CAP-ESCROW inert until method admission, along with its trusted policy and cleanup.
+8. Define revocation B versus SEND K-S, claimed cap, K-I, already-admitted service effect and independent physical R1/R2-F/R2-O fences.
+9. Demonstrate finite sponsor/queue/claim/recursive-drop/IRQ/buffer reserves survive arbitrary client/receiver termination; liveness remains conditional.
+10. Distinguish successful transport, partial byte exposure, cap installed, method admitted, effect applied and scoped persisted status, including guest errors and deadlines.
+11. Compare Fuchsia receive/Channel semantics and seL4 IPC as **non-equivalent** alternatives; no semantics imported without separate proof and legal dependency review.
+12. Update normative *Proposed* parent RFCs only after their owners review this paper, and independently re-audit the resulting source documents before any implementation request.
+
+**Highest priority next research:** a **single bounded SEND–RECEIVE–REVOKE model specification** (TLA+/Alloy/pseudostate transitions *as design only*, with no executable model until explicitly permitted). In particular decide exact response after Exposed-but-K-I-failed and the fate of a committed message whose sender and receiver both die.
+
+**Implementation gate unchanged:** no kernel code, compiler, driver, physical reset, guest Linux runtime, ABI freeze or guarantee is authorized here. Any claim of "verified message atomicity", "zero copy without disclosure", or "reliable committed-result status" requires concrete future tests and proof that have not occurred.
+
+## 13. Official reference links
+
+- **[S1] Fuchsia Channel kernel object and transfer ordering/recursive lifetime:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/channel
+- **[S2] Fuchsia zx_channel_write and handle consumption/error/self-send restrictions:** https://fuchsia.dev/reference/syscalls/channel_write
+- **[S3] Fuchsia zx_channel_read full message, bytes-before-handles and overlap:** https://fuchsia.dev/reference/syscalls/channel_read
+- **[S4] Fuchsia zx_channel_read_etc type/rights and buffer-too-small:** https://fuchsia.dev/reference/syscalls/channel_read_etc
+- **[S5] Fuchsia FIDL wire format resource vectors and decoding validation:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/wire-format
+- **[S6] Fuchsia RFC-0033 unknown field/resource handling:** https://fuchsia.dev/fuchsia-src/contribute/governance/rfcs/0033_handling_unknown_fields_strictness
+- **[S7] seL4 IPC, endpoint badges and reply/cap transfer:** https://docs.sel4.systems/Tutorials/ipc
+- **[S8] Fuchsia kernel object lifetime and pending-message handle refs:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/objects
+- **[S9] Fuchsia zx_channel_write_etc and MOVE/DUPLICATE dispositions:** https://fuchsia.dev/reference/syscalls/channel_write_etc
+- **[S10] Fuchsia zx_handle_replace rights and source token invalidation:** https://fuchsia.dev/reference/syscalls/handle_replace
+
+Sources document **other implemented systems**, not proof of the UniOS speculative CAPIPC-A/RCV-T family. Especially **Fuchsia handle consumption on failed write conflicts with UniOS candidate E1 NOT_COMMITTED retains all source grants**, so adopting an external ABI is not a drop-in substitute. This re-review did not run tests or verify licenses for importing source code.
+
+---
+
+**Document history:** 2026-10-25 CAPIPC v0.2 independent adversarial re-review of [CAPIPC v0.1](capability-ipc-sabi-integration-contract-v0.1.md), retaining v0.1 as a separate Git record. Primary new finding: exclusive ReceiveClaim cannot roll back *partial user-byte publication*, so conservatively track Exposed before publication and forbid foreign/new-instance redelivery after exposure. Also tightened send/source/Endpoint ordering, self-send and Channel cycles, postcommit ticket discoverability, handle-usability before IDL decode, buffer overlap, revoke/claim/physical fence, sponsor/terminal cleanup, and external effect status. 28 unexecuted cases, 32 unproved invariants, 22 open research blockers, 16 Proposed decisions. **No code, model checker, formal proof, prototype or tests.**
