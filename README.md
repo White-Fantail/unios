@@ -43,6 +43,7 @@ There is no approved implementation schedule or supported-hardware catalog. Prog
 ## Architecture documents
 
 - **[Architecture & Research Design v0.2 — Official Draft](docs/architecture/unios-architecture-v0.2.md)** — current design baseline; eight accepted directions, system boundaries, unresolved risks, normalized ADR index, RFC research registry, security and validation gates, and research roadmap.
+- **[RFC-001 Kernel Boundary & Trusted Computing Base v0.2 — Proposed Specification](docs/rfcs/rfc-001-kernel-boundary-and-tcb.md)** — independently reviewed kernel/user-space responsibility split, asset-specific TCB, Linux guest execution alternatives, DMA/IOMMU group boundaries, and verification gates; not yet accepted or implemented.
 - [Five-Kernel Comparison & Feasibility v0.1 — Historical Research Draft](docs/architecture/kernel-architecture-and-feasibility-v0.1.md) — Linux, Windows NT, Apple XNU, FreeBSD, and Fuchsia Zircon comparison and earlier proposed designs. Preserved as research history; its “all decisions pending” status has been superseded by v0.2.
 
 ## Guiding principles
