@@ -1,6 +1,6 @@
 # UniOS RFC-017 — Verified Boot, Updates & Rollback Protection
 
-> **Status:** Proposed — Specification v0.1 (design research only; not Accepted, implemented, benchmarked, independently audited or formally verified)
+> **Status:** Proposed — Specification v0.2 (adversarial re-review; not Accepted, implemented, hardware tested, cryptographically audited or formally verified)
 > **Date:** 2026-10-24 NZDT
 > **Architecture:** [UniOS v0.2](../architecture/unios-architecture-v0.2.md) — D7 accepted as *direction*, this RFC NOT accepted.
 > **Cross-RFC:** [RFC-002 Capabilities](rfc-002-object-capability-lifetime-delegation-revocation.md), [RFC-003 IPC](rfc-003-ipc-wire-protocol-and-synchronization.md), [RFC-004 VM/Pager](rfc-004-virtual-memory-pager-cache-and-oom.md), [RFC-005 CPU/IRQ](rfc-005-scheduling-preemption-and-cpu-budget.md), [RFC-006 Boot/Recovery](rfc-006-boot-trust-chain-service-startup-and-recovery.md), [RFC-007 DMA](rfc-007-user-space-drivers-dma-and-iommu.md), [RFC-008 Storage](rfc-008-storage-filesystems-and-crash-durability.md).
@@ -9,6 +9,8 @@
 ## 0. Executive recommendation — TRUST-A as conditional research baseline
 
 **TRUST-A:** firmware UEFI-verified minimal EFI loader -> independently rooted UniOS BootPolicyManifest and exact kernel/BootBundle/M0 verification -> kernel-enforced small typed bootstrap grants -> runtime immutable SystemImage authentication -> TUF-inspired signed update repository with distinct Root/Targets/Snapshot/Timestamp roles -> crash-consistent A/B trial plus physically verified rescue -> monotonic hardware-policy security floor raised ONLY after independent healthy-success and verified usable rescue conditions. TPM measured boot is optional evidence, not code admission or proof of safety.
+
+**v0.2 critical corrections:** per-variable UEFI crash atomicity does **not** imply access-controlled monotonicity; TPM NV COUNTER is an incremental hardware *type*, not an arbitrary writable security version; TUF Root rotation is sequential with old/new threshold checks, bounded update and role metadata rebootstrap; rollback of the client's stored trusted Root/Timestamp/version state is independent from target hash validation; signing/verified modes must distinguish OEM-root, user-owner root, enrolled development keys and unlocked firmware; boot-good and physically checked recovery are conditional evidence, not future hardware guarantees.
 
 This is a promising hypothesis rather than final crypto format, parser location, PK/KEK/db policy, EFI implementation, TPM NV index layout, role thresholds, on-disk metadata protocol or product assurance. It preserves RFC-006 BOOT-A with wired M0 RecoveryAuthority and RA-2 fail-stop/verified reboot on unrecoverable root failure. It preserves RFC-008 STORE-A split signed read-only SystemImage vs separate writable DataVolume.
 
@@ -43,20 +45,23 @@ A correctly signed malicious/vulnerable release can pass signature verification.
 | Source | External technical evidence | Proposed UniOS use/limit |
 |---|---|---|
 | UEFI 2.11 Boot Manager / Secure Boot [S1] | PK, KEK, db and dbx, Setup/User/Audit/Deployed modes, authenticated firmware policy | firmware validates EFI application only, not all later kernel/system bytes |
-| UEFI 2.11 Runtime Variable Services [S2] | nonvolatile variable atomic old/new behavior *per variable*; capacity limits and unsupported runtime operations | no cross-variable transaction for slot+TPM floor+disk, no unlimited retry counters |
-| TUF v1.0.36 [S3] | root rotation by signed threshold, targets hash/length, snapshot consistent metadata, timestamp and expiry checks | TUF-inspired delivery; spec conformance not asserted |
+| UEFI 2.11 Runtime Variable Services [S2] | one NV variable has old-or-new persistence when interrupted and is saved before EFI_SUCCESS; **general variable service does not itself enforce anti-rollback/access policy** | distinguish persistence, authenticated-write attrs, monotonic replay protection and multi-store crash consistency; ordinary NV variable is not floor |
+| TUF v1.0.36 [S3] | Root update fetches sequential N+1 versions signed to both old/new thresholds; refresh can invalidate trusted Timestamp/Snapshot after key change and requires fixed update-start time | specify intermediate versions, threshold unique key IDs, persisted trusted metadata and rotation recovery before any claimed TUF compatibility |
 | TUF roles and metadata [S4] | Root, Targets, Snapshot, Timestamp have different signing roles and risk | online Timestamp compromise does not automatically mint boot Root |
 | Android Verified Boot 2.0 [S5] | rollback-index locations in tamper-evident storage; for A/B update floor from slots marked SUCCESSFUL only | floor promotion gate plus stronger UniOS rescue/data conditions |
 | Android A/B OTA [S6] | active, bootable, successful and bounded trial retries separate | old signed slot not necessarily allowed/usable or DataVolume-readable |
 | Android Virtual A/B [S7] | snapshot merge may resume after restart; early snapuserd boot dependency | storage merge/boot critical resources only if a comparable scheme selected |
 | TCG PC Client RIM/firmware profile [S8] | PCR measurement log needs verifier reference information and quote validation | measurements and enforcement distinct; optional privacy-scoped attestation |
-| TPM 2.0 Library and errata [S9] | PCR/NV/authorization policies are actual TPM facilities with platform-specific configuration | TPM presence not proof of usable monotonic NV floor or sealed key recovery |
+| TPM 2.0 Library and errata [S9,S18] | TPM NV COUNTER type uses TPM2_NV_Increment rather than arbitrary value assignment; PCR and NV auth are different | cannot map release floor F→F' by silently setting arbitrary counter value; evaluate indexing and write/availability limits |
 | Windows TPM data protection [S10] | PCR/boot-policy changes can interrupt transparent key unseal and force recovery | explicit user-data recovery key, profile migration, consent |
 | Microsoft UEFI Secure Boot keys [S11] | firmware allow/revoke databases, dbx precedence and OEM ownership | firmware signer policy independent from UniOS signed targets |
 | TUF FAQ [S12] | Root/Targets generally offline, Timestamp often online; metadata freshness/expiry matter | trusted time problem and offline update limits |
 | Linux fs-verity / dm-verity [S13,S14] | immutable pages/blocks verified against authenticated content roots | read-time verification of later pager-backed code, not data durability |
 | Linux block cache barriers [S15] | device completion differs from persistent Flush/FUA | RFC-008 crash-safe image and boot metadata stage protocol |
 | Microsoft UEFI signing key rotation guidance [S16] | real PC PK/KEK/db CA replacement has compatibility and recovery impact | never enroll/reset another OS keys or silently trust arbitrary EFI loader |
+| Android hardware attestation boot state [S19] | device's manufacturer root, user-installed trusted root and unlocked state can be distinguished in attestation | UniOS must distinguish OwnerVerified vs VendorVerified candidate and development/unlocked states; do not pretend boot root provenance is identical |
+| TUF metadata root rollback and trusted-state persistence [S3,S20] | client keeps trusted Root/metadata versions and validates monotonic updates; full local cache rollback is a separate platform trust risk | define trust-anchor for the **client's last accepted state**, not only hash of new package |
+| TPM NV counter attribute reference [S18] | NV counter is 8-octet increment-only logical type | define mapping from security-index vector, counter headroom, resource cost and key migration |
 
 Source data belongs to other projects, and does NOT prove UniOS kernel safety, crypto implementation or device support. Relevant AVB documentation is about Android's own A/B rules, not automatically UniOS policy.
 
@@ -76,6 +81,8 @@ External OEM/owner firmware trust & effective UEFI Secure Boot policy
     -> read-time Pager page/hash/root check on every needed execution mapping
     -> normal Services/Apps governed by native typed capabilities, not signer name
 ~~~
+
+**Boot-path provenance and data key boundary:** if generic firmware db also admits a different boot manager, the system may be able to start *another* OS even while UniOS's own code is correctly verified. UniOS's ProductionVerified label must be derived from trustworthy loader evidence, and access to sealed user data must be bound to appropriate boot identity and owner policy rather than assuming every firmware-authorized EFI app is UniOS. A local adversary booting another allowed signed EFI image is a separate attack against stored user data and mutable metadata; OS signatures alone do not provide confidentiality or anti-rollback.
 
 A widely trusted firmware CA may authorize non-UniOS bootloaders; this does not imply that firmware authorized them to grant UniOS ProductionVerified state. Under a strict profile, the actual verified UniOS loader/verifier chain and protected policy provenance must match. The manifest being verified cannot freely choose its own validator root, version floor or unsigned exception list. A legitimate signed service with excessive grants can still be dangerous; kernel cap admission and manifest limits are independently audited (RFC-002/006).
 
@@ -107,6 +114,8 @@ Parser location P0: compare trusted loader/resident M0 bounded manifest validati
 
 ### 3.5 Development versus production states
 
+**v0.2 trust provenance axes (NOT a final UI protocol):** VerifiedByOwnerKey, VerifiedByVendorPolicy, DevSignedByTestKey, FirmwareUnlocked/AuditOnly, and MeasurementOnly should be distinguishable and should not automatically inherit each other's guarantees. Android boot attestation distinguishes device-owned vs user-set root and unlocked state [S19], but UniOS does not inherit Android's GREEN/YELLOW/ORANGE certification. Even a valid owner-selected signed boot may be strong against unsigned tampering under the *owner's* threat model without being vendor/enterprise-managed verified. Public words like ProductVerified must name root provenance, firmware enforcement, local floor protection and actual platform profile.
+
 - DevUnsigned (unlocked/offline VM lab): no production verified/rollback claims, no silent reuse of production sealed data keys.
 - DevSigned (developer key/test OVMF): only a controlled local test signer is validated; cannot state real OEM chain or physical NV floor verified.
 - ProductionCandidate (not a user-facing green state): enough design evidence to plan controlled real-hardware security test; still not verified.
@@ -119,11 +128,15 @@ A user-authorized owner unlock/debug transition may legitimately change trust; i
 
 ### 4.1 TUF-inspired role separation
 
-Root is a rarely rotated threshold signer controlling keys and role policy. Targets signs exact bytes/hash/length and release constraints. Snapshot signs consistent metadata sets, stopping arbitrary mix-and-match of different target revisions. Timestamp signs the newest referenced Snapshot and expiration, defending against indefinite freeze only if client has trustworthy freshness/time policy. Delegation must be scope-limited and cannot increase parent authority. TUF v1.0.36 is a specific formal update standard; this RFC does not assert conformance without implementing and testing its exact metadata and refresh procedures.
+Root is a rarely rotated threshold signer controlling keys and role policy. Targets signs exact bytes/hash/length and release constraints. Snapshot signs consistent metadata sets, stopping arbitrary mix-and-match of different target revisions. Timestamp signs the newest referenced Snapshot and expiration, defending against stale metadata **only when the client has trustworthy time and update-start policy**; it cannot prevent arbitrary network denial or indefinitely missing repository data merely by being signed. Delegation must be scope-limited and cannot increase parent authority. TUF v1.0.36 is a specific formal update standard; this RFC does not assert conformance without implementing and testing its exact metadata and refresh procedures.
+
+**TUF v1.0.36 rotation precision:** when updating Root N→N+1, verify **both** the old root's and new root's required signature thresholds using distinct key identities (not duplicates), require exactly sequential versions, bound fetched bytes/iteration count, persist trusted intermediate Root, and process the appropriate Timestamp/Snapshot cache reset after rotated keys to recover from fast-forward metadata [S3]. A generic two-signature check or skipping version N+1 is not a TUF-compliant replacement. Exact persistent version/root state must also survive client restart or a disk rollback threat may undo its memory of accepted metadata.
 
 A compromise of an online Timestamp key cannot mint a new Boot Root or a new kernel target if the other roles remain secure. A Targets key compromise can authorize malicious release artifacts within its scope (serious!); Root threshold compromise can authorize new keys and is a critical incident. A signature is not a quality audit or transparency guarantee. Treat publication/CI/role key custody/reproducible builds as independent supply-chain trust decisions.
 
 ### 4.2 Rollback, freeze, fast-forward, mix-and-match
+
+**v0.2 attacker restores entire local trust cache:** even if every downloaded target hash is valid, an attacker who can restore the complete previously accepted Root/Targets/Snapshot/Timestamp metadata+highest-seen versions on disk may defeat *client-history* rollback detection. Per-update TUF metadata checks assume a correct locally trusted starting state; protect that root/version history as part of the client trust anchor or reduce the promise explicitly. A TPM floor for boot images is not automatically a monotonic record of every TUF metadata role version; these have different storage/frequency and threat-model needs.
 
 - **Target rollback:** older signed target still verifies; local security floor and metadata monotonic versions may reject it.
 - **Snapshot mix-and-match:** server combines older targets metadata with newer payload; Snapshot consistency/hashes should reject.
@@ -195,7 +208,9 @@ If trial/reboot attempt record is stored only in RAM, it resets each boot. A per
 
 **The floor protects against a correctly signed but vulnerable old image** whose bytes and signature are otherwise valid. Product version, signed metadata version, key epoch, hardware policy and per-component security index are distinct. A root manifest cannot unilaterally choose its own validation floor; the floor must derive from a previously trusted independent store/policy.
 
-A normal GPT/ESP/DataVolume file, including a signed old file, is replayable by a disk attacker. Candidate storage includes a specifically authorized TPM 2.0 NV counter/record, platform-protected signed EFI variable, RPMB or independently trusted external anchor. **TPM existence is not proof of an available usable monotonic index; firmware authenticated variables are not necessarily a trusted nondecreasing counter.** The UEFI spec [S2] specifies per-variable old/new persistence under failure, limited NV space, and runtime Unsupported/OutOfResources; it does not promise one atomic transaction across separate slot/floor/data stores.
+**Counter-type correction:** The TPM NV COUNTER entity, when supported, is an 8-octet value updated using TPM2_NV_Increment; it is **not** an ordinary arbitrary writable integer. A security-index F may jump by a large amount on one release and include several component locations. Mapping those values to counters requires an approved bounded representation (e.g. a distinct certified anti-rollback monotonic epoch with authenticated floor vector), headroom and crash-correct verification; a naive loop doing hundreds of thousands of increments per upgrade would be a wear/performance and availability hazard. Nor may the floor vector be kept in a replayable disk file with only a TPM 'counter exists' flag [S18].
+
+A normal GPT/ESP/DataVolume file, including a signed old file, is replayable by a disk attacker. Candidate storage includes a specifically authorized TPM 2.0 NV counter/record, platform-protected signed EFI variable, RPMB or independently trusted external anchor. **TPM existence is not proof of an available usable monotonic index; firmware authenticated variables are not necessarily a trusted nondecreasing counter.** The UEFI spec [S2] specifies per-variable old/new persistence under failure, limited NV space, and runtime Unsupported/OutOfResources; **it does not generally secure read/write/delete access for arbitrary variables** and does not promise one monotonic counter or atomic transaction across separate slot/floor/data stores. Authenticated-write attrs have their own validation and firmware trust requirements; merely naming a variable 'UniOSFloor' is not security.
 
 ### 6.1 Safe floor promotion predicate
 
@@ -205,7 +220,7 @@ For a candidate new floor F', require all of the following: actual stored F <= F
 
 | Candidate | Possible benefit | Limit |
 |---|---|---|
-| TPM 2.0 NV protected index | may resist disk rollback when correct auth and anti-replay semantics verified | NV availability, platform firmware, wear/locking, ownership loss, TPM replacement |
+| TPM 2.0 NV protected index | may resist disk rollback when correct authorization and index type semantics verified | an NV COUNTER is increment-only, cannot directly set F'=300 from F=12, needs mapping and per-index access/space/repair design; NV availability/locking/TPM replacement |
 | Authenticated UEFI variable | firmware policy and per-variable durable write semantics | not generalized monotonic floor, tiny storage, firmware/runtime failure |
 | RPMB/secure flash | device-backed anti-replay on selected hardware | not universal x86_64 PC capability |
 | Independent online verifier | remote latest-state/freshness anchor | no offline liveness guarantee |
@@ -219,6 +234,8 @@ The floor counter, authenticated Good state, slot retry record, bootable rescue 
 Offline Root role controls signing thresholds and release-role keys; Targets signs exact image bytes/hardware constraints, Snapshot signs metadata consistency, online Timestamp signs frequently refreshed freshness. Root rotation needs authorization by previously trusted Root and new Root per chosen standard, not just a signed manifest telling clients to accept a new untrusted key. Role threshold is effective only if signing custodians and private keys are truly independent.
 
 If CDN or Timestamp private key is compromised, valid independent Targets/Root policy should continue to reject malicious new code (not necessarily denial/freeze). If Targets signing key is compromised, attacker may legitimately sign malicious code within the role scope; rebuild, independent Root revocation and physical rescue may be needed. If Root quorum is compromised, purely in-band software update may be unable to re-establish trust. Correct signatures do not prove the signed binary's safety or uncompromised build.
+
+**Owner root and product root provenance:** vendor-managed signed release, user-enrolled root, test/dev signers and unlocked firmware are separate assurance states. A user-controlled root may be deliberately authorized and securely enforced under its owner's threat model, but the platform cannot label that path as UniOS-vendor-rooted without actual matching provenance. Root provenance must be included in boot status and DataVolume sealed-key policy, not merely the word 'verified'.
 
 UEFI OEM PK, KEK, db and dbx are **not the same** as UniOS Root/Targets roles. Updating firmware dbx or replacing firmware PK/KEK can also disable an installed Windows/Linux loader or the only rescue USB. No automatic firmware enrollment/revocation in this RFC. Emergency key revocation can make an older rescue unacceptable; do not silently enable revoked image to improve availability. Owner physical override must have visibly weaker/unlocked trust mode and assess data-encryption consequences.
 
