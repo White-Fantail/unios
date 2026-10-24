@@ -434,22 +434,22 @@ A kernel Channel moves bytes and a separate vector of capabilities. It does not 
 | Device interrupt claims USER IRQ vector | raw integer becomes privilege | typed IRQSource+device group |
 | OSSigned new kernel but old SDK status enum | unknown privilege accepted | version/feature refusal and maintenance contract |
 
-## 18. Proposed correctness/security invariants (ABI-01…ABI-45) — NOT proved
+## 18. Proposed correctness/security invariants (ABI-01…ABI-58) — NOT proved
 
 | ID | Candidate obligation, no implementation/proof |
 |---|---|
 | ABI-01 | Native KABI, versioned userspace SABI, SDK C ABI and guest Linux/Windows/Darwin ABIs are independently specified and versioned. |
-| ABI-02 | KABI dispatch happens after checking kernel-owned Thread/Task execution domain, not user registers/TLS/loader string. |
+| ABI-02 | KABI dispatch checks kernel-owned Thread/Task execution domain, but this tag is NOT by itself a security boundary if guest code shares trusted broker executable/cap state; privileged broker needs protected memory/execution/cap compartment. |
 | ABI-03 | Guest raw syscall/opcode cannot invoke privileged native object operations without independent native authority. |
 | ABI-04 | Native syscall input pointers/lengths/versions/flags are validated with overflow and cross-page copy/fault race handling. |
 | ABI-05 | A userspace wrapper/vDSO never substitutes for kernel-side rights and raw-entry validation. |
 | ABI-06 | Bounded kernel descriptor snapshot or justified stable pin prevents argument TOCTOU use after authorization. |
-| ABI-07 | Copyout/cancel/Task death after commit cannot be misreported as no kernel effect or leak acquired authority. |
-| ABI-08 | Handle integer is Task-local, not global credential, and generation/revocation lineage guards stale use. |
+| ABI-07 | Copyout/cancel/Task death after commit cannot be misreported as no kernel effect or leak acquired authority; any protected result retention must be bounded, charged and eventually reclaimed. |
+| ABI-08 | Task-local handle token must not reuse identical public value for a new unrelated authority during one Task lifetime while stale copies could be invoked; internal generation without public token difference is insufficient. |
 | ABI-09 | Dup/derive attenuates rights and CREATE authority/sponsor cannot be minted from a held ordinary handle. |
 | ABI-10 | R0 close, B deny, R1 CPU cutoff, R2-F physical DMA fence and R2-O object reclaim remain distinct results. |
-| ABI-11 | Data+cap MOVE on bounded Channel has one defined atomic enqueue commit, respecting original owner and lineage. |
-| ABI-12 | Message delivery and receiver cap install have independent commit/error semantics from sender enqueue. |
+| ABI-11 | Data+cap MOVE on bounded Channel has one defined atomic enqueue commit; UniOS NOT_COMMITTED preserves original sender handles, while COMMITTED consumes them into transit. This differs from Fuchsia basic channel_write. |
+| ABI-12 | Receiver byte publication, exclusive message claim/escrow, cap install and queue removal have separately proven commit/publication semantics; no abstract byte+cap atomicity without a real isolation mechanism. |
 | ABI-13 | ReplyToken is one-shot, kernel-minted and scoped to caller/request/service incarnation. |
 | ABI-14 | Deadline expiry/CancelLocal/PeerClosed never claim remote operation rollback without separate evidence. |
 | ABI-15 | IPC queue bytes, handles, Wait and Reply registrations are admitted and charged to scoped ResourceBudget. |
@@ -466,7 +466,7 @@ A kernel Channel moves bytes and a separate vector of capabilities. It does not 
 | ABI-26 | Thread state wait, quota eligibility and CPU ownership remain orthogonal under timeout/fault/kill races. |
 | ABI-27 | Scheduling weight, CPU cap and guaranteed reservation remain independent with hardware/scheduler preconditions. |
 | ABI-28 | Critical boot/rescue KABI works from wired M0 without requiring late dynamic loader/VFS/network services. |
-| ABI-29 | Guest Linux syscall dispatch/return uses explicit x86 ABI and secure personality domain, not UniOS native opcode overlap. |
+| ABI-29 | Guest Linux syscall dispatch/return uses x86 ABI and kernel-owned domain; default native privileged broker is a separate protected Task/AddressSpace, not just a same-address-space syscall shim. |
 | ABI-30 | GABI 32/64-bit pointer/size conversion cannot extend guest authority or overflow host range. |
 | ABI-31 | Guest Thread/exception/signal/futex/FD and blocking behavior is explicitly modeled before claiming Linux binary compatibility. |
 | ABI-32 | Windows/Darwin guest HANDLE/Mach port identity and privileges cannot become native CapHandle by bitwise translation. |
@@ -483,6 +483,19 @@ A kernel Channel moves bytes and a separate vector of capabilities. It does not 
 | ABI-43 | Native object creation/outcome can be recovered or safely cleaned if Task dies during user output delivery. |
 | ABI-44 | A compatibility claim is tied to an explicitly tested target set of binaries, SDK/ABI versions and hardware, not extrapolated from one app. |
 | ABI-45 | Proposed operation families, machine registers and status labels are NOT Accepted ABI v1 or implementation authorization. |
+| ABI-46 | Guest and trusted native broker in same address space are NOT isolated by a kernel-owned per-Thread mode flag alone: direct jumps, shared caps and injected control flow must be prevented by proven hardware/code isolation or separate Tasks. |
+| ABI-47 | Default Linux guest broker runs in a separate Task/AddressSpace with attenuated Endpoint grants and no executable cross-jump into native privileged code. |
+| ABI-48 | Public handle-token value never reauthorizes a different object for stale Task-held integer copies; generation exhaustion fails closed, not wraps. |
+| ABI-49 | A provable NOT_COMMITTED for UniOS Channel MOVE preserves all sender source handles, unlike Fuchsia zx_channel_write; no failure is allowed to silently duplicate or consume unrelated authority. |
+| ABI-50 | Partial receive user-byte disclosure before exclusive claim cannot be called abort-atomic; escrow claim, byte publication and handle-table commit have individually named safety predicates. |
+| ABI-51 | ReceiveEscrow/claim cannot be held without finite quotas, cancellation, receiver-death cleanup and bounded progress/fail-stop. |
+| ABI-52 | Post-effect result copyout loss must leave a bounded reconciliable kernel object/result or a defined UNKNOWN outcome; successful handle creation never leaks without owner/sponsor charge. |
+| ABI-53 | Linux futex compare-value-and-sleep preserves atomicity against concurrent wake/write, or the advertised guest binary ABI explicitly excludes that operation. |
+| ABI-54 | Linux rseq guest support requires kernel scheduler/migration and signal interaction model or explicit unsupported status, not a userspace-only syscall number translator. |
+| ABI-55 | Linux clone/CLONE_VM/THREAD/SIGHAND/TID and signal relationships cannot be approximated by one generic native TaskCreate while claiming full guest parity. |
+| ABI-56 | Unknown transferred SABI resource/handle cannot be silently discarded as if it were a harmless unknown value field without accounted close/reject policy. |
+| ABI-57 | Feature negotiation cannot downgrade mandatory authorization, handle-rights, status or safety semantics merely to preserve backward binary compatibility. |
+| ABI-58 | An accepted kernel entry domain and C ABI layout do not independently prove guest binary application coverage, future architecture support or trustworthiness of raw native broker code. |
 
 
 ## 19. Trade-off and feasibility comparison
@@ -502,7 +515,7 @@ A kernel Channel moves bytes and a separate vector of capabilities. It does not 
 
 **System-call count and early benchmarks are not objective security proofs.** Compare object handles, syscall entry, page-fault costs, queue/wait fairness, copy/zero-copy cost, guest syscall forwarding, native static ELF and failure/cap races under the same work. No performance threshold or ABI promise is selected from external published numbers.
 
-## 20. Open research blockers (O9-01…O9-36)
+## 20. Open research blockers (O9-01…O9-49)
 
 | ID | Priority | Unresolved question / needed evidence | Co-review |
 |---|---|---|---|
@@ -542,20 +555,33 @@ A kernel Channel moves bytes and a separate vector of capabilities. It does not 
 | O9-34 | P1 | Native status unknown newer enum and caller legacy error handling safe downgrade? | 009/018 |
 | O9-35 | P2 | Toolchain/build reproducibility, debug/unwind info, observability and SDK distribution provenance? | 009/015/018 |
 | O9-36 | P2 | Perf feasibility: IPC/copyin/guest broker/timer overhead p50/p99 and UI responsiveness vs expanded kernel? | 005/009/015 |
+| O9-37 | P0 | Prove G1 Linux guest and native privileged broker are separate protected Task/AddressSpace with no dangerous broker cap sharing? | 001/002/009/010 |
+| O9-38 | P0 | Can G2 mixed same-address-space broker EVER be safe with authorized transition, CFI, protected code/data and no jump into native privilege? | 001/002/009/015 |
+| O9-39 | P0 | Fuchsia channel_write failure consumes MOVE handles: what exact UniOS NOT_COMMITTED sender ownership and duplicate-handle error policy? | 002/003/009 |
+| O9-40 | P0 | RCV-A ReceiveEscrow/claim exclusivity vs visible partial copyout, cap install, terminal errors and confidentiality? | 002/003/004/009 |
+| O9-41 | P0 | Bounded escrow retention/charges/revoke/death and forward-progress policy when hostile receiver holds claim forever? | 002/003/005/009 |
+| O9-42 | P0 | Kernel post-commit copyout cannot return receipt: protected result escrow or UNKNOWN with bounded sponsor/accounting? | 002/003/004/009 |
+| O9-43 | P0 | Nonreused full public handle token vs bounded width/generation wrap and Task lifetime; align with RFC-002 §7? | 002/009/018 |
+| O9-44 | P0 | Linux futex atomic compare-and-block and PI/robust mutex under MemoryObject aliases, Task migration and broker? | 004/005/009/010 |
+| O9-45 | P1 | Linux rseq per-thread fields/CPU migration/signal/critical-section abort policy and support level? | 005/009/010 |
+| O9-46 | P1 | Linux clone CLONE_VM/THREAD/SIGHAND, TIDs, process vs thread signal and exit/wait race compatibility scope? | 004/009/010 |
+| O9-47 | P0 | Evolving SABI unknown handles and strict/flexible mandatory security fields: deny/close without leaked authority? | 002/003/009/018 |
+| O9-48 | P1 | Fuchsia zx_channel_write vs write_etc MOVE/DUP failure semantics: ensure external analogies aren't treated as UniOS contract? | 003/009 |
+| O9-49 | P0 | Guest ABI direct syscall trap with seccomp-like broker: pointer snapshot, privilege domain, retry/cancel and signal path? | 001/003/009/010 |
 
-## 21. Proposed decision register (ABI-D01…ABI-D24) — NONE Accepted
+## 21. Proposed decision register (ABI-D01…ABI-D33) — NONE Accepted
 
 - **ABI-D01:** ABI-A minimal typed KABI, versioned SABI and independent language-neutral SDK ABI is the first conditional research architecture.
 - **ABI-D02:** KABI owns kernel objects/rights, not POSIX paths, NT objects, Mach frameworks, filesystem parser or GUI methods.
 - **ABI-D03:** Linux/Windows/Darwin ABI are restricted compatibility personalities, not aliases of UniOS native syscall numbers.
-- **ABI-D04:** Kernel-owned execution-domain checks precede dispatch of guest/native traps, and raw user register/TLS cannot change the domain.
-- **ABI-D05:** Compare G1 fixed GuestDomain, G2 authorized per-Thread transitions, G3 emulator and G4 kernel Linux ABI on equivalent attack graphs.
+- **ABI-D04 [clarified]:** Kernel-owned GuestDomain is required before dispatch but not sufficient to isolate mixed guest/native broker code. Default broker has separate Task/AddressSpace/cap table.
+- **ABI-D05 [clarified]:** First study G1 fixed restricted GuestDomain with separate native broker; G2 same-address-space privileged switch is rejected as a default unless code/data/cap execution separation is independently proven; compare G3 emulator and G4 enlarged kernel on equal threats.
 - **ABI-D06:** Keep x86_64 syscall register convention, IDs, raw return status, handle width and descriptor layout **unfrozen** until formal/experimental review.
 - **ABI-D07:** Raw user pointers, descriptor lengths, alignments and versions are checked with safe copyin/copyout under concurrent mapping/fault rules.
 - **ABI-D08:** Post-commit copyout failure cannot be reported as no effect; object/handle lifetime conserved under process death.
-- **ABI-D09:** Handles are Task-local opaque locators; rights/lineage/sponsor and creation authority are kernel-maintained and non-amplifiable.
+- **ABI-D09 [clarified]:** Handles are Task-local opaque public tokens whose **exact bit pattern must not be reissued for unrelated authority within the Task lifetime while stale bits remain usable**; no internal generation-only ABA fiction. Rights/sponsor/lineage maintained in kernel.
 - **ABI-D10:** R0/B/R1/R2-F/R2-O and remote side-effect commit remain separate status/evidence levels.
-- **ABI-D11:** IPC E1 bounded Channel, MOVE and ReplyToken work with RFC-003's commit/receive/cancel ambiguity; no unconditional budget donation.
+- **ABI-D11 [clarified]:** IPC E1 bounded Channel/ReplyToken follows RFC-003; candidate NOT_COMMITTED preserves moved source handles, COMMITTED takes them into transit, and RCV-A claimed receive needs separate proof. This is NOT automatically Fuchsia zx_channel_write semantics.
 - **ABI-D12:** Wait/Event/timeout has named clock/cancel/registration-generation/coalescing semantics and finite resource accounting.
 - **ABI-D13:** Pager fault uses private FaultWaiter+PageSupply rights and wired M0 to avoid self-deadlock.
 - **ABI-D14:** Kernel errors and guest errno/NTSTATUS/Mach result codes remain independent semantic namespaces.
@@ -569,6 +595,15 @@ A kernel Channel moves bytes and a separate vector of capabilities. It does not 
 - **ABI-D22:** Feature/version negotiation distinguishes KABI, service SABI, SDK, guest ABI and immutable signed BootPolicy descriptors.
 - **ABI-D23:** Optional fastpath/zero-copy/batched ring operations only after they can be shown equivalent in security/commit and sponsor accounting.
 - **ABI-D24:** Stable v1 ABI, syscall numbers, compiler target, code implementation and any compatibility certification remain unauthorized while R1 gates open.
+- **ABI-D25 [new]:** Baseline guest broker isolation uses independent protected Task/AddressSpace and only validated attenuated IPC rights; guest/native co-location is not presumed safe with a kernel flag.
+- **ABI-D26 [new]:** Prefer RFC-003 RCV-A bounded exclusive ReceiveClaim/escrow research for message bytes+cap install, explicitly denying magical single atomicity of user memory copyout.
+- **ABI-D27 [new]:** UniOS E1 NOT_COMMITTED leaves sender handles intact, while COMMITTED removes into transit; do not import Fuchsia basic write() failure consumption.
+- **ABI-D28 [new]:** Public handle token nonreuse/generation exhaustion and callback ABA protection follow RFC-002 §7, without freezing numeric bits.
+- **ABI-D29 [new]:** A completed effect followed by failed result copyout needs a protected reconcilable receipt/escrow or honest UNKNOWN outcome with bounded owner/sponsor cleanup.
+- **ABI-D30 [new]:** Linux futex, rseq and clone require their real shared-memory, scheduler, thread/signal atomic contracts or are excluded explicitly from supported guest feature tiers.
+- **ABI-D31 [new]:** SABI evolving unknown resource fields must reject/close/explicitly proxy under bounded capability accounting, never silently grant or leak a transferred cap.
+- **ABI-D32 [new]:** Even a secure kernel-owned guest tag does not authorize a shared native privileged broker thread to execute untrusted arbitrary guest code; in-process G2 requires stronger independent memory/execution proof.
+- **ABI-D33 [new]:** No Stable ABI/SDK/guest binary certification until side-effect, error, version, syscall entry and reference-PC feasibility gates are independently passed.
 
 ## 22. Cross-RFC interface ownership and contradiction register
 
@@ -660,9 +695,16 @@ Before calling ABI-A Accepted or Stable v1:
 - **[S16] Linux fsync(2), directory entry persistence and fdatasync:** https://man7.org/linux/man-pages/man2/fsync.2.html
 - **[S17] seL4 faults and handler/resume:** https://docs.sel4.systems/Tutorials/fault-handlers.html
 - **[S18] Fuchsia FIDL language version/evolution rubric:** https://fuchsia.dev/fuchsia-src/development/api/fidl
+- **[S19] Fuchsia zx_channel_write() basic handle consumption even on failure:** https://fuchsia.dev/reference/syscalls/channel_write
+- **[S20] Fuchsia zx_channel_write_etc() MOVE/DUP per-handle dispositions:** https://fuchsia.dev/reference/syscalls/channel_write_etc
+- **[S21] Fuchsia zx_channel_read_etc() buffer size/discard and handle type/rights:** https://fuchsia.dev/reference/syscalls/channel_read_etc
+- **[S22] Linux seccomp BPF and user-notification security limitations:** https://docs.kernel.org/userspace-api/seccomp_filter.html
+- **[S23] Linux futex(2) atomic compare-and-block:** https://man7.org/linux/man-pages/man2/futex.2.html
+- **[S24] Linux restartable sequences (rseq) scheduler and ABI:** https://docs.kernel.org/userspace-api/rseq.html
+- **[S25] Linux clone(2) and clone3(2) CLONE_VM/THREAD/SIGHAND/TID:** https://man7.org/linux/man-pages/man2/clone.2.html
 
 **Use limits:** These sources describe actual other OS kernel/user contracts and are informative only. No seL4 proof transfers to UniOS, no FIDL/Zircon compatibility is claimed, no Windows syscall stability beyond Microsoft's documentation, no Linux ELF program was run, no new license/source import authorized. External user-facing formats and interface implementations require separate version, license and security evidence.
 
 ---
 
-**Document history:** 2026-10-24 — RFC-009 Proposed Specification v0.1 draft: native KABI vs SABI vs SDK/guest ABI, x86_64 entry/domain hypotheses, capability/IPC/VM/CPU/restart and storage error contracts, 45 candidate invariants, 36 open research issues and 24 proposed decisions. This document contains no executable implementation, compiler target, ABI freeze, successful compatibility run, formal proof or benchmark.
+**Document history:** 2026-10-24 v0.1 initial Proposed draft remains in Git history. 2026-10-24 v0.2 independent adversarial review revises co-located native/guest broker unsafety, Fuchsia vs UniOS MOVE-on-failure differences, receive escrow disclosure, public handle token ABA, kernel post-commit copyout, Linux futex/rseq/clone semantic gates and SABI unknown-resource compatibility. Documentation only; no kernel/loader/guest/SDK implementation, tests, formal proof, reference hardware work or ABI freeze.
