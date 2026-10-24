@@ -1,6 +1,6 @@
 # UniOS RFC-004 — Virtual Memory, Pager, Cache & OOM Contract
 
-> **Status:** Proposed — Specification v0.1 (미승인·미검증)
+> **Status:** Proposed — Specification v0.2 (심층 재검토·미승인·미검증)
 > **Date:** 2026-10-24 NZDT
 > **Baselines:** [Architecture v0.2](../architecture/unios-architecture-v0.2.md), [RFC-001 v0.2](rfc-001-kernel-boundary-and-tcb.md), [RFC-002 v0.2](rfc-002-object-capability-lifetime-delegation-revocation.md), [RFC-003 v0.2](rfc-003-ipc-wire-protocol-and-synchronization.md)
 > **Scope:** AddressSpace, MemoryObject, frames, mapping, page fault/user Pager, sharing/COW, copyin/out, dirty/clean caches, OOM, DMA pins, revocation, boot dependency.
@@ -8,13 +8,13 @@
 
 ## 0. 요약 — 조건부 연구 결론
 
-**VM-A를 우선 연구:** 커널은 메모리 보호의 최소 집행(MMU·page table·TLB·physical frame의 소유권·zeroing·MappingRecord·FaultToken·pin·비상 자원)을 담당한다. 사용자 공간 Pager/VFS는 파일 backing 식별, 콘텐츠 공급, 파일 캐시, 재요청, 실행 파일 검증, writeback 및 일반 OOM 희생 프로세스 정책을 담당하는 방향을 검토한다. 익명 메모리 demand-zero와 COW의 위치, generic clean eviction은 아직 결론이 없다.
+**VM-A를 우선 연구:** 커널은 메모리 보호의 최소 집행(MMU·page table·TLB·physical frame의 소유권·zeroing·MappingRecord·kernel-internal FaultWaiter·pin·비상 자원)을 담당한다. 사용자 공간 Pager/VFS는 파일 backing 식별, 콘텐츠 공급, 파일 캐시, 재요청, 실행 파일 검증, writeback 및 일반 OOM 희생 프로세스 정책을 담당하는 방향을 검토한다. 익명 메모리 demand-zero와 COW의 위치, generic clean eviction은 아직 결론이 없다.
 
 - **VM-A: Minimal kernel enforcement + anonymous mechanism + user file Pager.** 현재 우선 연구 후보. 실행 가능성이 곧 최선의 증거는 아니다.
 - **VM-B: seL4-like user-space VM manager.** user-space가 frame/resource와 fault를 광범위하게 통제하고 kernel은 hardware mapping primitive를 제공한다. 낮은 정책 침투 가능성 vs 복잡한 자원 관리·부팅.
 - **VM-C: Zircon-like kernel VMO and reclaim.** kernel anonymous demand, VMO, generic reclaim/page aging 역할 증가. 데스크톱 가용성 및 구현 용이성 가능성 vs TCB 확대.
 
-**VM-P0 초기 범위:** 안전하게 resident한 부팅·복구 core, anonymous private, 제한된 explicit shared MemoryObject, 선택적 verified read-only pager-backed file page. Writable file-backed mmap, swap/compression, transparent POSIX fork, hugepage, broad dedup, aggressive JIT, writable executable aliases는 별도의 결정/검증 없이 구현 목표가 아니다.
+**단계적 설계 연구 순서:** M0 = Pager 없는 최소 wired boot/recovery + 명시적 commit/zeroed anonymous 및 scoped shared. M1 = read-only immutable file Pager/fault failure. M2 = demand-zero/COW/clean eviction. M3 = writable file mapping/dirty writeback. 각 단계는 미승인 연구 게이트이고 구현 일정이 아니다. Swap/compression, transparent POSIX fork, hugepage, broad dedup, unrestricted JIT/RWX 등은 별도 연구 전 범위 밖이다.
 
 **섞지 말아야 할 여섯 가지:** virtual address 예약, RAM page commitment, CPU mapping, frame 권한, DMA pin, durable storage write. Handle close는 unmap이 아니며 family-level R2-F가 object-wide R2-O를 의미하지 않는다.
 
@@ -55,7 +55,9 @@ Threats: malicious/buggy Pager/driver/user app, wrong or stale page contents, fo
 | MappingRecord | internal (AS generation, range, backing offset, rights, grant lineage) | not a global mutable user handle; source of revoke dependencies |
 | Frame record | physical ownership, page-state refs, charge, zero/dirty/pin | allocated through typed resource authority, raw PFN not credential |
 | PagerBinding | named pager instance backing a precise MemoryObject/range | SUPPLY_PAGE, FAIL_FAULT, DETACH, OBSERVE under that scope |
-| FaultToken | one-shot resume/fail for exactly one fault generation | kernel-minted specific CONTINUE_ONCE or FAIL_ONCE |
+| FaultWaiter (kernel internal) | thread-specific blocked continuation + Task/AS/Mapping generations | Pager에게 Thread resume 권한을 노출하지 않음 |
+| PagerRequest / correlation cookie (candidate) | one missing object page can represent multiple kernel FaultWaiters | non-authoritative notification; kernel checks generation |
+| FaultToken (optional internal-only) | kernel-managed one-shot waiter retirement / continuation | no generic userspace task-resume grant |
 | ResourceBudget | physical/frame/page-table/fault/queue/map charges | reserve, allocate, observe, authorized adopt |
 | Device/IOMMUDomain | actual hardware group, DMA pins, IOTLB and reset fence | device/group-scoped DMA_MAP/PIN/IRQ |
 | ExecuteGrant (candidate) | image identity and authorized executable mapping | exec maps only after policy/image validation |
@@ -121,7 +123,7 @@ Explicit shared mappings do not imply zero-copy superiority; copying can be nece
 
 **Fault classification:** missing anonymous, missing file backing, protection write/exec fault, revoked mapping, guard fault, invalid virtual address, exhausted charge/RAM, stale mapping or stale PagerBinding, backing data error and kernel-usercopy fault. Error enums/public ABI not frozen. Linux signals and Windows/Darwin exception semantics remain user personality responsibilities.
 
-**FaultToken candidate:** faulting Task/Thread generation, AS/MappingRecord generation, MemoryObject backing version+offset, access rights, origin grant/epoch, PagerBinding identity/generation and one-shot resolution authority.
+**v0.2 모델:** per-Thread FaultWaiter는 커널만 소유하고 Task/Thread/AS/Mapping/grant epoch와 책임 sponsor를 추적한다. PagerRequest는 특정 PagerBinding의 MemoryObject/range/backing version에 대한 관측 요청이며 **한 요청에 0~N명의 FaultWaiter를 합칠 수 있다**. Pager가 갖는 SUPPLY_PAGE/FAIL_RANGE는 지정된 object/range만 변경하며 **다른 Thread를 직접 Resume하는 권한이 아니다**. Correlation cookie는 필요시 stale request 방지와 결과 추적에 쓰지만 user-supplied 숫자는 kernel capability가 아니다.
 
 **State model:**
 
@@ -130,15 +132,15 @@ CPU Fault -> Classify Current AS Mapping and Rights
  invalid/protection/revoked -> scoped exception/fail
  anonymous -> reserve + zero/supply + map OR bounded OOM fail
  file missing -> FaultPending + authorized Pager request
-    -> PagerSupply | PagerFail | PagerDetached | Dead | Timeout
+    -> ScopedPageSupply | FailRange | PagerDetached | Dead | Timeout
     -> Recheck TaskGen, ASGen, MappingGen, BackingVersion, PagerGen, B
-    -> Install+ResumeOnce | CancelStale | FailThread
+    -> KernelRevalidateEachWaiterAndMapOrRefault | CancelStale | KernelFailThread
     -> Release fault/wait/queue/metadata charges safely
 ~~~
 
-PagerSupply grants contents only for the MemoryObject/range to which the service is bound, not arbitrary Task mapping authority or raw physical PFN control. Already queued fault does **not** justify skipping new rights/epoch rechecks when page is installed. A single page may satisfy coalesced faults, but every waiter has its own Task/Mapping generation, lifecycle, cancellation and sponsor obligations.
+PagerSupply grants contents only for the MemoryObject/range to which the service is bound, not arbitrary Task mapping authority or raw physical PFN control. **PageSupply success means backing pages available, not completion of a specific fault or resumed Thread.** Kernel independently revalidates and settles each FaultWaiter, including concurrent revoke, Task death, mapping replacement and duplicate faults. Already queued fault does **not** justify skipping new rights/epoch rechecks when page is installed. A single page may satisfy coalesced faults, but every waiter has its own Task/Mapping generation, lifecycle, cancellation and sponsor obligations.
 
-**Pager detach/failure:** no new request into detached binding. Inflight faults terminate or transfer through a separately authorized rebind path; never hang forever simply because service disappeared. Already resident clean content can stay mapped where safe; dirty contents cannot be silently deleted. Service restart changes PagerBinding incarnation; old supply/fail replies cannot target a new instance. Transparent process continuation is NOT guaranteed in VM-P0.
+**Pager detach/failure:** no new request into detached binding. Inflight faults terminate or transfer through a separately authorized rebind path; never hang forever simply because service disappeared. Already resident clean content can stay mapped where safe. **Dirty contents must not be advertised as durably preserved by mere detach.** In Fuchsia's writeback RFC [S7], detach allows pending dirty writeback, but Pager object destruction can permit dirty pages to be dropped. UniOS must separately decide what to do on Pager authority destruction, OOM or unrecoverable storage failure; M3 cannot claim zero-data-loss availability. Service restart changes PagerBinding incarnation; old supply/fail replies cannot target a new instance. Transparent process continuation is NOT guaranteed in VM-P0.
 
 Fuchsia uses this kind of pager-backed mechanism and describes detach/dirty page concerns [S4,S5]. This is precedent, not a UniOS ready-to-run subsystem.
 
@@ -169,11 +171,11 @@ Two authorized receiver Tasks may both be permitted to read ordinary data, but a
 
 **Placement alternatives:** Cache-A user Pager picks clean eviction with kernel safety checks, Cache-B kernel tracks generic pager-backed page age/LRU and evicts reclaimable clean frames, Cache-C mostly user-managed frame allocator. Fuchsia kernel clean-page reclaim is genuine precedent [S6]; no blanket "all cache in userspace" claim.
 
-**Writeback deferred:** dirty generation, concurrent writer isolation, writeback begin/snapshot, actual data+metadata durability, success/failure acknowledgement, fsync/flush semantics, crash replay, truncate/hole-punch and Pager death must be jointly designed with RFC-008. Merely receiving a Pager ACK cannot prove stable storage or file-system crash consistency. Current Fuchsia pager-detach/writeback descriptions differentiate dirty retention [S5,S7]. No writeable mmap general compatibility promise now.
+**Writeback deferred:** dirty generation, concurrent writer isolation, writeback begin/snapshot, actual data+metadata durability, success/failure acknowledgement, fsync/flush semantics, crash replay, truncate/hole-punch and Pager death must be jointly designed with RFC-008. An OOM fallback cannot pin arbitrary dirty data forever. Failed/destroyed Pager may make unsaved data unavailable or lost; model application-visible data-loss state, read-only fallback, supervised shutdown, and durable recovery boundaries rather than an impossible unconditional preservation guarantee. Merely receiving a Pager ACK cannot prove stable storage or file-system crash consistency. Current Fuchsia pager-detach/writeback descriptions differentiate dirty retention [S5,S7]. No writeable mmap general compatibility promise now.
 
 ## 10. Memory pressure and OOM safe fallback
 
-**Different errors:** VA exhaustion, sponsor quota, global RAM pressure, kernel metadata shortage, non-evictable dirty/pinned pressure, Pager unavailable, unsafe DMA quarantine, overcommit-at-fault. A successful virtual reservation may not commit RAM; overcommit would allow later faults to fail. Error messages/SDK must distinguish.
+**Different errors:** VA exhaustion, sponsor quota, global RAM pressure, kernel metadata shortage, non-evictable dirty/pinned pressure, Pager unavailable, unsafe DMA quarantine, overcommit-at-fault. **Reserve VA is not commit RAM, and commit RAM is not a permanent resident/pinned guarantee.** A successful virtual reservation may not commit RAM; overcommit would allow later faults to fail. Error messages/SDK must distinguish.
 
 **Candidate staged response:**
 
@@ -185,7 +187,7 @@ NORMAL -> WARNING (advisory shrink and safe clean cache eviction)
  -> RECOVERY (verify actual free frames/metadata, not assumed)
 ~~~
 
-User-space Memory Manager/Supervisor should choose discretionary OOM victim when functioning; kernel must protect hard budgets, rescue resources, and a deterministic minimum safe response if that daemon itself is blocked. **Not** a magical global kill permission, guarantee that exactly one kill frees RAM, or guarantee no data is lost in unrecoverable faults. An app may ignore pressure signals; enforcement still uses quotas and frame references.
+User-space Memory Manager/Supervisor should choose discretionary OOM victim when functioning; kernel must protect hard budgets, rescue resources, and a deterministic minimum safe response if that daemon itself is blocked. Distinguish **memory isolation survives** from **service recovers** and **unsaved data persists**. Outcome classes include denied allocation, app failure/termination, degraded service, controlled shutdown, or unrecoverable halt. Normal recovery may be claimed only after actually reusable frames, metadata reserve and backing/Pager paths recover. **Not** a magical global kill permission, guarantee that exactly one kill frees RAM, or guarantee no data is lost in unrecoverable faults. An app may ignore pressure signals; enforcement still uses quotas and frame references.
 
 If Pager died, a file fault is BACKING_UNAVAILABLE rather than GLOBAL_OOM. Killing a Task cannot instantly reclaim externally referenced Shared MemoryObject, dirty file pages, DMA-pinned frames, quarantine, outstanding IPC fault requests or sponsor debt. No unlimited low-memory reclaim recursion; resource reserves and watchdog/error completion must survive. Swap, compressed RAM and anonymous disk backing are not VM-P0 promises.
 
@@ -244,7 +246,7 @@ Linux mmap/mprotect/brk/fork, Windows VirtualAlloc/sections and Darwin Mach VM s
 | guest mprotect privilege injection | native TaskControl/escalation | capability scope enforcement |
 | W+X aliased mappings | executable bytes writable through alias | object-level alias rule |
 
-## 15. Security and correctness invariants (VM-01..VM-26)
+## 15. Security and correctness invariants (VM-01..VM-32)
 
 | ID | Proposed invariant — NOT verified |
 |---|---|
@@ -258,8 +260,8 @@ Linux mmap/mprotect/brk/fork, Windows VirtualAlloc/sections and Darwin Mach VM s
 | VM-08 | VA reserve, physical commit, map, pin and persistence states cannot be conflated. |
 | VM-09 | Newly exposed anonymous frames are zeroed/isolated, zero-page writes COW privately. |
 | VM-10 | Concurrent COW/revoke cannot corrupt shared source or double-charge frame. |
-| VM-11 | One-shot FaultToken binds Task/AS/Mapping/Pager generations. |
-| VM-12 | PagerSupply cannot increase map rights or supply arbitrary foreign PFN. |
+| VM-11 | Per-Thread FaultWaiter binds Task/AS/Mapping/grant/Pager generations; one PagerRequest may correspond to several waiters. |
+| VM-12 | PagerBinding/PageSupply cannot increase mapping rights, supply arbitrary foreign PFN or resume a foreign Thread; each waiter is revalidated by the kernel. |
 | VM-13 | Dead/detached/restarted Pager cannot authorize stale or indefinitely stalled faults. |
 | VM-14 | Critical boot/Pager/Supervisor/driver IPC path cannot fault into its own dependency cycle. |
 | VM-15 | Kernel usercopy does not invoke unbounded Pager RPC under forbidden locks. |
@@ -274,8 +276,14 @@ Linux mmap/mprotect/brk/fork, Windows VirtualAlloc/sections and Darwin Mach VM s
 | VM-24 | SMP PCID/TLB/VA reuse and stale faults do not resurrect old map authority. |
 | VM-25 | Guest Linux/Windows/Darwin VM credentials do not mint native memory grants. |
 | VM-26 | Boot/recovery wait-for graph has no mandatory Pager/self-storage/IPC cycle. |
+| VM-27 | PageSupply and per-Thread fault continuation are distinct; every waiter has independent rights and lifetime validation. |
+| VM-28 | Pager detached, Pager authority destroyed and file write durably committed are distinct dirty-data retention/availability states. |
+| VM-29 | VA reserve, RAM commitment, resident frame and DMA pin have independent guarantees and charges. |
+| VM-30 | Clean eviction and refault require source identity/version, integrity and explicit backing-availability failure semantics. |
+| VM-31 | OOM isolation, normal service recovery and unsaved-data preservation are not presented as equivalent guarantees. |
+| VM-32 | M0 boot/recovery path can run without file Pager and has a finite accounted stack/page-table/IPC/IRQ/error reserve. |
 
-All 26 are proof/testing obligations with explicit CPU and trust assumptions; **none are claimed proven or implemented**.
+All 32 are proof/testing obligations with explicit CPU and trust assumptions; **none are claimed proven or implemented**.
 
 ## 16. Design alternatives, evidence gates and measurements
 
@@ -300,7 +308,7 @@ All 26 are proof/testing obligations with explicit CPU and trust assumptions; **
 - Prepare TLA+/PlusCal/Alloy style model and review counterexamples **as future design work**. This document contains no executed model or verified theorem.
 - Future experimental authorization would cover QEMU x86_64 + OVMF demand-zero/COW/fault/revoke stress, then physical PC IOMMU/IRQ/device fence separately; capture SMP and mitigation configurations, tail latency and failure paths.
 
-## 18. Open issues O4-01…O4-22
+## 18. Open issues O4-01…O4-29
 
 | ID | Priority | Question | Related |
 |---|---|---|---|
@@ -326,14 +334,21 @@ All 26 are proof/testing obligations with explicit CPU and trust assumptions; **
 | O4-20 | P1 | Memory pressure thresholds and reclaim livelock? | 004/005 |
 | O4-21 | P1 | Resize/hole-punch/invalidating shared file page? | 004/008 |
 | O4-22 | P2 | Future swap/compress/NUMA/hugepage and ABI? | 004/018 |
+| O4-23 | P0 | Coalesced PagerRequest vs per-Thread FaultWaiter and scoped PageSupply authority? | 002/003/004/009 |
+| O4-24 | P0 | Dirty data lifetime when Pager detaches vs object destroyed, storage fails or OOM? | 004/006/008 |
+| O4-25 | P0 | M0 file-Pager-free boot/teardown and worst-case wired pages/queue/IRQ reserve accounting? | 003/004/006 |
+| O4-26 | P0 | VA reservation vs physical commit vs resident/pinned promise and overcommit errors? | 004/009 |
+| O4-27 | P1 | Immutable clean page evicted then Pager unavailable or backing version changes? | 004/008/017 |
+| O4-28 | P1 | PagerSupply multiwaiter races with B revoke, UNMAP and Task death? | 002/003/004 |
+| O4-29 | P1 | OOM terminal data-loss reporting/read-only volume/shutdown decision boundary? | 004/006/008/015 |
 
-## 19. Proposed decisions VM-D01…VM-D14 (not Accepted)
+## 19. Proposed decisions VM-D01…VM-D18 (not Accepted)
 
 - **VM-D01:** VM-A is conditional research baseline; VM-B/VM-C alternatives remain active.
 - **VM-D02:** Explicit AddressSpace/MemoryObject/MappingRecord/Frame/PagerBinding/FaultToken/Budget separation.
 - **VM-D03:** Kernel owns authorization/page tables/TLB/frame zeroing, Pager cannot arbitrarily map foreign frames.
-- **VM-D04:** VM-P0 research covers anonymous/shared and verified read-only file paging before dirty writeback/swap/JIT.
-- **VM-D05:** FaultToken is one-shot, scoped to original Task/AS/Mapping/Pager generation.
+- **VM-D04 [revised]:** Research stage M0 wired boot + explicit anonymous/shared independent of file Pager, M1 readonly Pager, M2 COW/clean eviction, M3 writable paging/writeback; no stage implemented.
+- **VM-D05 [revised]:** PagerBinding-scoped PageSupply and kernel-private per-Thread FaultWaiter/resumption are different authorities; coalesced faults require independent checks.
 - **VM-D06:** Boot, Pager, storage, recovery IPC code/stack/tables are wired and resource-reserved.
 - **VM-D07:** Kernel usercopy must not page back into forbidden lock cycle; ReceiveEscrow Claim models disclosure.
 - **VM-D08:** R1 CPU cutoff, R2-F family drain, R2-O whole-frame reuse distinguished with DMA fences.
@@ -343,6 +358,10 @@ All 26 are proof/testing obligations with explicit CPU and trust assumptions; **
 - **VM-D12:** DMA pins are separate from normal refs, require real IOMMU hardware group fences.
 - **VM-D13:** Guest POSIX/Windows/Darwin virtual memory semantics stay outside native Ring 0.
 - **VM-D14:** No security/performance/ABI/recovery approval before RFC cross-review and proof evidence.
+- **VM-D15 [new]:** Kernel owns waiter state and Thread wakeup; Pager only supplies/fails scoped pages/ranges, even with coalesced requests.
+- **VM-D16 [new]:** Do not claim Pager detach/death/OOM preserves all dirty data without a durable recovery contract.
+- **VM-D17 [new]:** VA reserve, charged physical commit, and pinned residency have distinct guarantees and failure cases.
+- **VM-D18 [new]:** Prove a bounded M0 pager-independent wired recovery cut and OOM safety before higher-level VM availability claims.
 
 Status remains **Proposed Specification**, no modification of D1–D8 Accepted Direction or ADR-002.
 
@@ -351,6 +370,34 @@ Status remains **Proposed Specification**, no modification of D1–D8 Accepted D
 R1 design exit gate **not passed**. Need: MappingRecord/FaultToken rights and shootdown model, ReceiveEscrow plus usercopy proof against Pager deadlock, wired boot/recovery graph with bounded memory/queue reserve, fail-safe OOM under dead Supervisor, clean vs dirty page durability boundaries, DMA group and pin/hardware reset assumptions, competing VM-A/B/C trust/performance comparison.
 
 **Next recommended work:** RFC-006 Boot Trust Chain, Service Startup & Recovery jointly with RFC-003+004. RFC-005 Scheduling, RFC-007 physical DMA and RFC-008 durability remain important dependencies.
+
+## 22. v0.2 심층 재검토 기록 및 반례 (2026-10-24)
+
+**방법:** RFC-001/002/003 상호 정합성, 공식 seL4/Fuchsia/Linux 아키텍처 및 writeback/detach/OOM 자료를 비교하고 보안·수명 반례를 분석했다. 실제 모델 검사·구현·벤치마크·독립 감사가 아니다.
+
+| 위험 | v0.1에 남은 모순 | v0.2 개선 | 다음 검증 |
+|---|---|---|---|
+| Page supply vs Thread continuation | 모든 Pager 공급을 Thread별 one-shot FaultToken으로 취급하면 coalesced fault와 결합할 때 Pager 권한/TBC 확대 | Kernel FaultWaiter와 scoped PagerRequest/Binding 분리 | N waiters/one page, revoke/kill/restart |
+| Dirty data after Pager death | detach와 Pager 객체 파괴를 같은 영속성 계약으로 생각할 수 있음 | detached, destroyed, writeback pending, data lost를 별도 상태로 분리 | OOM vs dirty pinned data, storage failure |
+| VM-P0 overcomplexity | read-only Pager, anonymous demand-zero, COW와 reclaim을 초기 필수 요소처럼 묶음 | M0 Pager 없는 resident 익명/공유 기반 → M1 readonly → M2 COW/reclaim → M3 writeback 단계 제안 | TCB/boot DAG, later performance |
+| Reservation semantics | Reserved VA, promised resident RAM, actual mapped frame 충돌 | 독립된 reserve/commit/present/pin 계약 | quota conservation, overcommit OOM |
+| Clean page availability | 재생성 가능한 clean backing을 항상 다시 가져올 수 있다고 가정 | content identity/version plus explicit Pager unavailable outcome | executable refault and source churn |
+| OOM promise | 커널이 안전하게 거절해도 운영 복구/dirty persistence는 실패 가능 | safety, availability and data integrity 분리 | worst-case supervisor dead, hardware DMA quarantine |
+| Code integrity and W^X | 주소별 RWX 검사가 실제 물리/객체 alias를 놓칠 수 있음 | per-object/alias policy와 JIT 전용 승인 요구 유지 | cross-AS alias and COW mapping |
+
+### 22.1 P0 resolution order
+
+1. Pager 없이 독립적으로 실행되는 **M0 wired resource cut**와 필요한 page-table, IRQ, fault, IPC, stack의 worst-case 최대 charge 경계를 모델링.
+2. Kernel-private **FaultWaiter**와 PagerBinding PageSupply·FailRange·generation을 분리하고 coalesced waiter 및 fail/refault 상태기계를 검토.
+3. RFC-003 ReceiveEscrow data disclosure와 VM usercopy re-entrancy 및 revoke B, R1 CPU shootdown을 공동 모델링.
+4. Pager detach, object destruction, dirty writeback crash, OOM 및 data-loss reporting을 RFC-008과 통합해 설명.
+5. VM-A/B/C를 **동등한 보안·정상/실패 동작** 조건으로 비교하고 메커니즘을 최소화한다. 속도 측정은 별도 구현 승인 후.
+
+### 22.2 결론과 효력
+
+VM-A는 여전히 유력하지만 최선으로 확정되지 않았다. M0~M3는 설계 검토의 순서이지 승인된 구현 단계나 기능 일정이 아니다. RFC-001/002/003과 Architecture v0.2의 상위 방향을 변경하지 않았으며, 새 VM-D15~18도 **Proposed**이다. ABI/기술 수치와 데이터 무손실 보장, 실물 하드웨어 시험 결과를 주장하지 않는다.
+
+**Version history:** v0.1 registered 2026-10-24, preserved in Git history; v0.2 re-reviewed 2026-10-24 and corrected pager authority, dirty-data retention, staged feasibility and OOM outcomes.
 
 ## 21. Official primary technical references
 
