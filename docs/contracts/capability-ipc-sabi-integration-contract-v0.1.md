@@ -159,3 +159,153 @@ A method may contain **multiple caps**. They transfer as one kernel SEND transac
 
 **Hard problem still open:** how to publish complete bytes and installed cap handles to a malicious B without copyout leaking before committed authority, with mutable user memory and Pager faults. RFC-003 RCV-A exclusive escrow is a promising **hypothesis**, not yet atomic or confidentiality proof. Register-only small response and pre-pinned immutable staging remain alternatives with cost/availability tradeoffs.
 
+
+## 4. Kernel operation receipt, UNKNOWN and abort ownership
+
+### 4.1 Sender cannot infer actual commit from a lost output
+
+Kernel queue mutation and caller-visible status are different cut points, even when the nominal syscall uses one register return. A cancelled or killed caller, CPU exception during syscall return, signal race or user copyout fault can leave the caller without an authoritative result. **The committed state must still have exactly one kernel owner.**
+
+| Candidate | Advantage | Undischarged P0 cost |
+|---|---|---|
+| **T1 protected operation record/ticket** | can query SEND commit truth without replaying MOVE | ticket ID itself may be lost; Task-scoped enumeration, authenticated query, quota and GC needed |
+| **T2 preallocated immutable result slot** | reports to prepared shared slot | slot remap/alias/fault or user DMA, Pager deadlock, continuous atomicity unproven |
+| **T3 fail-closed ambiguous caller** | avoids claiming false rollback | may kill/quarantine a benign caller; pending effects and sponsor must still be settled |
+| Register-only atomic result candidate | fewer user-buffer copyout faults | must prove completion after irreversible commit when Thread/context is killed or signal interrupts; narrow ABI/architecture constraint |
+
+**Provisional preference:** T1 as a design hypothesis **with explicit discoverability**, not a selected syscall. An operation ticket issued in the failed return path is useless if the caller loses the ticket number. Explore preadmitted Task-scoped operation slot whose identity exists *before* send and cannot be forged, plus bounded enumeration permitted only within the actual Task/service scope. A ticket shall not reveal another application's service endpoint, FileCap or user data. If no safe reconciliation channel exists, expose UNKNOWN and prevent unsafe retries.
+
+### 4.2 A lost reply is not a lost request
+
+A one-shot ReplyToken bound by kernel to CallerTask/Thread/RequestGeneration/EndpointObject cannot be forged from request_id bytes. A SABI ServiceIncarnation may change independently. Timeout, CancelLocal, PeerClosed and ReplyToken invalidation only affect local wait/right to deliver reply. They do not cancel a filesystem rename already admitted or a device command physically submitted. A committed request may later return an application result or a lost reply; no generic exactly-once file/network guarantee.
+
+Kernel REPLY commitment, application effect receipt and client RESULT_OBSERVED are separate. SABI idempotency keys are not protected kernel operation tickets. Avoid numeric collision across Caller/Endpoint/ServiceIncarnation and guest process PID reuse. Request reissue after UNKNOWN requires backend durable reconciliation or a method-specific proven idempotent effect.
+
+### 4.3 ReceiveClaim abort and unknown-cap policy
+
+When service B decodes an unknown resource-bearing field *after* kernel P1 SEND_COMMITTED, default action is **reject and settle all already-transferred resources** under known kernel custody rules. Allowed outcomes are (i) B never installed caps, then kernel claim returns to carefully bounded queued custody or explicitly drops/revokes under declared policy; (ii) B installed caps, then B closes/revokes according to cap type and sponsor accounting; or (iii) a trusted authorized proxy receives and re-MOVEs a **newly constrained** resource to an allowed peer. No automatic return to A's pre-SEND ownership. Closure of DeviceCap does not imply physical hardware R2-F. Unknown scalar bytes may be discarded only if their omission is genuinely security-neutral and does not erase mandatory fields under a proxy transformation.
+
+**Separate error names needed (logical only, no numeric ABI):** TRANSPORT_NOT_COMMITTED, TRANSPORT_COMMITTED, TRANSPORT_UNKNOWN, RECEIVE_CLAIM_FAILED, RECEIVE_PARTIAL_BYTES_VISIBLE, BAD_RESOURCE_ROLE, UNKNOWN_REQUIRED_SECURITY_FIELD, METHOD_UNSUPPORTED, POLICY_EPOCH_STALE, SERVICE_INSTANCE_STALE, EFFECT_NO_EFFECT, EFFECT_APPLIED, EFFECT_UNKNOWN and SYNC_SCOPED. Names are research semantics, not a promise each is observable from every existing Linux syscall.
+
+## 5. Cap type, right attenuation, handle ABA and revocation
+
+### 5.1 Typed right table (E1-only candidate)
+
+| Resource class | Permitted scoped operation | False assumption rejected |
+|---|---|---|
+| E1 ChannelEndpoint | SEND, RECEIVE, WAIT, TRANSFER, QUERY_BASIC subject to direction/profile | **DERIVE and DUPLICATE prohibited** for E1 |
+| ReplyToken | one-shot REPLY, optional bounded worker handoff under issuer policy | arbitrary Task reply or replay after service restart |
+| CapDeriveAuthority | DERIVE only those object/right types explicitly permitted by issuer | all caps duplicate by default |
+| Scoped ServiceConnectionRequest | request broker to issue exactly one new authorized E1 pair/connection | ServiceID string mints endpoint |
+| DirectoryCap/FileCap | scoped native file/dir methods under current VFS/portal policy | guest Linux UID0 or path string broadens cap |
+| MemoryObject/DmaPin | authorized virtual/physical mapping with explicit R1/R2-F limits | Task close means DMA stopped |
+| ResourceBudget | reserve/adopt/charge explicit objects/queues and orphaned transit | MOVE automatically transfers sponsor or refunds RAM |
+| RevocationController | revoke exact grant family and await specified phase | revoke B immediately erases shared independent root effects |
+| DeviceGroup/IRQ | privileged hardware control and masked interrupts under validated topology | SABI DeviceCap ordinal grants raw PCI/MMIO/TPM |
+
+An overall type permission is **not** a promise that every individual handle has that right. Rights and scope must be checked from the kernel grant on invocation; services also enforce current method-specific and consent policy. The RFC-002 abstract DERIVE right is type-specific; no code generator may accidentally derive an exclusive ChannelEndpoint by mechanically applying a generic handle clone routine.
+
+### 5.2 Public opaque Handle and stale caller bits
+
+An external Handle token that has become invalid in a Task may be copied into old stack or register memory. The **exact same externally visible token** must not later authorize a different grant while that stale copy can still be presented in the same Task lifetime. Merely storing an internal generation but reusing identical public bits is insufficient. Candidates are monotonic Task-scoped public tokens or versioned nonwrapping public token with fail-closed namespace exhaustion. Format/layout, bit widths and public SDK C type are still undecided; this is not a fixed 64-bit ABI mandate.
+
+Endpoint and ReplyToken kernel generation, SABI ServiceIncarnation, PolicyEpoch and guest FD/PID/OpenFileDescription generation must not be collapsed to one unchecked integer. If a Process/Task dies, stale asynchronous callback and ticket cannot be rebound by name/number reuse. However, an invocation reference admitted before Handle close can remain live until its *own* commit/fence cut and associated charge settles.
+
+### 5.3 Independent R0/B/R1/R2-F/R2-O phases
+
+~~~text
+R0: close one Task handle (other grants/operations can survive)
+ B: reject new actions in the selected revocation lineage
+R1: grant-derived CPU mappings no longer usable after proper TLB fence
+R2-F: named family hardware DMA/IRQ and admitted work physically quiesced
+R2-O: ALL independent roots and references drained, memory sanitized/reclaimable
+~~~
+
+A scoped revoke is not necessarily global object revoke. A call admitted *before* B may continue within its defined reference/sponsor scope, and disclosure to user memory or external file/network side effect cannot be undone. Even if cap reference count drops, DMA pin may persist and require quarantine. A path-dependent FileCap is often an application-level lease policy, not a promise of kernel-hardware R2-F on the file's prior writes.
+
+**Race that must be modeled:** Invocation operation enters using grant G, revocation B is published, operation blocks on Pager, another Thread tries to DERIVE/MOVE G and a DeviceGroup still has an IOVA alias. New derivative and new work after B denied; old invocation continuation and physical fence handled according to its admitted cut. No automatic CPU/DMA reclamation from one close.
+
+## 6. Budget, sponsored resource conservation and bounded failure
+
+### 6.1 Charges by each custody state
+
+| Resource and phase | Sponsor obligation | Failure/reclamation |
+|---|---|---|
+| Kernel cap/grant and lineage anchor | typed handle slot, ancestry metadata and object refs | retained while descendants/effects still exist after original issuer closes |
+| SEND preflight | provisional queue, cap transit, metadata and protected result-slot reservation | release only for genuine NOT_COMMITTED |
+| SEND_COMMITTED queue | message bytes, cap vector, queue slot and age/retention | may remain after sender Task dies; quota not simply refunded |
+| ReceiveClaim | exclusive claim, cap slots, staging bytes, Task/Endpoint generation | claimant death/timeout has bounded cleanup or quarantine |
+| Installed B handles | holder's handle/metadata budget plus any inherited sponsor obligation | sponsor switch only via explicit authorized ADOPT |
+| Pending ReplyToken/WaitSet | protected callback/reply metadata/credits | bounded cancel/death/dedup; no stale new-instance wake |
+| MemoryObject + dirty data | physical pages, COW writeback versions, Pager faults | clean/dirty/reclaim proof separate |
+| Device DMA pin and IRQ | pinned PFNs/IOVAs/IRQ/ATC records and quarantine charge | release only after actual R2-F and independent reference test |
+| Durable effect ledger | bounded per-volume generations/idempotency receipts | crash survival only if independently correctly persisted |
+
+Sponsor need not be current holder. A Task dying does not necessarily refund a physically active DmaPin it formerly sponsored or a queued grant transit it originally funded. Sponsor ADOPT requires both authorized new charge/reservation and atomic old charge release; otherwise retain debt or refuse admission. Recycling handle slots/pins with a stale public token violates anti-ABA regardless of budget arithmetic.
+
+### 6.2 Critical recovery and resource-pressure deadlocks
+
+Kernel IPC must reserve minimal pages, queue slots, and bounded receipt/lineage cleanup; M0 RecoveryAuthority must have resident code+stack+page tables+timer/IRQ+critical CPU+IPC/Wait/error state. A service waiting for Pager while holding the only Pager-to-driver queue slot can deadlock regardless of a correct IDL. User-sponsored message parse complexity must not consume M0's reserved CPU/IRQ/clean-up capacity.
+
+Examples:
+- A malicious Client monopolizes all Channel queue records with valid small messages; Pager cannot request storage and M0 failover has no IPC reserve.
+- Server B claims bytes for a large SABI resource union and never completes ReceiveClaim, pinning all cap transit.
+- Task A closes a cap and sponsor exits, but a revocation lineage anchor or DeviceGroup remains Quarantined and every new service allocation incorrectly assumes the debt disappeared.
+
+Require explicitly bounded worst-case admitted counts and critical lane reserve, not unproved microsecond guarantees. If actual hardware or root authority cannot progress, deterministic fail-closed/quarantine/fail-stop is a valid safety outcome; "M0 always repairs the device" is not.
+
+## 7. Caller authentication, consent, forwarding and policy epochs
+
+### 7.1 Bearer-only versus identity-sensitive method classes
+
+**BEARER:** possession of a scoped Endpoint cap grants the allowed operations to the current holder, regardless of whether it is the original issuing user or a delegate. A Task moving the Endpoint explicitly delegates whatever access is allowed under issuance policy; E1 MOVE enforces exclusivity, not human identity.
+
+**IDENTITY-SENSITIVE:** method authorizes on account/user/consent ownership, for example user-scoped file disclosure or an irreversible privileged setting. Endpoint bearer alone is insufficient. Need independently authorized per-call proof of principal/consent (issuer-stamped scoped proof cap/token or trusted kernel/portal metadata bound to actual Task, object, operation and generation). Whether an issuer should supply a transferable proof is a distinct confidentiality/delegation policy; user-provided strings or Linux UID0 are NOT that proof.
+
+**FORWARDED:** an intermediary may hold a high-privilege native service cap but receives a less-privileged request from another Task. It must not exercise its own ambient grant as if that proves the original request's scope. The method's effective authority is constrained by a trusted delegated authorization and server policy. seL4-style badges are one useful kernel-minted grant label example [S3], but neither seL4 badge nor a mere issuer ID automatically proves a human login or current consent.
+
+### 7.2 Time-of-check vs time-of-use of session features
+
+One illustrative finite sequence:
+
+~~~text
+Caller C holds Endpoint E with scope R0 and ServerInstance S1
+  -> trusted broker grants a Session(E,S1,PolicyEpoch=P10,IDL=V2,roles=F0)
+  -> client negotiates mandatory future-feature F0 and sends Method M
+  -> issuer revokes a right or server policy becomes P11
+  -> Method M is about to admit a *new* scoped native operation
+  -> service MUST check live cap and P11 floor; stale P10 handshake not enough
+  -> service denies/rebinds or, for already-admitted effect, follows its
+     explicitly defined pre/post-authorization linearization contract
+~~~
+
+An SABI request may include SessionId/MethodOrdinal/RoleIndex bytes, but only trusted Endpoint+issuer/server state binds them to actually granted scope. Never allow caller-provided SessionId or ServiceID to extend the cap's resource rights. Reconnect after service death gets fresh Endpoint and new SABI version/PolicyEpoch binding; old ReplyToken cannot refer to new ServiceInstance.
+
+### 7.3 Strict unknown resource and version change
+
+Unknown **value-only** optional data may be ignored if its default does not change authorization or effect. Unknown **resource-bearing** union/role requires counted kernel cap-vector settlement. Unknown mandatory security/durability/consent restriction MUST fail closed regardless of wire backward readability; older client cannot choose legacy default broad rights. Version negotiation is not token authentication; binary-to-JSON representation bridges may lose unknown Protobuf fields [S5], so proxy chains that depend on opaque retention of mandatory restrictions are denied.
+
+**Key invariants:** a new field cannot change MOVE to COPY silently; absent consent cannot become granted consent; unknown SUCCESS cannot mean plain success; optional handle role cannot install root DeviceGroup; unknown result cannot be quietly mapped to an older Linux errno that implies no effect.
+
+## 8. Response/effect status composition and guest translation
+
+### 8.1 Multi-layer result lattice, not one catch-all STATUS_OK
+
+| Truth owner | Candidate observation | What status does NOT assert |
+|---|---|---|
+| kernel IPC | SEND NOT_COMMITTED / COMMITTED / UNKNOWN | service admitted, completed, durable |
+| kernel receiver | RECEIVE_CAP_INSTALLED/claim state | bytes published atomically, method authorized |
+| SABI service | METHOD_DENIED / EFFECT_APPLIED / EFFECT_UNKNOWN | hardware DMA stopped, disk durable |
+| DeviceGroup authority | R1 / R2-F / R2-O fence ticket | storage transaction undone, file key unsealed |
+| VFS/durable ledger | BUFFERED_VISIBLE / SYNC_COMPLETED_SCOPED / RECEIPT_UNKNOWN | unrelated volume/media power-safe |
+| boot trust authority | BootGood/Trial/RootFloor status | an app RPC magically grants BootFloorWriter |
+| user SDK | RESULT_OBSERVED or unavailable | remote work automatically undone by timeout |
+
+File/Network/DeviceService may already have side effects after caller deadline. Even a backend "idempotency key" is only useful when tied to authenticated caller, method, immutable request digest and a durable journal coordinated with the effect. Guarantee exactly-once across nontransactional external devices is not available from ReplyToken or IDL alone.
+
+### 8.2 Native ABI and Linux guest status are different namespaces
+
+RFC-009 native KABI logical statuses and RFC-018 user-space SABI result families are not Linux errno. A Linux-personality broker translating a POSIX-style write, fsync, close, futex, execve or epoll must honor the actual guest program's signal/FD/OFD/time/commit behavior: the native UNKNOWN for an already-sent network write cannot safely be made no-effect Linux EINTR. A guest FD integer is not a native cap token. Any behavior that cannot be represented truthfully is a **compatibility-tier refusal/research gate**, not an invented SUCCESS.
+
+No numeric syscall, status enum, versioned wire byte layout, C struct shape, or specific Linux compatibility claim is fixed by this paper.
+
