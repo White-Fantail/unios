@@ -170,3 +170,106 @@ A C caller may lose the ClaimID return on Stage, the AcceptCommit return, or the
 
 **Compatibility with prior CAPIPC proposals:** E1 Endpoint owner uniqueness, MOVE-only source cap transfer, first-possible-exposure terminalization, cap-vector K-I, revocation barrier B, R1/R2-F/R2-O and no native cap from raw SABI numbers remain intact. This is a priority and trust-model refinement, not a newly discovered contradiction in those fundamentals.
 
+
+## 7. Adversarial re-review matrix (H2-C01…H2-C24) — NOT EXECUTED
+
+| ID | Schedule / attack | Required outcome, not yet proved |
+|---|---|---|
+| H2-C01 | C Stage generates fresh claim ID; only its return buffer gets faulted | preexisting trusted discovery or honest UNKNOWN, no invented ability to commit |
+| H2-C02 | B+ one-call K-I commits; return result lost | same protected Task status query as C, no supposed special C advantage |
+| H2-C03 | Task has two Threads; one stages then other AcceptCommits without reading bytes | admit only if Task-wide bearer policy; do not claim Thread consent |
+| H2-C04 | two C AcceptCommits simultaneously | only one K-I winner; loser sees already-committed truth, no duplicate vector |
+| H2-C05 | C Claim holds only receiving queue head while verifier depends on same channel credit | bounded fail-stop/cancel; no circular queue capacity starvation |
+| H2-C06 | staged secret bytes are used for outgoing network effect before AcceptCommit | message terminalization cannot prove no external effect |
+| H2-C07 | staged bytes mutated by B after trusted verifier checked a user-provided hash | release cannot be based on mutable user bytes alone |
+| H2-C08 | staged message X's trusted verdict presented to release Y | exact kernel-held message/cap vector/generation binding |
+| H2-C09 | valid verifier verdict at P0 then revoke B and issuer P1 before K-U | stale approval denied at actual activation |
+| H2-C10 | cap numeric token partially copied in B+, last token copy faults | never enable partial vector; potentially exposed token numbers never reassigned to unrelated rights |
+| H2-C11 | cap IDs internally reserved but kernel can prove not user-visible | may reclaim only under separate proven no-stale-authority rule; don't burn blindly |
+| H2-C12 | malicious B stages one token and repeatedly aborts | finite Task namespace/claim budget, fail closed without global M0 exhaustion |
+| H2-C13 | B+ successful byte copy, controller publishes B before K-I | no revoked grant newly invokable after barrier, transcript visible may require terminal |
+| H2-C14 | K-I wins then controller publishes B before B Thread invokes cap | new cap invocation denied; admitted references treated separately |
+| H2-C15 | receiving Endpoint moves B→C after possible payload exposure | no automatic message redelivery to C without new issuer/audience decision |
+| H2-C16 | receiver B dies and same numeric Task ID assigned B2, old ClaimID used | generation/anti-ABA prevents new Task from querying or committing old claim |
+| H2-C17 | messages contain nested Channels, terminal cleanup recursively closes them | bounded iterative cleanup/quarantine rather than kernel stack explosion |
+| H2-C18 | terminal message retains DeviceGroup pin; driver says “closed” while DMA active | do not claim R2-F or refund pending physical charge |
+| H2-C19 | size/count status exposed to unprivileged caller before K-Vp | K-Vm confidential metadata authorization or coarse safe projection |
+| H2-C20 | B+ copyout alias overwritten by B's sibling Thread between K-V and K-I | no claim that data retained; method/schema authorization cannot rely on old mutable copy |
+| H2-C21 | stale external public handle bits copied and receiver public slot generation wrapped | fail-closed exhaustion, never authorize unrelated cap from old token |
+| H2-C22 | B and C are same human principal but different Task/ServiceIncarnation | audience label explicitly defines allowed replay; no name-only automatic same claim |
+| H2-C23 | SABI guest maps returned native UNKNOWN to Linux “nothing happened” result | reject/downgrade support tier, or prove precise syscall-specific effect semantics |
+| H2-C24 | C's extra consent/validation step absent in normal T1; claims “more secure” than B+ | demand a testable distinct trust property, else no default recommendation |
+
+## 8. Candidate safety predicates (H2-I01…H2-I28) — NONE PROVED
+
+| ID | Unproved predicate |
+|---|---|
+| H2-I01 | Sender K-S commit and receiver K-I custody remain separate irreversible cuts; source MOVE is never undone by receive failure. |
+| H2-I02 | Each of two E1 Endpoint halves has at most one effective public Task owner; issuer names do not substitute for object identity. |
+| H2-I03 | Before K-I, reserved numeric tokens are INERT and cannot invoke native cap grants through that Task's table. |
+| H2-I04 | K-I installs the complete received live-grant vector and retires queue/claim in one atomic kernel cut or neither. |
+| H2-I05 | Public token IDs possibly seen by a Task are never reused to authorize unrelated native grants for the remaining Task lifetime. |
+| H2-I06 | Internal reservations proven never public may only be reused under an explicit proof of no stale valid handle, not blanket assumption. |
+| H2-I07 | K-I and terminalization have at most one winner for a given message and claim. |
+| H2-I08 | K-I and revocation B have a well-defined order, no fresh revoked descendant right after B. |
+| H2-I09 | Claim and K-I revalidate real receiving Endpoint owner, Task-generation, authorization audience, sponsor and current cap lineage. |
+| H2-I10 | Partial usercopy and SMP memory visibility never imply an all-or-none disclosure or successful result observation. |
+| H2-I11 | K-Vm and K-Vp are monotonic before sensitive metadata/payload publication, independent from K-I. |
+| H2-I12 | After possible sensitive disclosure, kernel does not silently redeliver the same queued message to a new unauthorized audience. |
+| H2-I13 | A B+ result lost after K-I is reported UNKNOWN to ignorant caller until protected trusted reconciliation. |
+| H2-I14 | A C Stage ClaimID lost during its own creation is not considered recoverable without preexisting trusted slot or scoped enumeration. |
+| H2-I15 | Receipt query is Task-generation/endpoint/claim-bound and reveals no other Task's confidential message metadata. |
+| H2-I16 | Two same-Task Threads racing AcceptCommit cannot double-activate or install two copies, and no Thread-only privilege claim is fabricated. |
+| H2-I17 | A Task's explicit C AcceptCommit is bearer acceptance, not independent schema, original human or consent proof. |
+| H2-I18 | T2 K-U requires real trusted verifier/issuer and immutable original bytes plus actual kernel-held CapGrant role identity. |
+| H2-I19 | T2 verifier approval cannot survive changed PolicyEpoch, revoked lineage or altered claim/vector without valid reauthorization. |
+| H2-I20 | A service's access to staged plaintext is treated as possible external effect even before receive K-I. |
+| H2-I21 | Every pending claim, token tombstone, result record, cap escrow and hardware pin has protected bounded sponsor charge. |
+| H2-I22 | Failure to complete a claimed receive can sacrifice delivery while preserving declared one-audience queue property. |
+| H2-I23 | Untrusted service wait-for cycles do not consume the wired M0 critical rescue CPU/IPC/Pager/timer reserve. |
+| H2-I24 | Public handle integer guessing does not constitute issuer authority; authorization remains in actual Task-local cap-table entries. |
+| H2-I25 | Handle close/terminal message and physical R1/R2-F/R2-O are distinct, including independent roots and outstanding DMA. |
+| H2-I26 | Native kernel status cannot prove remote method admission, filesystem durable completion or guest Linux no-effect. |
+| H2-I27 | A candidate design may be rejected for unbounded safety metadata/denial of service even if its local MOVE invariant holds. |
+| H2-I28 | The current design preference is research-only; no kernel ABI, executable model, proof or shipping feature is thereby Accepted. |
+
+## 9. Open blockers (H2-O01…H2-O18) and research ownership
+
+| ID | Priority | Proof / choice yet to be decided | Owner |
+|---|---|---|---|
+| H2-O01 | P0 | Is B+ K-I atomic with R-B, Endpoint MOVE, Task death and queue terminalization? | 002/003 |
+| H2-O02 | P0 | What public token namespace/bit layout enforces nonreuse without unrealistic fail-closed exhaustion under hostile claims? | 002/009 |
+| H2-O03 | P0 | When can an unpublished reserved ID be proved safe to reclaim, including alias and speculative disclosure assumptions? | 002/004/009 |
+| H2-O04 | P0 | Preidentified receipt/claim record whose identity survives result loss without cross-Task metadata access or stale ID reuse? | 002/003/009 |
+| H2-O05 | P0 | B+ private staging/slot preflight under pageable usercopy, buffer alias and CPU memory-order visibility? | 003/004/009 |
+| H2-O06 | P0 | Show critical M0 queue/cap/IPC/CPU/IRQ reserve bounded under repeated B+ faults and C held Stage. | 003/005/006 |
+| H2-O07 | P0 | Prove C's second phase creates a needed independent permission/consent gate rather than only Task self-acceptance. | 003/016/018 |
+| H2-O08 | P0 | Any T2 verifier attestation bound to authenticated immutable message, exact native grant vector and current issuer PolicyEpoch? | 002/003/018 |
+| H2-O09 | P0 | Define K-I/K-U race with controller B and service policy updates, including old admitted backend effects. | 002/003/008/018 |
+| H2-O10 | P0 | C staged queue head timeout and dependency-cycle cancellation preserving confidentiality and sponsor credit. | 003/005/006 |
+| H2-O11 | P0 | Ensure recipient Task cannot obtain new active grants after stale K-V exposure when Endpoint ownership changes. | 002/003/006 |
+| H2-O12 | P0 | Terminal cleanup nested Channel graph, unknown DeviceCap, R2-F pins and sponsor after Task death. | 002/003/007 |
+| H2-O13 | P0 | Meaningful native and Linux guest receive/result/error outcomes under partial byte exposure, UNKNOWN and no-effect assumptions. | 008/009/010 |
+| H2-O14 | P1 | Compare per-operation syscall crossings, queue hold, memory pressure and throughput after future prototype approval; no fabricated numbers. | 003/005/009 |
+| H2-O15 | P1 | Compare capless/register fast path and full vector receive with one consistent receipt/anti-ABA contract. | 003/009 |
+| H2-O16 | P1 | Distinguish actual original user consent from transferable bearer Endpoint and SABI sender label. | 002/016/018 |
+| H2-O17 | P0 | Confirm K-Vm status probes can be nonsecret or else mark potential metadata exposure before error publication. | 003/009/018 |
+| H2-O18 | P1 | Decide status and claim tombstone GC horizon with no publicly revalidated stale ID. | 002/003/009 |
+
+## 10. Proposed joint decision register (H2-D01…H2-D14) — NONE Accepted
+
+- **H2-D01:** Reorder general T1 research priority to HPA-B+; the previous universal HPA-C proof-first preference is withdrawn as a recommendation, not erased from history.
+- **H2-D02:** Keep HPA-C as conditional deferred-activation/independent policy-validation study; not a universal security feature.
+- **H2-D03:** Treat per-Task AcceptCommit by untrusted B as Task bearer acceptance only, not proof of consent, original identity or IDL validation.
+- **H2-D04:** K-I remains one atomic full-vector native install+receive retire cut in either candidate; never two partly successful kernel receives.
+- **H2-D05:** Reserve potentially published public token IDs as inert before K-I and never reuse those values to name unrelated grants in the same Task.
+- **H2-D06:** Conditionally permit reclaim of reservations shown *not* to have been exposed or previously live only after a separate namespace/ABA proof.
+- **H2-D07:** Both B+ and C require protected preidentified or safely discoverable actual-commit result records, and honest UNKNOWN if unavailable.
+- **H2-D08:** Any K-Vm/K-Vp possible disclosure before K-I forbids silent automatic cross-audience requeue; application-level new resend is separately authorized.
+- **H2-D09:** A T2 verifier/release must bind actual kernel grants and authenticated immutable message content and recheck live revoke/policy at K-U.
+- **H2-D10:** A successful C Stage does not prove byte retention or prevent a pre-K-I external effect by a malicious receiver.
+- **H2-D11:** Stop no-progress claims and charge terminal/ticket/escrow/Channel-cycle/DMA debt under bounded sponsor accounting independent of M0.
+- **H2-D12:** Compare security properties and feasibility before choosing one receive ABI: qualitative lower cost is not proven measured better performance.
+- **H2-D13:** Native UNKNOWN, remote effect and durable backend receipt are distinct; Linux guest cannot infer clean rollback or SUCCESS from kernel recv status.
+- **H2-D14:** This re-review updates Proposed research priority only; no accepted decision, code, executable model, ABI freeze or product assurance.
+
