@@ -777,6 +777,93 @@ Transitions: create, buffered write, rename, unlink, truncate, mmap write, fault
 - **[S21] Current Linux block volatile writeback/FUA semantics:** https://docs.kernel.org/block/writeback_cache_control.html
 - **[S22] SQLite synchronous FULL/EXTRA and WAL vs rollback journal modes:** https://www.sqlite.org/pragma.html
 
+## 25. v0.2 Critical adversarial re-review — crash counterexamples and gates
+
+**Evidence and status:** 2026-10-24. Examined RFC-008 v0.1 alongside RFC-002/003/004/005/006/007 and official Linux block/VFS, SQLite WAL/atomic commit/sync mode and NVMe docs. This is **conceptual design criticism only**. No proof, executable model, device benchmark, disk write, controller power interruption, prototype or implementation was performed. The original draft remains in Git history; all FS-D conclusions remain Proposed.
+
+### 25.1 Critical counterexample matrix
+
+| Issue | Failure in v0.1 if read as complete | v0.2 policy response | Priority |
+|---|---|---|---|
+| ARCH-A false alternatives | STORE-A readonly image + DataVolume and STORE-C CoW were compared as mutually exclusive, although they can coexist | independent volume/trust, implementation, on-disk algorithm, native durability, hardware profile axes | P0 |
+| WAL-1 incomplete checkpoint | a recovery log reused after checkpoint had copied home pages but before database flush makes old committed state unavailable on power loss | WAL must be synced before checkpoint and database synced before WAL reset; pinned readers/generations respected [S5,S20] | P0 |
+| WAL-2 pinned reader | a long reader prevents WAL reset, writers extend log to ENOSPC | bound log allocation, reader generations, backpressure and recovery reserve without overwriting needed log [S5] | P0 |
+| DIR-1 namespace durability | file contents synced, new name or journal deletion remains volatile | explicit source/destination parent sync or transaction, filesystem-specific outcome on crash [S2,S22] | P0 |
+| SQLITE-1 FULL ambiguous | a generic FULL receipt assumed all SQLite WAL and rollback journal modes have same power-loss result | rollback DELETE mode can need EXTRA directory sync; WAL NORMAL vs FULL separate [S22] | P0 |
+| SQLITE-2 known real race | mature WAL writer assumed correct without pinning version | SQLite 2026 WAL-reset race, through 3.51.2, fixed in 3.51.3 on 2026-03-13 and in certain backports: exact upstream version/advisory review [S18] | P1 |
+| ERR-1 ephemeral error ledger | Pager crash survival statement wrongly read to guarantee post-power-loss error history | live independent error ledger may outlive process; reboot survival requires a separately persistent journal, which may itself fail [S17] | P0 |
+| ERR-2 multiple observers | assume fsync error attributable only to the writer | Linux VFS mapping/observer error-cursor model may notify all then-open descriptors; no false blame [S17] | P0 |
+| HW-1 PSOW confusion | powersafe overwrite assumed all-old or all-new write | PSOW only protects bytes **outside** target; target itself can tear [S19] | P0 |
+| HW-2 physical honesty | software Flush/FUA success claimed to prove NAND bits survived/another disk synced | conditional hardware/device-profile evidence, separate receipt software stages vs physical medium truth [S1,S21] | P0 |
+| BOOT-1 data migration | B trial migrates user data to V2; A still signature-valid but cannot read it | data format and physically readable rescue are actual rollback gates [RFC-006] | P0 |
+| VM-1 concurrent dirty writes | writeback v+1 completes as app writes v+2; older completion marks newer data clean | immutable sync scope and dirty version tracking through Pager/FS [RFC-004] | P0 |
+
+### 25.2 Concrete future crash cuts
+
+**C1: WAL/home database boundary.** A log commit marker is durable; checkpointer copies pages into home file; crash occurs after partial home overwrite but before home file is synced. Old WAL must remain usable. **Forbidden:** marking WAL reusable when checkpoint merely started, or when its server returned before a verified flush.
+
+**C2: concurrent reader/checkpoint/WAL reset.** Reader holds end-mark E0; checkpoint worker copies E0; writer adds E1; a second checkpointer and WAL reset race. A stale checkpoint progress cursor cannot declare E1 safely copied. Test generation/lock ordering with the real WAL-reset defect class documented by SQLite in 2026 [S18]. **Forbidden:** treating one Boolean CHECKPOINT_DONE as a generation-safe proof.
+
+**C3: rollback-journal unlink durability.** SQLite rollback DELETE-mode last COMMIT can require syncing the parent directory of the deleted journal; FULL alone may permit last transaction to roll back, while EXTRA improves the directory deletion durability [S22]. **Forbidden:** interpreting one FULL bit as mode-independent guarantee of persisted commit.
+
+**C4: replace-via-temp and old/new parent.** Temp data and allocation are synced; rename is visible; crash before namespace metadata persistence. Post-recovery filename can differ by tested filesystem crash contract. A cross-directory move must cover both source and destination directory operations. **Forbidden:** declaring that successful rename implies durable named replacement.
+
+**C5: target-region torn write under PSOW.** Device faithfully avoids changes outside requested range, but writes partial bytes inside target journal root. Replay must reject torn commit root or use a separately valid earlier generation. **Forbidden:** PSOW being used as sector/record atomicity proof [S19].
+
+**C6: delayed writeback-error observers.** Buffered write succeeded, background writeback failed, several descriptors independently sample error epochs. Some unrelated writer/reader may observe an error. A Pager process restart may preserve kernel-held mapping errors while system remains up, but power loss destroys RAM-only evidence and unsynced dirty data. **Forbidden:** inventing durable failure log without a durable log transaction.
+
+**C7: lost acknowledgement.** IPC was COMMITTED; StorageHost may have issued an NVMe write; service dies without delivering result. Replay via genuine durable transaction key where supported; otherwise UNKNOWN_REMOTE_EFFECT. **Forbidden:** blindly repeating create/unlink/transaction with non-idempotent side effects.
+
+**C8: A/B schema upgrade.** B TRIAL writes V2 data; A remains signed but only reads V1. Successful boot validation of A is not sufficient for user recovery. If floor raised, A may also be forbidden. **Forbidden:** advertising A as usable rollback without checking data schema and keys.
+
+**C9: reader-pinned WAL/ENOSPC.** Long reader prevents cleanup, writers fill log, next CoW/root/checkpoint wants scratch blocks. Correct policy is bounded backpressure/NO_SPACE preserving recoverable old root and still-live reader state, not premature WAL overwrite.
+
+**C10: dishonest Flush.** Driver reports sync and receipt, but controller loses volatile cache during actual power failure. Software protocol ran as designed; physical durability claim still invalid. A signed receipt is not independent media attestation. **Forbidden:** claiming universal crash safety from well-formed return status on arbitrary SSD.
+
+### 25.3 Independent decisions rather than flat STORE-A…E vote
+
+- **AX1 Trust and volume topology:** immutable SystemImage/BootBundle and writable DataVolume (STORE-A).
+- **AX2 Filesystem implementation:** imported existing reader-writer version (STORE-B), new authoring, maintenance and license cost.
+- **AX3 On-disk consistency method:** metadata journal, WAL, CoW roots or supported combination (STORE-C/D are technique families).
+- **AX4 Native sync tier:** BufferedVisible, FileSyncData, DirectorySync/metadata, transactional named commit and conditional DurableReceipt.
+- **AX5 Hardware model:** exact device/namespace/queue Flush/FUA, volatile cache, atomic granule, PSOW, PLP, DMA fence and error handling.
+- **AX6 Updates:** signed A/B identity, rollback floor, V1/V2 data reader, retained usable rescue and migration protocol.
+
+STORE-A can pair with STORE-B and a journal; STORE-A can pair with STORE-C and bounded snapshot GC; STORE-E is a stage that may precede either. One simple five-row alternatives contest would be conceptually wrong.
+
+### 25.4 Honest API failure vocabulary
+
+| Return/observation | Supported narrow meaning | Must not imply |
+|---|---|---|
+| BUFFERED_VISIBLE | App reads bytes from live FS/Pager cache | survives OS crash |
+| IPC_COMMITTED | Kernel Channel record committed | user filesystem effect processed |
+| DEVICE_COMPLETED | Controller acknowledged request per supported protocol | storage cache is nonvolatile |
+| JOURNAL_COMMITTED | chosen journal reached documented commit cut | all independently unsynced names/bytes survived |
+| SYNC_COMPLETED | named file, journal, parent namespace and cache barriers satisfied under declared FS+device profile | actual NAND truthful, physical disk survives |
+| OBSERVED_ERROR | particular mapping/cursor saw recorded writeback failure while ledger existed | initiating writer solely responsible or no write reached media |
+| UNKNOWN_REMOTE_EFFECT | request may have reached storage but caller does not know | safe non-idempotent retry |
+| RECOVERED_CONSISTENT | replay found valid allocation/namespace state under stated failure assumptions | all newest unsynced bytes, malicious rollback protection or availability |
+
+Native FileSync must document its exact covered cut and status; POSIX fsync, Windows FlushFileBuffers and macOS full-fsync are not necessarily one equivalent guest/native operation.
+
+### 25.5 Revised acceptance gates
+
+1. Construct one exact end-to-end FileSync/DirectorySync/Transaction DAG with page generations, old/new parents, journal deletion, device cache and actual hardware profile.
+2. Verify WAL sync→checkpoint→database sync→safe WAL reset with pinned readers and simultaneous commit/checkpoint generation races.
+3. Distinguish PSOW, atomic sector/write granule, torn target writes, out-of-order queues and unsupported or dishonest Flush.
+4. Define mapping-level and per-observer writeback-error semantics; state precisely whether evidence survives user-service death only, or an OS power loss backed by **its own durable error log**.
+5. Bound WAL/CoW log-space and snapshot reader lifetime before reclaim; ENOSPC cannot consume the last known durable root.
+6. Profile selected physical NVMe/SSD controller's actual VWC/Flush/FUA, PLP and resets; QEMU models only the explicitly emulated fault class.
+7. Model B TRIAL→schema V2→Good/floor and actual rescue/data compatibility; no false old-slot rollback.
+8. Before adopting an existing FS/DB writer, audit exact upstream version, known corruption advisories and license, including SQLite's March 2026 race example.
+9. Keep the RFC Proposed with no code or real disk experiments. All D1–D8 top-level architecture directions remain unchanged.
+
+### 25.6 Source applicability boundaries
+
+[S1,S21] describe the Linux block-layer contract, not UniOS or a warranty of real hardware honesty. [S2] explains Linux file versus directory syncing, not the guarantee of a hypothetical UniOS writer. [S5,S20,S22] describe a particular SQLite WAL/rollback implementation whose exact sync mode matters. [S17] documents multi-observer writeback reporting with volatile state; [S19] sharply separates PSOW from atomic target writes. [S18] records a concrete 2026 WAL race fix, but UniOS has not adopted SQLite. [S12] is a specification-family reference, not validation of any one SSD.
+
+**Verdict:** STORE-A remains a good conditional *volume/trust architecture*, not an accepted filesystem algorithm. All FS-D decisions, durability promises, and P0 hardware/model proofs remain OPEN/Proposed.
+
 **Interpretation:** Official external documents describe existing systems and standards. They do not prove UniOS safety or authorize copying third-party filesystems. License/provenance review is separate from selecting a design idea. Actual device behavior and correctness require verified platform-specific evidence.
 
 ---
