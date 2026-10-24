@@ -290,7 +290,7 @@ One command printing "hello" would establish only that specific executable behav
 | X10-39 | process dies after cap transit but before error reply | RFC-003 MOVE/ReplyToken, sponsor and unknown effect |
 | X10-40 | host network denies privileged bind but guest UID0 succeeds | explicit native NetworkCap policy, not guest root |
 
-## 15. Proposed invariants (LX-01…LX-45) — NONE proved
+## 15. Proposed invariants (LX-01…LX-57) — NONE proved
 
 | ID | Proposed invariant (not implemented) |
 |---|---|
@@ -339,9 +339,21 @@ One command printing "hello" would establish only that specific executable behav
 | LX-43 | Source port, native Linux binary personality and whole Linux VM virtualization are reported as different results. |
 | LX-44 | External licenses, source provenance and compatibility redistribution obligations are reviewed before runtime code adoption. |
 | LX-45 | No LX proposal is accepted as working Linux binary compatibility, and no code/hardware test is authorized in this RFC. |
+| LX-46 | execve has a defined precommit failure versus post-point-of-no-return fatal outcome; no promise of universal process-image rollback. |
+| LX-47 | Successful execve keeps Linux process identity as required, terminates sibling Threads and unshares previously CLONE_FILES-shared FD table before applying exec descriptor semantics. |
+| LX-48 | Guest close may retire numeric FD even when deferred writeback/error follows; blindly retrying close cannot affect newly reused FD. |
+| LX-49 | Guest dup2/dup3 replacement of target FD is one atomic FD-table transition, not a close and duplicate pair subject to signal/Thread races. |
+| LX-50 | Guest O_CLOEXEC and equivalent create flags are applied atomically with FD publication, not as later fcntl susceptible to fork/exec leaks. |
+| LX-51 | Epoll registration identity is the pair (registered FD number, OpenFileDescription); reusing a number cannot retarget old subscription to a different OFD. |
+| LX-52 | An epoll watch may remain and emit old-FD events after close while another reference to the original OFD persists; close is not always watch removal. |
+| LX-53 | SA_RESTART/EINTR behavior is per syscall, I/O device kind and timeout configuration, with partially transferred bytes reported correctly. |
+| LX-54 | Native VFS close error reporting and guest FD release state are independent of FileSync/DirectorySync success, under RFC-008 durable receipt semantics. |
+| LX-55 | Guest openat2 RESOLVE_IN_ROOT and RESOLVE_BENEATH semantics differ; explicit NO_MAGICLINKS and per-component race handling cannot be replaced by relying on incidental current flags. |
+| LX-56 | Guest getrandom never claims cryptographic entropy success without suitable trusted entropy state; nonblock, EAGAIN and short/EINTR returns match declared Linux profile. |
+| LX-57 | rseq optimized V2 is offered only for CPU/platform feature profile with real scheduler event semantics; a legacy registration and V2 feature-size announcement are not interchangeable. |
 
 
-## 16. Open research blockers (O10-01…O10-40)
+## 16. Open research blockers (O10-01…O10-53)
 
 | ID | Priority | Unresolved question / exact proof gap | Co-review |
 |---|---|---|---|
@@ -385,8 +397,21 @@ One command printing "hello" would establish only that specific executable behav
 | O10-38 | P2 | Native wine/Windows and Darwin personalities share services without cross-guest authority? | 009/010/012/014 |
 | O10-39 | P2 | Linux virtualization alternative VM hardware/virtio/PCI passthrough/security feasibility? | 007/010/015 |
 | O10-40 | P2 | Multi-arch x32/i386/arm64 guest future legal and semantic support boundaries? | 009/010/018 |
+| O10-41 | P0 | Model execve precommit recoverable error vs after teardown no-return fatal, retained PID, sibling Thread teardown? | 004/009/010 |
+| O10-42 | P0 | Correct CLONE_FILES FD table unshare on exec and close-on-exec atomic under concurrent other Threads? | 002/009/010 |
+| O10-43 | P0 | Linux close error after early FD release vs async IO still pinning OFD, no retry closing reused descriptor? | 008/009/010 |
+| O10-44 | P0 | dup2/dup3 atomic replace and target close vs guest signal/FD allocator race, shared CLONE_FILES? | 002/009/010 |
+| O10-45 | P0 | Atomic FD_CLOEXEC at open/socket/pipe/create, old/new image transition and leaked delegated native FileCaps? | 002/009/010 |
+| O10-46 | P0 | epoll key (FD number,OFD) with duplicate aliases, close last-reference removal, numeric FD reuse, event user-data semantics? | 003/009/010 |
+| O10-47 | P0 | epoll reports old closed FD while duplicated OFD alive; no unauthorized lookup of newly reused FD? | 002/003/010 |
+| O10-48 | P0 | Linux signal SA_RESTART exceptions by interface and socket timeout, partial transfer precedence over EINTR? | 003/008/009/010 |
+| O10-49 | P1 | Linux/POSIX 2024 close EINTR behavior differs; target Linux version and close/retry/error contract explicit? | 008/010 |
+| O10-50 | P0 | openat2 RESOLVE_IN_ROOT vs BENEATH, separate NO_MAGICLINKS, rename EAGAIN, flags/size/mode validation? | 008/010 |
+| O10-51 | P0 | Native entropy provider supports Linux getrandom initialized/blocking/nonblock and <=256-byte rules without fake success? | 005/009/010/017 |
+| O10-52 | P1 | Optimized rseq V2 features only on supported CPU/kernel entry architecture; auxv length and legacy 32-byte fallback exact? | 005/009/010 |
+| O10-53 | P1 | Distinguish actual Linux syscall success/errno from host service result after postcommit close, copyout and replay? | 003/008/009/010 |
 
-## 17. Proposed decision register (LX-D01…LX-D24) — NONE Accepted
+## 17. Proposed decision register (LX-D01…LX-D33) — NONE Accepted
 
 - **LX-D01:** LINUX-A protected guest Task + separate native LinuxPersonality broker is preferred conditional design hypothesis, not selected implementation.
 - **LX-D02:** POSIX source port, Linux binary personality, and Linux guest OS virtualization are separately described and measured.
@@ -400,10 +425,10 @@ One command printing "hello" would establish only that specific executable behav
 - **LX-D10:** Guest UID0, setuid, namespace caps and package signature do not mint UniOS CapIssuer, DMA, IRQ or BootFloor authority.
 - **LX-D11:** Linux futex compare-and-block needs proven MemoryObject-aware atomicity, else multithreaded guest scope denied; robust/PI separately gated.
 - **LX-D12:** rseq must have real scheduler/migration/signal guarantees or explicit unsupported behavior tested against chosen libc.
-- **LX-D13:** Guest signal frame/return, SA_RESTART/EINTR, exec and syscall copyout must not enable privilege confusion or side-effect lies.
-- **LX-D14:** Linux FDEntry/OpenFileDescription shared-offset and lifetime semantics map through authorized native FileCaps.
+- **LX-D13 [clarified]:** Guest signal frame/return and SA_RESTART/EINTR are per-operation, and exec includes post-point-of-no-return fatal states; no privilege confusion or dishonest effect rollback.
+- **LX-D14 [clarified]:** Linux FDEntry/OpenFileDescription shared-offset and lifetime semantics map through native FileCaps; guest numeric FD may retire early despite close error or still-referenced OFD.
 - **LX-D15:** Guest openat2, cwd, mount, symlinks and proc magiclinks never traverse beyond issued DirectoryCaps.
-- **LX-D16:** epoll edge/level/oneshot/file-description semantics must be proved over native WaitSet, not inferred from notification existence.
+- **LX-D16 [clarified]:** epoll (registered FD,OFD) key, duplicate aliases, old FD events after close, ET/LT/ONESHOT and removal must be proved over native WaitSet, not inferred from notification existence.
 - **LX-D17:** Socket/SCM_RIGHTS and network rights remain delegated and constrained, no raw host handles or network admin from guest credential.
 - **LX-D18:** Guest errno and syscall restart are mapped from exact native effect phase; no automatic retry after committed rename/send.
 - **LX-D19:** Guest mmap/private vs shared writable/pager and fsync/file durability respect RFC-004 M-stages and RFC-008 receipts.
@@ -412,6 +437,15 @@ One command printing "hello" would establish only that specific executable behav
 - **LX-D22:** Every published Linux compatibility claim names executable hash, library versions, CPU, syscall/flag/feature tier and observed tests.
 - **LX-D23:** Compiler/runtime third-party licenses and upstream provenance reviewed before any code import or redistribution.
 - **LX-D24:** No native syscall number, Linux ABI freeze, loader implementation, compatibility test, source import or product guarantee authorized until P0 gates reviewed.
+- **LX-D25 [new]:** Treat successful execve as process-image replacement with sibling Thread teardown and CLONE_FILES unshare; rare post-teardown exec failure is fatal, not automatically recoverable.
+- **LX-D26 [new]:** Guest close retires FD under Linux semantics even when later writeback errors are reported; a failed close must not be blindly retried against same reusable integer.
+- **LX-D27 [new]:** Implementability of dup2/dup3 and O_CLOEXEC atomic FD-table transitions is a hard compatibility and host capability-leak proof gate, not an optional optimization.
+- **LX-D28 [new]:** Epoll watch identity is registered FD plus original OpenFileDescription; old readiness may survive numeric FD close when OFD still referenced by dup/fork.
+- **LX-D29 [new]:** SA_RESTART/EINTR, partial returns, per-device blocking and timeouts are explicit guest semantic contracts; generic restart of remote request is denied.
+- **LX-D30 [new]:** Guest path security must enforce explicit openat2 flag semantics, including RESOLVE_IN_ROOT/BENEATH and NO_MAGICLINKS; native DirectoryCap remains final authority.
+- **LX-D31 [new]:** Guest getrandom must derive bytes from separately trusted entropy and expose blocking/EAGAIN/interruption semantics; no deterministic fake randomness to pass tests.
+- **LX-D32 [new]:** Advanced rseq V2 optimization is a feature-profile gate requiring scheduler/auxv correctness on the selected architecture; legacy fallback requires evidence.
+- **LX-D33 [new]:** v0.2 contract hardening remains Proposed and does not grant production Linux ABI/ELF compatibility or implementation permission.
 
 ## 18. Cross-RFC integration, contradictions and ownership
 
@@ -490,13 +524,17 @@ Transitions: guest raw syscall native opcode injection; ELF launch with forged H
 10. Compare LINUX-A/B/C/D with equivalent security assumptions and hardware/test numbers after explicit separate implementation Go.
 11. Audit any imported C runtime, ELF parser, loader and guest root filesystem content license before reuse.
 12. Publish compatibility tier/report format with explicit unimplemented features and revocation/upgrade behavior.
-13. Review spec independently for P0 counterexamples and align RFC-009/018 IDL ABI before freezing any native or guest syscall representation.
+13. Review RFC-010 v0.2's §21 adversarial counterexamples and align RFC-009/018 IDL ABI before freezing any native or guest syscall representation.
+14. **v0.2 P0:** model execve's image-destroyed/no-return failure and CLONE_FILES unshare, plus FD_CLOEXEC atomics and delegated cap leakage across concurrent fork/exec.
+15. **v0.2 P0:** prove close/error/reuse, dup2/dup3 atomic replacement and epoll (FD,OFD) alias/close/reuse races at the guest–native broker boundary.
+16. **v0.2 P0:** build per-syscall SA_RESTART/EINTR/partial-progress/timeout table and cover cases where native RPC already has an external effect.
+17. **v0.2 P0:** demonstrate openat2 BENEATH vs IN_ROOT/magiclink/race error, and getrandom entropy/read-length/startup semantics against a real guest libc trace.
 
 **Verdict:** LINUX-A is a good direction to research, but raw guest interception, futex atomics and process/signal semantics remain unproven. No source, compiler, runtime or guest implementation is permitted by this document.
 
-**Next proposed research:** independent critical RFC-010 v0.1→v0.2 review, then RFC-018 versioned IDL/status and Native/Guest ABI compatibility mapping. This design only, and D1–D8 remain the only broad Accepted directions.
+**Next proposed research:** RFC-010 v0.1→v0.2 critical review is recorded in §21, but all P0 design exit criteria remain OPEN. Next study RFC-018 versioned IDL/status and Native/Guest ABI compatibility mapping, with joint RFC-008/009/010 FD/effect review. This design only, and D1–D8 remain the only broad Accepted directions.
 
-## 21. Official primary sources, verified scope (researched 2026-10-24)
+## 22. Official primary sources, verified scope (rechecked 2026-10-24)
 
 - **[S1]** Linux syscall(2) architecture calling conventions: https://man7.org/linux/man-pages/man2/syscall.2.html
 - **[S2]** Linux execve(2), process image and credentials: https://man7.org/linux/man-pages/man2/execve.2.html
@@ -521,9 +559,14 @@ Transitions: guest raw syscall native opcode injection; ELF launch with forged H
 - **[S21]** Linux socket(7), socket behavior: https://man7.org/linux/man-pages/man7/socket.7.html
 - **[S22]** Linux ELF(5), executable format: https://man7.org/linux/man-pages/man5/elf.5.html
 - **[S23]** Linux epoll_ctl(2), registration and flags: https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
+- **[S24]** Linux close(2), FD release before later errors and retry warning: https://man7.org/linux/man-pages/man2/close.2.html
+- **[S25]** Linux dup2/dup3 atomic FD replacement: https://man7.org/linux/man-pages/man2/dup.2.html
+- **[S26]** Linux open(2), O_CLOEXEC descriptor inheritance race: https://man7.org/linux/man-pages/man2/open.2.html
+- **[S27]** Linux getrandom(2) initialized entropy/blocking/nonblocking and partial returns: https://man7.org/linux/man-pages/man2/getrandom.2.html
+- **[S28]** Linux execve(2) process teardown, CLONE_FILES and rare point-of-no-return failure: https://man7.org/linux/man-pages/man2/execve.2.html
 
 Technical references describe existing Linux interfaces and not UniOS implementation or legal authorization to redistribute components. Implementation source, runtime versions, exact compatibility/ABI profile and compiler target are all future decisions.
 
 ---
 
-**Document history:** 2026-10-24 — RFC-010 Proposed v0.1 research draft, LINUX-A vs alternatives, restricted ELF/syscall/credential/ThreadGroup/VFS design, 45 unverified invariants, 40 open blockers and 24 proposed decisions. No Linux binary run, kernel code, loader/libc port, test, benchmark, hardware operation, formal model or freeze of native/guest ABI.
+**Document history:** 2026-10-24 v0.1 original initial research draft remains in Git. 2026-10-24 v0.2 adversarial review: execve post-PONR / sibling Thread and FD-table unshare, Linux close early FD retirement and retry risk, dup2/O_CLOEXEC atomicity, epoll (FD,OFD) with retained events after close, signal restart/partial transfers, openat2 flag precision and secure entropy getrandom. Design only; no kernel/ELF/personality/libc implementation, tests, performance, model proof or hardware work.
