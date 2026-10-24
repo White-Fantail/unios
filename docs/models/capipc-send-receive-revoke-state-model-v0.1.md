@@ -62,11 +62,11 @@ Four graphs: (1) cap lineage and independent roots; (2) current custody and spon
 
 ## 3. Abstract finite model — not machine-checker syntax
 
-**Actors:** sender Task A; receiver Task B with two Threads; rival Task C; restarted service B2 (new Task/ServiceIncarnation); kernel K; controller R; optional trusted verifier Vt, Pager P and device D. Two grants to same object may be independently rooted; they do **not** count as duplication of the same MOVEd grant. One Channel queue capacity 1; one message M with sensitive byte payload and 0–2 moved grants; a bounded critical M0 reserve.
+**Actors:** sender Task A; receiver Task B with two Threads; rival Task C; restarted service B2 (new Task/ServiceIncarnation); kernel K; controller R; optional trusted verifier Vt, Pager P and device D. Two grants to same object may be independently rooted; they do **not** count as duplication of the same MOVEd grant. One Channel pair with **separate sender and receiver E1 Endpoint objects** and queue capacity 1; one message M with sensitive byte payload and 0–2 moved grants; a bounded critical M0 reserve. Each half has its own owner and generation; the two halves are never treated as a single jointly owned Endpoint.
 
 | State variable | Finite domain or relationship | Authority / observation |
 |---|---|---|
-| endpointOwner | A/B/C/B2/none + EndpointGeneration | kernel; E1 single effective owning Task |
+| endpointOwners | SendHalf: A/C/none; ReceiveHalf: B/C/B2/none, each with its own EndpointGeneration | kernel; each distinct E1 Endpoint half has only one effective owning Task |
 | messagePhase | Absent/Prepared/Queued/Claimed/Exposed/Installed/InertEscrow/Terminal/Settled | kernel abstract bookkeeping |
 | grantCustodian | sender/queue/claim/receiver/inert-escrow/closed/quarantine for **each** grant | kernel; distinct from underlying Object refs |
 | sourceHandleValid | yes/no for each source Handle token | Task-local kernel table, anti-ABA |
