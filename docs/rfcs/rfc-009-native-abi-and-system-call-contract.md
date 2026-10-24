@@ -662,7 +662,10 @@ No model, fuzzing, build, real computer test, software implementation or perform
 ### 23.3 Exit criteria (R1 = OPEN)
 
 Before calling ABI-A Accepted or Stable v1:
-- Prove kernel-owned GuestDomain and the chosen Linux guest trap/return path, or defer direct Linux binary support explicitly.
+- **v0.2 required:** prove kernel-owned GuestDomain PLUS separate protected guest/native broker AddressSpaces and cap tables; G2 in-process transitions require strong independent executable/control-flow/cap isolation or are rejected. Defer direct Linux binary support if this cannot be established.
+- **v0.2 required:** prove sender MOVE NOT_COMMITTED preserves source grants, exclusive bounded receive claim/escrow controls byte disclosure and cap install, and lost result copyout has honest committed/unknown cleanup.
+- **v0.2 required:** prove no identical stale public Handle token reauthorizes another object under finite generation exhaustion; align RFC-002 §7.
+- **v0.2 required:** either provide Linux futex atomic compare-block (plus specified later rseq/clone semantics) or explicitly exclude those guest ABI features from the support tier.
 - Publish exact transition/linearization state model for handle move, syscall input/copyout, async send/receive, cancel/Reply and Task death.
 - Prove that SABI/SDK/version handling does not expand capability grants under unknown fields or forged ServiceID.
 - Bound critical copyin/Pager/IRQ/CPU/OOM paths and distinguish actual R2-F vs CPU mapping.
@@ -673,9 +676,9 @@ Before calling ABI-A Accepted or Stable v1:
 - Review compatibility feasibility/legal constraints for native libc, POSIX, Wine and Darwin separately.
 - Record ADR approval independently of high-level D1–D8 accepted directions. Until then all ABI-D proposals remain **Proposed**, no implementation permission.
 
-**Future research recommendation:** RFC-009 v0.1 adversarial re-review to v0.2 (specifically syscall copyout after commit, GuestDomain trap/broker interleaving and SABI unknown-cap transfer), followed by RFC-010 Linux Personality and RFC-018 Versioned IDL/ABI compatibility matrix.
+**Future research recommendation:** RFC-009 v0.1→v0.2 independent adversarial review is now recorded in §25. Next RFC-010 Linux Personality should resolve separated guest syscall broker and the futex/clone/rseq scope; then RFC-018 should formalize versioned IDL and status/cap-transfer compatibility. All P0 proof gates remain OPEN.
 
-## 24. Official primary technical references (researched 2026-10-24)
+## 24. Official primary technical references (rechecked 2026-10-24)
 
 - **[S1] seL4 IPC, endpoint, badges and fastpath:** https://docs.sel4.systems/Tutorials/ipc
 - **[S2] seL4 Reference Manual:** https://docs.sel4.systems/projects/sel4/manual.html
