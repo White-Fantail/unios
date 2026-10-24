@@ -588,3 +588,39 @@ One whole-vector K-I receiving commit may guarantee **kernel cap-table installat
 **RFC-003 invariants IPC-06, IPC-09 and IPC-28 remain Proposed** and must be read with §23's clarified possibility of partial user-data exposure. IPC-06 is about native cap-vector installation, not all-or-none usercopy; IPC-09/28 prohibit unsafe new-recipient replay after possible exposure rather than claiming failure erased earlier observations.
 
 **Exit OPEN:** exact public token reservation and permanent nonreuse, initial claim-ID recovery, bounded queue/claim/CPU budget, Task-wide concurrent observation, chosen commit order, honest guest/remote effect mapping and independent T2 verification must be addressed by a future, separately reviewed contract before any ABI approval.
+
+## 25. 2026-10-25 HPA independent adversarial re-review — revised research priority (Proposed only)
+
+**Source:** [HPA v0.2 Independent Adversarial Re-Review](../models/capipc-handle-publication-activation-v0.2.md), updating the research recommendation in historical [HPA v0.1](../models/capipc-handle-publication-activation-v0.1.md). This is a *non-normative RFC-003 alignment addendum*, not an Accepted IPC-Dxx decision, chosen KABI syscall, implementation or formal correctness result. The v0.1 rationale remains intact in Git for comparison.
+
+### 25.1 Corrected ranking and threat boundary
+
+Earlier §24 described **HPA-C two-phase Stage → Task AcceptCommit** as the formal proof leader. Independent review found an ordinary Task's own AcceptCommit does **not** verify SABI schema, original user consent, independent security policy or actual message-byte retention. It merely expresses Task-level bearer-cap acceptance. In a malicious B Task, the extra syscall can be invoked regardless of message correctness. Both C and the simpler candidate still need kernel K-I all-or-none cap installation, token nonreuse, a protected result/claim record, current R-B/revoke checks, K-Vm/K-Vp exposure accounting and bounded cleanup.
+
+**Revised Proposed research ordering:** 
+- **HPA-B+ first for ordinary T1 bearer IPC** — a single logical receive, with bounded private staging, noninvokable token reservation, protected result record and a single K-I full-vector install + queue retirement cut after appropriately guarded output publication. Plus denotes stronger proof obligations than unqualified original HPA-B, not a chosen ABI.
+- **HPA-C conditionally** for explicitly required deferred activation, application acceptance or **independently trusted** method-policy validation; the last property actually requires separately scoped T2 inert escrow and K-U under live issuer policy, not self-reporting by B.
+- **HPA-A remains a comparison candidate** with distinct installed-but-unreported cap cleanup, not a default security guarantee.
+
+This change **revises design advice**, not an E1/RCV method acceptance. §24 accurately records the earlier idea; this §25 is the current *research recommendation*. No sources contradict the fundamental E1 one-owner, native cap-vector atomicity or precommit NOT_COMMITTED candidate; none are proven.
+
+### 25.2 Newly emphasized P0 counterexamples
+
+| Case | Requirement still OPEN |
+|---|---|
+| Stage returns a new ClaimID only through an invalid output pointer | Cannot claim two-phase result is recoverable; preidentified Task-scoped result slot or safe enumeration required |
+| Same Task B-Thread1/2 both call AcceptCommit | Exactly one K-I winner; Task-wide cap use does not imply initiating Thread/human consent |
+| B stages confidential request, performs external work with existing rights, then abandons claim | No statement that uncommitted Receive implies backend effect absent |
+| B repeats Stage then faults after public token output | Token namespace and queue budget exhaustion must fail closed without M0 starvation |
+| B modifies Stage user bytes between verifier decision and K-U | Any trusted T2 release must bind original authenticated immutable message and actual kernel cap metadata |
+| A protected status record exists for B+ as well as C | Do not count postcommit status recovery as a unique C security advantage |
+| Current policy/revoke B arrives before K-I or K-U | No new invokable revoked rights, regardless of prior staging/verification |
+| Result lost after K-I while user tokens already copied | Underlying B native grants and sponsor remain; query or honest UNKNOWN, never pretend K-I rolled back |
+
+**Token reuse nuance:** public values **possibly** copied to user memory are never reused to identify unrelated CapGrants in the same Task. A kernel-reserved value **provably never published and never previously live** might be reclaimed if an independent ABA/namespace proof allows; do not claim every tentative internal reservation must be burned forever. Security authority remains the actual Task-local kernel cap table, not guessing a number.
+
+### 25.3 Exit and repository policy
+
+The detailed KABI call/handle bit format, receipt query namespace, queue budget, issuer provenance and actual memory-order/lock proof all remain P0 OPEN. A two-phase scheme may be worth its complexity only if it establishes a distinct required security or sequencing property under bounded CPU/IPC/M0 costs; no performance measurement establishes a universal winner. SOURCE RFC-002/003/009/018 Proposed specs require joint review before any acceptance.
+
+**No implementation:** this addendum is written contract research only. No kernel/SDK/compiler/protocol/header work or executable formal model was authorized by this change.
