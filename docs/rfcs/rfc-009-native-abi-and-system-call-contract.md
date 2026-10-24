@@ -789,3 +789,15 @@ Linux rseq uses registered per-thread memory fields and aborts critical sections
 9. **P0 x86/SDK:** register calling convention, user return path, FFI structs/status remain unfrozen pending concrete proof and authorized compiler/hardware tests.
 
 **Verdict:** ABI-A remains a conditional research target. G1 separate protected broker is the preferred security boundary, G2 same-address-space switch is unadmitted, and RCV-A/handle ABA/guest atomicity remain unresolved cross-RFC P0 proofs. RFC-009 v0.2 is still Proposed, without implementation permission.
+
+## 26. 2026-10-25 Native Handle and operation Receipt boundary audit — Proposed
+
+**Joint research reference:** [CAPIPC Task Handle Namespace & Kernel Receive Receipts v0.1](../models/capipc-task-handle-namespace-and-receipt-v0.1.md) with RFC-002 Handle ABA, RFC-003 SEND/RECEIVE K-S/K-I, RFC-018 typed SABI and RFC-010 guest FD/OFD. This documents constraints, **not** an ABI freeze or selected syscall signatures/status numbers.
+
+**Distinct native namespaces:** Task-generation-scoped public CapHandle identity must be kernel checked and not rebind stale values to unrelated grants within the same live Task under current Proposed requirement. HandleSlot allocation can still be recycled if external generation compares correctly. A separate Task-scoped ReceiptSlot+preidentified operation nonce tracks a kernel transition; this nonce is neither a capability nor a transferable original Handle. The caller must know or securely discover the identity **before** an irrevocable cut, including when initial registration/ClaimID output itself is lost. Receipt-query authority must survive source Handle MOVE *without* granting new native operation rights.
+
+**Kernel truth vs observer return:** K-S/K-I/K-U, K-Q protected query and receipt ACK/expiry need precise ordering. PENDING is not FINAL_NOT_COMMITTED; COMMITTED_KS differs from COMMITTED_KI and downstream EFFECT_APPLIED or SCOPED_DURABLE; an expired or absent record is not proof no effect occurred. A historical receive receipt does not mint a second CapGrant or prove a now-closed public token remains invokable. Bounded receipt storage must be reserved before the kernel commit it claims to describe.
+
+**Guest separation:** Linux guest FD values **are intentionally reusable** and can share OpenFileDescriptions; a Guest FD, Native Handle token, ReplyToken, ReceiptSlot, SABI RequestId and DurableReceipt may never be converted by a raw integer cast or identical-key assumption. Exact errno/EINTR/close/epoll/restart semantics need per-operation translation, not a generic native UNKNOWN → clean no-effect map.
+
+**P0 still open:** native public token width/overflow, receipt bootstrap and nonce collisions/GC, copyout/alias/SMP barriers, Task restart and post-Task Supervisor query rights, M0 fixed budget and independent device/storage effects. This document stays **Proposed v0.2**, with no compiled ABI, test result or implementation authorized.
