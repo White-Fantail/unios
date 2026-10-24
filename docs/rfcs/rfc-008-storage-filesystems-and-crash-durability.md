@@ -738,7 +738,7 @@ Transitions: create, buffered write, rename, unlink, truncate, mmap write, fault
 
 ## 23. Design research exit gates and next review
 
-**RFC-008 v0.1 R1 storage-design gate: OPEN/NOT PASSED.** Before selecting writable FS/claims:
+**RFC-008 v0.2 R1 storage-design gate: OPEN/NOT PASSED.** Before selecting writable FS/claims:
 1. Draw typed File/Directory/Volume/BlockDevice authority and sponsor graph including raw block escalation and hostile guest path.
 2. Build complete durability partial-order graph for write, file create, rename, multi-file transaction, journal/CoW root, Flush/FUA and directory sync; identify exact reply commit point.
 3. Model honest volatile cache, failed Flush, reordered queues and torn/partial sectors; enumerate every power-cut point, recovery outcome and ambiguous reply.
@@ -750,11 +750,11 @@ Transitions: create, buffered write, rename, unlink, truncate, mmap write, fault
 9. Model A/B trial good/secure floor vs user schema migration, snapshot space, physically accessible rescue and independent trusted slot writer.
 10. No approval until explicit Go/No-Go and comprehensive adversarial v0.2 review; do not use real user data disks in any future tests.
 
-**Next research:** Adversarial second review RFC-008 v0.1→v0.2 (as done for RFC-001…007), then prioritize RFC-017 Boot Trust/Update and RFC-009 Native ABI/File API interface alignment. The overall eight D1–D8 accepted directions remain unchanged. This is a proposal, not a statement that tests or products exist.
+**Next research:** critical proof gate refinement for RFC-008 v0.2, then RFC-017 Boot Trust/Update and RFC-009 Native ABI/File API interface alignment. The v0.1→v0.2 second review is recorded in §25 and is not acceptance. The overall eight D1–D8 accepted directions remain unchanged. This is a proposal, not a statement that tests or products exist.
 
-## 24. Official primary references and interpretation notes (researched 2026-10-24)
+## 24. Official primary references and interpretation notes (rechecked 2026-10-24)
 
-- **[S1] Linux block volatile write cache / REQ_PREFLUSH and REQ_FUA:** https://docs.kernel.org/next/block/writeback_cache_control.html
+- **[S1] Linux block volatile write cache / REQ_PREFLUSH and REQ_FUA:** https://docs.kernel.org/block/writeback_cache_control.html
 - **[S2] Linux fsync(2), fdatasync and directory entry durability:** https://man7.org/linux/man-pages/man2/fsync.2.html
 - **[S3] Linux ext4 JBD2 journaling and metadata/data distinction:** https://docs.kernel.org/filesystems/ext4/journal.html
 - **[S4] SQLite atomic commit and powersafe overwrite assumptions:** https://www.sqlite.org/atomiccommit.html
