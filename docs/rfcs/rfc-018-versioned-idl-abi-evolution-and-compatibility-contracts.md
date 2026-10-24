@@ -420,3 +420,179 @@ A guest or native app holds an authorized Endpoint tied to protocol family, serv
 | IDL-41 | Security key rotation, update floor and user-data format transitions require independent recovery predicates even if RPC encoding stable. |
 | IDL-42 | All IDL choices remain Proposed; neither numeric values nor executable codec/SDK compiler or stable v1 ABI is authorized. |
 
+
+## 13. Open issues (O18-01…O18-38) — no automatic resolution
+
+| ID | Priority | Required research or proof | Co-review |
+|---|---|---|---|
+| O18-01 | P0 | IDL-A custom schema versus FIDL/resource-adapted runtime and other formats: true parser/codegen TCB and lifecycle tradeoff? | 001/003/009/018 |
+| O18-02 | P0 | Kernel IPC frame vs SABI envelope: which field is kernel trusted, copied and sponsor charged? | 002/003/018 |
+| O18-03 | P0 | Exact cap role/count/order/type/rights/scope validation against kernel MOVE vector and unknown resource union? | 002/003/018 |
+| O18-04 | P0 | E1 NOT_COMMITTED preserves sender caps, COMMITTED moves, result UNKNOWN after copyout: final observable operation contract? | 002/003/009/018 |
+| O18-05 | P0 | ReceiveClaim and byte publication before cap install: partial disclosure, abort and receiver death proof? | 003/004/009/018 |
+| O18-06 | P0 | Hostile receiver retains claim forever and starves M0: quota, lifetime, reclaim and future progress? | 002/003/005/018 |
+| O18-07 | P0 | User pointer modification/shared-memory alias during decoding, cap-vector validation and service method action? | 004/009/018 |
+| O18-08 | P0 | Protocol/features handshake cannot downgrade security policy/mandatory rights/durability? | 002/009/018 |
+| O18-09 | P0 | Unknown required field, method, union, enum, status and transferred resource handling semantics on old binaries? | 003/009/018 |
+| O18-10 | P0 | Data-only optional field addition whose absence changes consent, encryption or file safety? | 008/009/018 |
+| O18-11 | P0 | Server method policy intersects actual cap rights and issuer authorizations without ambient registry identity? | 001/002/018 |
+| O18-12 | P0 | Stable method/field/enum/role/status ID tombstones and signed registry governance? | 009/018 |
+| O18-13 | P0 | Committed service effect then return lost: bounded receipt and accurate UNKNOWN from caller point of view? | 003/008/009/018 |
+| O18-14 | P0 | Durable authenticated dedupe ledger + effects ordering if any method claims idempotency/exactly-once? | 003/008/018 |
+| O18-15 | P0 | Old service incarnation ReplyToken/cap transfer result reattached incorrectly to new server? | 002/003/006/018 |
+| O18-16 | P0 | How are transport, method admission, effect and scoped storage durability exposed without false SUCCESS? | 003/008/009/018 |
+| O18-17 | P0 | BootPolicyManifest exact canonical signed encoding vs generic SABI serializer non-canonical behavior? | 006/017/018 |
+| O18-18 | P0 | Signed manifest unknown security-critical extension/duplicate key/signer confusion and small kernel descriptor? | 001/006/017/018 |
+| O18-19 | P0 | Signed Root/security floor, boot-good and data schema versioned separately from service ABI? | 006/008/017/018 |
+| O18-20 | P0 | Linux guest errno/restart/status, FD close/epoll and fork/exec semantics survive SABI changes? | 009/010/018 |
+| O18-21 | P0 | Old/New RPC peers negotiate security feature without elevating rights or losing mandatory status semantics? | 002/009/018 |
+| O18-22 | P0 | Message parsing bounded for nested objects, overlong length, unknown encrypted blob and malicious UTF8? | 003/018 |
+| O18-23 | P0 | Source/SDK C ABI ownership, panic/unwind, struct layout and borrowed/moved cap safety across language bindings? | 009/018 |
+| O18-24 | P0 | Trusted service discovery plus Endpoint origin/authentication and controlled rebind on restart? | 002/003/006/018 |
+| O18-25 | P1 | Exact field-number/method-ordinal format, endianness, width, magic, validation and parser simplicity? | 009/018 |
+| O18-26 | P1 | Unit tests for malformed duplicate/unknown fields and transparent parser ambiguity in candidate codec? | 015/018 |
+| O18-27 | P1 | FIDL compiler/transport port license and out-of-band cap semantics under UniOS E1 differences? | 003/018 |
+| O18-28 | P1 | Protobuf/Thrift/Cap'n Proto binary compatibility vs resource semantics, parser allocation and license? | 018 |
+| O18-29 | P1 | Flow control, fragmentation/shared-memory ring and zero-copy with handle+payload lifetimes? | 003/004/018 |
+| O18-30 | P1 | Deadline monotonic/boottime conversion, suspension and multi-hop timeout propagation across services? | 005/018 |
+| O18-31 | P1 | Cross-language generated C/Rust/C++ and possible Swift/JS bindings enforce same presence/enum/default semantics? | 009/018 |
+| O18-32 | P1 | Per-method error-to-guest Linux/Windows/Darwin translation maps unknown newer status fail closed? | 009/010/018 |
+| O18-33 | P1 | Version coexistence when upgrade/rollback changes Network/VFS/Pager yet old client requests remain queued? | 004/006/008/018 |
+| O18-34 | P1 | Stable v1 ABI lifecycle: support window, deprecation, security exception and named reference hardware/toolchain? | 009/018 |
+| O18-35 | P1 | Future signed protocol-schema repository/trust and release supply-chain provenance, avoid client-supplied schema root? | 015/017/018 |
+| O18-36 | P1 | Privacy/provenance of diagnostic trace, request IDs and transferred cap metadata across sandbox boundaries? | 016/018 |
+| O18-37 | P2 | Measured IPC/codec/binding memory/latency p50/p95/p99, bounded in worst-case decoder paths? | 005/015/018 |
+| O18-38 | P2 | Later architecture/compatibility targets and remote RPC transports require separate threat model/licensing? | 009/012/014/018 |
+
+## 14. Proposed decision register (IDL-D01…IDL-D24) — NONE Accepted
+
+- **IDL-D01:** IDL-A (bounded user-space versioned schema, kernel opaque bytes+real cap vector, Native SDK separate) is conditional first design target.
+- **IDL-D02:** Keep complex SABI/IDL schema parsing outside Ring 0; trusted kernel only validates E1 transport and live cap authority.
+- **IDL-D03:** Method names, ServiceID, publisher and version fields do not mint kernel capabilities or authenticate arbitrary endpoints.
+- **IDL-D04:** Actual cap type/rights/scope/lineage/sponsor and sender/recipient identity derive from kernel, never serialized user integers.
+- **IDL-D05:** Early SABI cap operations are MOVE-only; COPY requires explicit separately authorized DERIVE then MOVE, preserving issuer lineage.
+- **IDL-D06:** Adopt no Fuchsia ChannelWrite failure ownership automatically; UniOS NOT_COMMITTED preserves source grants by RFC-003.
+- **IDL-D07:** Message bytes, transit rights, ReceiveClaim, cap-table install and service effect are separately accountable and observable phases.
+- **IDL-D08:** Unknown resource fields/roles default reject+bounded close, or explicitly permitted typed proxy; not ignored as ordinary optional bytes.
+- **IDL-D09:** Unknown required security fields/methods/status/result variants fail closed and cannot downgrade to ordinary SUCCESS.
+- **IDL-D10:** Optional value fields may evolve only if their absence is proven semantically safe under old server security policy.
+- **IDL-D11:** Never recycle stable method/field/enum/handle-role/status discriminants; maintain tombstone registry.
+- **IDL-D12:** Protocol feature negotiation is scoped to issuer-authorized Endpoint and effective rights are intersection, not feature union.
+- **IDL-D13:** Mandatory current security permission, consent, durability and other safety contracts remain in force even for legacy clients; refuse if not supportable.
+- **IDL-D14:** Separate KABI, kernel transport, SABI, Native SDK, Linux guest ABI, signed Boot manifest and durable user data schema versions.
+- **IDL-D15:** Explicit logical transport/admission/effect/durability/result-observed phases; no queue ACK called saved-to-disk.
+- **IDL-D16:** Deadline expiration and local cancellation never assert remote side effect undone; use UNKNOWN/reconciliation where needed.
+- **IDL-D17:** Idempotency keys alone do not guarantee exactly-once; durable authenticated backend transaction evidence is mandatory before claiming it.
+- **IDL-D18:** Native SABI status values do not automatically map to Linux errno, Windows NTSTATUS or Darwin Mach error codes.
+- **IDL-D19:** Signed BootPolicyManifest uses independently checked canonical/exact signed bytes, validated Root+security floor and bounded kernel descriptor, never lenient generic RPC defaults.
+- **IDL-D20:** Successful wire-version negotiation does not imply A/B rescue data schema/encryption key compatibility or trusted floor eligibility.
+- **IDL-D21:** Native C ABI layout/source and generated Rust/C++ wrappers have separate stability/language runtime contracts.
+- **IDL-D22:** Keep M0 bootstrap/recovery functional with wired minimal parser/runtime, independent of ordinary full IDL service reflection/discovery.
+- **IDL-D23:** Run bidirectional client/server schema corpus plus cap/error and crash-state model proof before declaring Stable ABI; performance comes after safety.
+- **IDL-D24:** No wire format, public numeric KABI/IDL status, ABI v1 freeze, codegen, kernel/app implementation or compatibility certification permitted by this research draft.
+
+## 15. Cross-RFC consistency register
+
+| RFC | Contract owned there | RFC-018 must NOT contradict |
+|---|---|---|
+| RFC-001 | Small kernel boundary and asset-specific TCB | no generic IDL/JSON/CBOR/proto method parser in kernel |
+| RFC-002 | Typed cap rights/scope/sponsor, Task-local handle ABA, B/R1/R2-F/R2-O | raw IDL resource label cannot mint right or imply physical revoke |
+| RFC-003 | E1 bounded Channel, sender NOT_COMMITTED/COMMITTED/UNKNOWN, ReceiveClaim, ReplyToken | byte+cap publish stages and actual transit proof remain distinct |
+| RFC-004 | Pager FaultWaiter, shared MemoryObject and immutable backing | zero-copy decoder must snapshot/validate mapped bytes and Pager budgets |
+| RFC-005 | CPU budget, preemption, service resource sponsorship | malicious large message cannot starve M0 while decoding |
+| RFC-006 | Wired M0, service restart and authenticated BootGood | full SABI registry cannot be wired recovery prerequisite |
+| RFC-007 | DeviceGroup, IOMMU and R2-F | resource role DeviceCap cannot promise DMA quiescence merely by serialization |
+| RFC-008 | BufferedVisible vs FileSync/DirectorySync/Flush, crash safety | method success/receipt must state durability scope and error lifetime |
+| RFC-009 | KABI/SABI/SDK/guest boundary, protected GuestDomain, copyout UNKNOWN | no number/struct layout frozen by new wire proposal |
+| RFC-010 | Linux ELF/FD/epoll/futex/signal/exec/errno | native version negotiation cannot substitute for Linux binary semantics |
+| RFC-011 | native package/service signature and distribution | signed package name not issuer of native endpoint/caps |
+| RFC-012 | Win32/NT personalty feasibility | no bitwise NTSTATUS or HANDLE reuse as native cap |
+| RFC-013 | GUI/graphics buffer sharing | GPU buffer cap role requires actual memory/DMA scope |
+| RFC-014 | Darwin/Mach-O/Swift feasibility | Mach port name/ObjC ABI distinct from UniOS SABI |
+| RFC-015 | proof, fuzz, differential and fault injection standards | static schema compiler safety is not assumed |
+| RFC-016 | user consent/permission grants | old-client defaults cannot bypass current portal consent |
+| RFC-017 | signing root, floor, BootPolicyManifest and recovery | canonical signing format, key root and schema versions separately trusted |
+| RFC-018 | schema evolution, unknown types, status and version relationship | must coordinate, not overwrite already Proposed commitments |
+
+**Necessary joint P0 reviews:** (002/003/009/018) cap transit and ReceiveClaim; (003/008/009/018) effect/UNKNOWN/receipt; (001/006/017/018) signed boot canonical bytes and parser/Root; (008/010/018) guest file/FD/errno and persistent schema; (009/018) stable C ABI/IDL generated ownership. None is discharged merely because RFC-018 exists.
+
+## 16. Future finite proof model and experiments (no execution)
+
+### 16.1 Model states and counterexamples
+
+Finite model: two clients (old/new), two server incarnations (old/new), one issued Endpoint plus forged discovery string, one Channel capacity 1, one transferable FileCap and one fake serialized handle, one DeviceCap with unresolved DMA R2-F, one optional new resource-bearing union, one mandatory security field introduced in new schema, one ReplyToken, one ReceiveClaim, one durable and one volatile idempotency ledger, one DataVolume V1/V2, BootManifest signer old/new, and a client whose deadline expires after file mutation.
+
+Transitions: negotiate secure/insecure methods, issue/attenuate endpoint, E1 preflight/commit/UNKNOWN, receive partial byte copyout, install/missing/extra cap, unknown union closure, requeue/restart, request ID replay, VFS rename/commit/lose reply, FS flush fail, resume old client with current security policy, guest errno conversion and signed manifest unknown-critical rejection.
+
+**Safety checks:**
+- kernel cap transfer never derived from forged user bytes, issuer, version label or guest UID0;
+- no source+receiver double ownership of one MOVE after COMMITTED, no source loss after genuine NOT_COMMITTED;
+- unknown resource role cannot leak live native cap and no decode bypass of mandatory security policy;
+- older client cannot gain broader rights, skip required consent or label BufferedVisible as DurableReceipt;
+- stolen old ServiceID/ReplyToken cannot impersonate new authorized server;
+- timeout and non-idempotent method retry cannot silently duplicate external side effect;
+- Boot manifest unknown-critical/duplicate-root and changed signature encoding never authorize untrusted image;
+- no parser overflow, unbounded nested decode or memory/IPC budget drain defeating critical M0;
+- signed old rescue and new DataVolume cannot be called compatible solely from SABI version match.
+
+**Conditional liveness:** if kernel IPC/scheduler/MemoryObject, authorized endpoints, healthy Pager, available server instance and actual storage work, bounded request may complete. No guarantee when hardware/FloorWriter/dead SABI server/unstoppable DMA fails. A fail-closed denial/recovery-only state is a correct safety outcome.
+
+### 16.2 Future research/test matrix (not done)
+
+1. Draw fully specified IDL-A vs adapted FIDL/Proto/Thrift/Cap'n Proto/CBOR resource/lifetime architecture with concrete parser TCB and license study.
+2. Before stable wire choice, create executable property-based and fuzz corpus for lengths, duplicate/unknown fields, enum values, union, handle vector count and nested DoS.
+3. Model check cap MOVE and ReceiveClaim (send failure, client death, cap install, partial user byte copyout, receive abort) against RFC-002/003/009.
+4. Compile client/server schema combinations OldOld, OldNew, NewOld, NewNew with mandatory feature and resource-role change, plus partial failed rolling upgrade.
+5. Prove service incarnation+ReplyToken/request ID/idempotency replay safety across restart and persisted/volatile ledgers.
+6. Differentiate raw queue COMMITTED, backend external effect, file sync/directory sync and actual result receipt under every cut.
+7. Compare C-compatible SDK ABI layouts/FFI ownership across selected compiler versions and Rust/C++ wrappers, with old/new binaries.
+8. Verify Linux guest semantics under selected syscall/errno and FD close/epoll/exec after SABI change; no guessed blanket compatibility.
+9. Audit boot manifest canonical signed representation, duplicate fields, critical extension, trust root and version floor under old/new readers and signer rotation.
+10. Ensure M0 boot/recovery can run without SABI full codec, dynamic loader or pageable reflection runtime.
+11. Only after separately approved code work, measure CPU, memory, IPC size, cap count, p50/p99 and decoder DoS profiles in QEMU and a named physical reference PC.
+12. Record actual third-party library versions, transitive dependencies, licenses and update advisories, including generator reproducibility.
+
+No experiment, test, compiler generation, formal verification, disk write, software or hardware implementation was conducted for this document.
+
+## 17. R1 exit gates and research roadmap
+
+**RFC-018 R1 design acceptance: OPEN / NOT PASSED.**
+
+1. Choose the actual candidate IDL/codec based on equal capabilities/resource-role semantics, parser attack surface, memory/CPU and versioning proof, not a brand/tooling preference.
+2. Define a complete logical but machine-independent SABI transfer schema with strict bounds, unknown-cap cleanup and relation to kernel bytes+typed cap vector. Then separately choose numeric wire after tests.
+3. Prove RFC-003 E1 NOT_COMMITTED/COMMITTED/UNKNOWN and RCV-A ReceiveClaim against partial bytes/cap install/Task death/hostile escrow and resource budget.
+4. Demonstrate that old/new client/server versions cannot weaken current authority, consent, durability or required security extensions through flexible fields or negotiable defaults.
+5. Specify effect phase and receipt/idempotency scopes; no exactly-once or deadline rollback claim without durable transaction evidence.
+6. Complete service incarnation and trusted Endpoint issuance/rebind rules with stale ReplyToken prevention.
+7. Prove signed BootPolicyManifest exact canonical bytes/root/floor/unknown-critical validation separately from runtime SABI codec, including old rescue compatibility.
+8. Publish stable Native SDK ABI, guest Linux/Windows/Darwin and durable DataVolume version matrices only with actual evidence.
+9. Define and review source/binary/semantic/security/persistent format compatibility windows and security exception procedure.
+10. Produce at least a bounded state model and cross-version malformed-input corpus after separate design acceptance/implementation authorization; no pretend current proofs.
+11. Keep D1–D8 Accepted only as broad architecture directions and all IDL-D proposals Proposed.
+
+**Next suggested design action:** independently attack-review RFC-018 v0.1 into v0.2, including unknown transferred handle and mixed-version mandatory security downgraded field. Then a cross-RFC 002/003/008/009/010/017/018 consistency pass before any fixed syscall/header formats.
+
+## 18. Official external references and interpretation scope (2026-10-25)
+
+- **[S1] Fuchsia FIDL language and protocol openness:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
+- **[S2] Fuchsia FIDL wire format and resource envelopes:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/wire-format
+- **[S3] Fuchsia FIDL API rubric and resource evolution:** https://fuchsia.dev/fuchsia-src/development/api/fidl
+- **[S4] Fuchsia Zircon Channel write and handle transfer:** https://fuchsia.dev/reference/syscalls/channel_write
+- **[S5] Protocol Buffers proto3 language/field evolution:** https://protobuf.dev/programming-guides/proto3/
+- **[S6] Protocol Buffers serialization not canonical:** https://protobuf.dev/programming-guides/serialization-not-canonical/
+- **[S7] Cap'n Proto schema evolution:** https://capnproto.org/language.html
+- **[S8] Cap'n Proto canonical encoding and limitations:** https://capnproto.org/encoding.html
+- **[S9] Apache Thrift IDL required/optional/default fields:** https://thrift.apache.org/docs/idl
+- **[S10] gRPC status codes (DEADLINE_EXCEEDED after completed effect):** https://grpc.io/docs/guides/status-codes/
+- **[S11] gRPC cancellation limits:** https://grpc.io/docs/guides/cancellation/
+- **[S12] IETF RFC 8949 CBOR deterministic encoding/duplicates/security:** https://www.rfc-editor.org/rfc/rfc8949.html
+- **[S13] Linux userspace ABI stability classes:** https://docs.kernel.org/admin-guide/abi.html
+- **[S14] Fuchsia FIDL unknown interactions/strictness:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
+- **[S15] Protocol Buffers Editions compatibility guidance:** https://protobuf.dev/programming-guides/editions/
+- **[S16] Protobuf proto3 unknown enum values and presence:** https://protobuf.dev/programming-guides/proto3/
+
+All references describe the *other project's documented interface*, not a UniOS code import, implementation, transfer of formal proof or automatic legal permission. The cited codec formats have different failure/unknown-resource assumptions; a promising source does not prove selected UniOS fit.
+
+---
+
+**Document history:** 2026-10-25 — RFC-018 Proposed Specification v0.1 initial deep research: seven ABI/version boundaries, IDL-A compared to FIDL/Protobuf/Thrift/Cap'n Proto/CBOR, capability-aware SABI, safe unknown resource/mandatory feature evolution, phase-accurate results and offline boot/data trust separation. 42 unproved invariants; 38 open research issues; 24 Proposed decision candidates. Git documentation only. No binary wire layout selection, kernel/IDL code, prototype, compiler target, formal proof, compatibility test or ABI freeze.
