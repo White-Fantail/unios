@@ -534,6 +534,96 @@ Transitions: guest raw syscall native opcode injection; ELF launch with forged H
 
 **Next proposed research:** RFC-010 v0.1→v0.2 critical review is recorded in §21, but all P0 design exit criteria remain OPEN. Next study RFC-018 versioned IDL/status and Native/Guest ABI compatibility mapping, with joint RFC-008/009/010 FD/effect review. This design only, and D1–D8 remain the only broad Accepted directions.
 
+## 21. v0.2 Independent adversarial review — Linux correctness and capability proof gates
+
+**Date:** 2026-10-24. Independent document review of RFC-010 v0.1 against actual Linux man-pages, kernel rseq docs, RFC-009 v0.2, RFC-002/003 handle/IPC lifetime and RFC-004/005/008 memory/scheduler/durability contracts. External sources [S2,S6,S8,S10,S11,S15,S24–S28] describe Linux, NOT proved UniOS behavior. This is **only a paper design review**; no app executed, binary inspected, test run, kernel modified, model checker run or hardware proven.
+
+### 21.1 Critical counterexamples and corrections
+
+| ID | v0.1 simplification that would fail | Corrected v0.2 contract | Severity |
+|---|---|---|---|
+| R10-01 | Exec as an atomic replacement with recoverable failure on every error | Linux ordinarily returns precommit errors, but after image teardown a late failure may terminate process; no old-program rollback after point of no return [S2,S28] | P0 |
+| R10-02 | Exec only replaces calling Thread's mapping | On success, exec destroys sibling Threads and unshares CLONE_FILES FD table while preserving designated process identity and descriptors [S2,S28] | P0 |
+| R10-03 | Guest close failure means FD remains open and may be retried | Linux releases numeric FD early; later EIO/EINTR/ENOSPC may be returned even when FD retired, and retry can close another file after integer reuse [S24] | P0 |
+| R10-04 | dup2 as separate guest-close then guest-dup operations | Linux target FD close/replacement is one atomic operation against concurrent fd allocation and signal handlers [S25] | P0 |
+| R10-05 | open then fcntl(FD_CLOEXEC) is safe before fork/exec | A racing Thread may exec before flag set, leaking delegated guest/native file authority; O_CLOEXEC is atomic with FD creation [S26] | P0 |
+| R10-06 | Closing registered epoll FD always removes watch | Original OFD can remain referenced by dup/fork, preserving old epoll event source even after registered numeric FD close [S10] | P0 |
+| R10-07 | Epoll watches keyed by FD alone, or OFD alone | Linux uses (registered FD number, original OFD) pair; one OFD can appear via two distinct dup FDs and each can have separate epoll registration [S10] | P0 |
+| R10-08 | Old fd=7 event after new fd=7 allocation belongs to new file | Ready event belongs to original registered (fd=7,OFD-A) and must not authorize new OFD-B, even if event payload contains stale fd integer [S10] | P0 |
+| R10-09 | SA_RESTART automatically retries all interrupted blocking calls | epoll_wait/poll/nanosleep and many timed socket calls are not restarted merely by SA_RESTART; slow device read/write with partial bytes may report count instead of EINTR [S8] | P0 |
+| R10-10 | Any guest EINTR allows native broker to replay operation | Native operation may already have written bytes/renamed file/sent packet; restart only where exact guest semantics and effect ledger show safe behavior [S8,RFC-003/008] | P0 |
+| R10-11 | One generic DirectoryCap pathname resolver implements all openat2 modes | RESOLVE_BENEATH and RESOLVE_IN_ROOT interpret absolute path/link differently; explicit NO_MAGICLINKS cannot rely on current incidental rejection, rename races may require EAGAIN [S11] | P0 |
+| R10-12 | Provide deterministic getrandom bytes and report success to satisfy startup libc | Cryptographic caller expects unpredictable seeded entropy, initialization blocking/nonblock/EAGAIN and size-dependent EINTR/short returns [S27] | P0 |
+| R10-13 | Any architecture that advertises rseq registration provides modern optimized V2 | Linux optimized V2 conditional on architecture/generic entry/TIF support and advertises a feature size; 32-byte legacy registration has separate behavior [S15] | P1 |
+| R10-14 | Guest syscall success proves no policy change can leak host caps on later exec | CLOEXEC, FD table sharing, SCM_RIGHTS and native handle lifetimes interact with trusted launcher policy; inheritance/copy must remain attenuated through fork/exec [RFC-002/009] | P0 |
+| R10-15 | Linux/POSIX API label means same close EINTR semantics | Current Linux man-page notes POSIX.1-2024 differs on EINTR close behavior; UniOS targets an **explicit Linux ABI** not generic POSIX latest wording [S24] | P1 |
+
+### 21.2 Concrete interleavings to model (none executed)
+
+**C10-A — exec point-of-no-return:** Guest with TID 71 and 72, shared FDTable, attempts exec. New interpreter mapped partially, then allocation fails *after* old image was already removed. Calling Thread cannot safely resume original code; other Threads must be consistently terminated, guest process identity and child/wait observable state handled. A broker cannot return -ENOMEM and resume old application unconditionally.
+
+**C10-B — exec and CLONE_FILES unshare:** Two distinct guest processes share FDTable via CLONE_FILES. One execs while the other changes FD flags or closes a file. Under Linux exec unshares the caller's FD table. Define the linearization of snapshot/unshare and CLOEXEC, making sure the second process's later FD changes don't affect the new exec image and don't create unauthorized native FileCaps.
+
+**C10-C — O_CLOEXEC race:** Thread A opens guest FD backed by a restricted native FileCap. Before a subsequent fcntl(FD_CLOEXEC), Thread B forks and execs an untrusted helper; helper inherits FD in that gap. A native portal may have intended data access only for original process. FD+flag must be published atomically via O_CLOEXEC or another correctly modeled privilege/inheritance boundary [S26].
+
+**C10-D — dup2 replacement race:** Guest T1 wants dup2(oldfd=3,newfd=5). Implementation does close(5), then another Thread or signal handler opens a sensitive native FileCap that receives fd=5, then T1 dup(3) into an unrelated FD. Incorrect code either loses atomicity or exposes/rebinds authority. Linux guarantees atomic close+replace [S25]. Guest broker must hold its own FD-table lock/transaction and charge displaced OFD references.
+
+**C10-E — close error and FD reuse:** Guest closes fd=7 pointing OFD-A. Broker frees numeric 7; VFS later reports EIO on writeback. Concurrent Thread opened OFD-B and received fd=7. Auto-retrying close(7) after EIO would close OFD-B; forbidden. Guest may report error but must never treat retired 7 as still authoritative [S24]. This is distinct from async I/O already pinning OFD-A after fd 7 closed.
+
+**C10-F — epoll aliases:** epoll watch registers (fd=7,OFD-A). dup creates fd=8→OFD-A; close(7); opening OFD-B reuses fd=7. Epoll may still deliver old OFD-A event because fd=8 is alive. Correct guest event payload/state may refer to old 7 without implying it now grants access to OFD-B. Need separate registration token/OFD reference and explicit EPOLL_CTL_DEL or last reference removal [S10].
+
+**C10-G — epoll duplicate key:** register fd=7/OFD-A and fd=8/OFD-A (dup); Linux permits separate registrations with different masks even though OFD same; a second EPOLL_CTL_ADD on the same (fd=7,OFD-A) normally returns EEXIST. An implementation keyed solely by OFD loses the fd=8 entry; one keyed solely by numeric 7 misattributes after reuse [S10].
+
+**C10-H — SA_RESTART partial write:** Slow-device write transmits 12 bytes, then signal arrives before remainder; guest may see success count=12, not EINTR. Broker already transmitted 12 bytes and cannot repeat original buffer from zero. For epoll_wait or nanosleep, SA_RESTART is not an automatic restart. A failed/canceled native RPC is not a proof of no side effect [S8].
+
+**C10-I — unsafe path interpretation:** Guest calls openat2 with RESOLVE_BENEATH, absolute symlink or ../ escape. Another call uses RESOLVE_IN_ROOT and absolute link deliberately confined to dirfd. Treating both identically denies legitimate guest semantics or crosses sandbox; magiclink rejection needs explicit NO_MAGICLINKS, and uncertainty from rename race maps to EAGAIN/other declared error [S11].
+
+**C10-J — getrandom pseudo-success:** Guest libc needs AT_RANDOM and getrandom to seed cryptographic runtime. UniOS has not established an entropy-ready source yet. Returning repeating bytes with success can create predictable secrets, even though the CLI appears to launch. Do not conflate OS source boot success with secure random initialization; honor GRND_NONBLOCK and request-size-dependent partial results [S27].
+
+**C10-K — rseq V2 false advertisement:** A guest ELF inspects advertised AT_RSEQ_FEATURE_SIZE and registers V2 length, but UniOS never updates cpu_id or handles critical-section abort on migration/signal. Guest per-CPU updates corrupt state silently. Advertise only verified legacy/optimized behavior for exact CPU and scheduler, or return unsupported where selected guest runtime can safely fall back [S15].
+
+### 21.3 Linux FD-state machine and capability conservation
+
+Distinct entities: guest numeric FDEntry (including CLOEXEC and per-entry generation), shared FDTable identity (possibly shared via CLONE_FILES), OpenFileDescription with refcount/shared offset/status flags, native underlying FileCap/SocketCap, epoll Registration tied to **registered numeric FD + OFD + generation**, and in-flight I/O references retained after numeric FD close.
+
+- **Open with CLOEXEC:** publish new FD and inheritance flag in one atomic FDTable step. Broker's native FileCap remains within launch-granted scope; no leaked portal grant to an unauthorized exec child.
+- **dup2/dup3:** atomic replacement at target numeric FD; release displaced reference and install existing OFD in one operation, even with concurrent signal handlers and shared FDTable.
+- **close:** retire FDEntry early and avoid retry of reused numeric ID; later I/O error may be observable, but no FileSync or directory durability is implied.
+- **epoll:** retain original registered pair and OFD lifetime; watch event can outlive one FD alias's close; guest event payload cannot be used as a host capability.
+- **exec:** unshare FDTable where CLONE_FILES made it shared, then apply CLOEXEC with a state transition whose irreversible cut is named; other guest Threads terminate as Linux specifies.
+
+**Conservation:** every native capability ref held by broker/FDTable/OFD/epoll/in-flight I/O is sponsored and has explicit generation/revocation. Linux guest FD numeric values are not native handles. On broker death, do not silently free a native FileCap still owned by an executing I/O, or retain a privilege leak forever.
+
+### 21.4 Guest syscall outcome and correctness table
+
+| Guest API family | Honest scope | Avoid false success/rollback |
+|---|---|---|
+| execve | successful process image replacement does not return; precommit errors may return; past no-return failure can kill process | no generic EFAULT/ENOMEM back into destroyed old image |
+| close | numeric FD already released except early invalid-FD validation; late I/O errors may surface | do not retry close against reused integer; not FileSync |
+| dup2/dup3 | replace target FD atomically with new OFD reference and target scope | no close+dup window to lose/grant a different cap |
+| O_CLOEXEC | create FD with inherited-close bit in same publication cut | no open+fcntl gap across fork/exec |
+| epoll_ctl/epoll_wait | (FD,OFD) subscription and old event delivery after alias close | event data FD integer is not fresh authority |
+| read/write slow I/O | short successful byte count after partial progress; EINTR/restart depends interface | no automatic replay of already transferred bytes |
+| timed socket calls | interruption may return EINTR regardless SA_RESTART | don't forge Linux restart based only on handler flag |
+| epoll_wait/nanosleep | EINTR not automatically restarted with SA_RESTART | avoid generic restart transform |
+| openat2 | exact resolve flags, magiclink, directory-relative containment, EAGAIN on specified races | no insecure fallback to pathname-only resolver |
+| getrandom | source initialized/entropy adequate, GRND_NONBLOCK, EAGAIN, bounded bytes | no deterministic or falsely secure bytes |
+| rseq | feature-size, registration and context-switch/CPU-migration semantics | no successful V2 registration without V2 behavior |
+
+### 21.5 Revised P0 design exit gates
+
+1. **EXEC P0:** formalize Linux exec precommit/commit/past-no-return failure, all other Threads teardown, CLONE_FILES table unshare, CLOEXEC and signal disposition reset with user-visible PID/wait state.
+2. **FD P0:** model Linux close release-before-error, concurrent I/O pin, generation-safe reuse; dup2/dup3 FD-table swap and O_CLOEXEC atomic create across concurrent fork/exec.
+3. **EPOLL P0:** prove interest identity (registered FD number,OFD), duplicated alias registration, close/last-ref removal and delivery to old FD without redirecting native capability to reused FD.
+4. **SIGNAL P0:** derive a per-syscall interruption/restart/partial-byte matrix from exact Linux behavior; no generic SA_RESTART or EINTR mapping and no blind replay of external effects.
+5. **PATH P0:** separate openat2 RESOLVE_BENEATH vs RESOLVE_IN_ROOT, explicitly NO_MAGICLINKS, EAGAIN/EXDEV and metadata size/flags; intersect with DirectoryCap.
+6. **ENTROPY P0:** define secure Native entropy/seed provenance, readiness/blocking/EAGAIN and partial returns before claiming guest libc/crypto support.
+7. **RSEQ P1:** review selected CPU/architecture optimized V2 availability, auxv feature sizes and scheduler migration/signal coupling; do not overadvertise.
+8. **INTEGRATION P0:** reconcile RFC-009 KABI copyout/UNKNOWN, RFC-003 commit/ReplyToken, RFC-002 native handle lifetimes, RFC-008 sync/writeback and RFC-005 broker CPU budgets.
+9. **NO CODE/AUTHORIZATION:** all LX-D decisions remain Proposed. No kernel/syscall runtime, FS/Net implementation, app running, hardware or model proof produced by this review.
+
+**Conclusion:** LINUX-A remains the conditional research leader with privileged broker in a separate Task. L0–L4 remain **hypothetical verification levels**. Most damaging new v0.2 findings are exec irreversibility, close/dup2/O_CLOEXEC race and epoll old-FD event semantics; the earlier futex/GuestDomain/rseq/source-ABI P0 blockers remain open. No universal Linux binary compatibility claim is appropriate.
+
 ## 22. Official primary sources, verified scope (rechecked 2026-10-24)
 
 - **[S1]** Linux syscall(2) architecture calling conventions: https://man7.org/linux/man-pages/man2/syscall.2.html
