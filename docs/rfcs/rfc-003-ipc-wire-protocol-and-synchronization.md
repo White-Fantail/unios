@@ -94,13 +94,15 @@ Service의 versioned protocol은 필요한 경우 method_id, protocol_id/version
 
 | Object candidate | type-specific rights | 안 되는 암묵적 효과 |
 |---|---|---|
-| ChannelEndpoint | SEND, RECEIVE, WAIT, TRANSFER, DERIVE, QUERY_BASIC | 상대 Task의 메모리·debug state 접근 |
+| ChannelEndpoint (**E1-only profile**) | SEND, RECEIVE, WAIT, TRANSFER, QUERY_BASIC (**DERIVE/DUPLICATE 금지**) | 상대 Task의 메모리·debug state 접근; E2 다중 소유권을 암묵적으로 부여하지 않음 |
 | ReplyToken | REPLY_ONCE, 조건부 WAIT_STATUS / 제한된 WORKER_TRANSFER | arbitrary Task reply / token re-use |
 | Event | SIGNAL, WAIT | 정확한 이벤트 개수 전달 보증 |
 | WaitSet | REGISTER, UNREGISTER, WAIT | 관찰 대상 Capability 소유권 상승 |
 | WaitRegistration | REARM/REMOVE (내부 token 후보) | revoked object에 대한 무단 callback |
 | MemoryObject | typed MAP/READ/WRITE/EXECUTE scope | Channel SEND만으로 무단 map |
 | ResourceBudget | ALLOCATE, OBSERVE, DELEGATE 범위 | 크기만으로 다른 Task 자원 취득 |
+
+**2026-10-25 Cross-RFC 설계 문구 정정 (Proposed 유지):** 위 권한 표는 RFC-003 §4 본문 및 IPC-D13과 모순되었던 E1 Endpoint의 DERIVE 열거를 제거했다. E1 Endpoint 하나는 동시에 유효 소유 Task 한 곳에만 속하고, 별도 클라이언트 연결은 독립 Channel 쌍/명시적 dispatcher를 통해 구성한다. E2 다중-Task 공유는 별도 미결 연구다. 권한, 실제 caller, MOVE/ReceiveClaim/UNKNOWN의 통합 계약은 [CAPIPC 공동 설계안 v0.1](../contracts/capability-ipc-sabi-integration-contract-v0.1.md) 참조. **코드/와이어/숫자 ABI, 선택된 E1 알고리즘의 증명이나 Accepted 변경이 아니다.**
 
 **초기 권고:** 메시지 내 Capability 이동은 MOVE-only. COPY하려면 RFC-002 DERIVE로 새 grant를 만든 뒤 MOVE. **E1 ChannelEndpoint 자체는 DERIVE/DUPLICATE 불가 타입**으로 제안. 원본 권한·계보·revoke anchor는 보존. 별도 DUPLICATE_IN_SEND는 성능상 필요성이 입증되기 전까지 보류. 이 역시 확정 API가 아니라 비교 기준.
 
