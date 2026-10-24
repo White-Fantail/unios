@@ -430,3 +430,101 @@ These are **unexecuted paper interleavings**, not tests that passed. For each ca
 - **JC-D15:** Separate kernel COMMITTED/UNKNOWN, service effect, FileSync/DurableReceipt and user-observed status; no exactly-once claim from message ID alone.
 - **JC-D16:** No Stable KABI/SABI version, public numeric opcode, ABI fields, implementation or compatibility result authorized by this draft.
 
+
+## 13. Finite verification plan and invariants that require evidence (no model run)
+
+### 13.1 Minimal state vector for a future model checker
+
+- Two Tasks A/B plus issuer/supervisor, two E1 Channel objects including old and new service instance, two pending requests, one kernel cap in each location (source, transit, claimed, receiver, revoked, closed), and finite Task-local handle namespace deliberately allowing exhaustion.
+- Source cap type: one E1 Endpoint, one ordinary FileCap and one device-related cap; one independent-root alias to same MemoryObject for R2-O contrast. Two sponsors (source and receiver), finite queue capacity 1 and claim credit 1.
+- One byte buffer whose user mapping can change; CopyOut step can expose a prefix then fault. One Pager and protected M0 CPU/IPC reserve; optional shared DMA pin with physical fence that may never complete.
+- One ReplyToken, one protected pending-operation ticket candidate whose returned ID can be lost, client RequestId, separate kernel EndpointGeneration, ServiceIncarnation and PolicyEpoch; plus one authorized principal proof and one forged caller label.
+- One FileService with durable ledger bit and potentially already applied non-idempotent mutation, plus caller cancellation/result loss. Boot signing/floor and full Linux ELF outside this *first* bounded model, but statuses integrate their contract only.
+
+Transitions: CREATE/GRANT, DERIVE allowed-by-type, E1 endpoint MOVE, SEND preflight, concurrent revoke B, queue COMMIT/report loss, receive exclusive claim, partial byte copyout, kernel cap install and dequeue, SABI unknown field rejection, client and service death, sponsor ADOPT, another sender retry, reply/restart, user consent epoch change, DeviceGroup fence/quarantine, FileEffect applied + ledger crash.
+
+### 13.2 Safety properties to assert
+
+1. **No double live grant under MOVE:** after commit one custodian has moved grant (transit/claim/receiver), not sender plus receiver. Distinguish multiple *authorized derived* grants from one duplicated same grant.
+2. **No source loss before real precommit failure:** if failure linearized prior to commit, Task-local source CapHandle and original right/scope remain valid, provisional charges released.
+3. **E1 unique public owner:** at most one active owning Handle for each endpoint, never a DERIVE alias. Transferred object with in-flight refs obeys one linear order for admitted calls.
+4. **No unauthorized secret copyout:** payload cannot be exposed to a claimant that is not exclusively authorized; once exposed, model carries an irreversible disclosure bit regardless of later abort.
+5. **Handle anti-ABA and generation:** stale public token cannot be reused as new unrelated grant; pending ReplyToken/reply/WaitSet not rebound after Task/Endpoint/Service restart.
+6. **Revocation monotonicity:** after B, no new action under revoked family; CPU R1 and hardware R2-F/R2-O observed only after matching all required cuts, independent root still protected.
+7. **Sponsored conservation:** actual outstanding queue/claim/IRQ/Pager/page/DMA reservations are charged until authorized adoption or proven destruction/quarantine.
+8. **Identity and permission safety:** forged principal field, service name, version number, badge and Linux root never grant rights beyond actually issued cap + current policy and independently trusted identity proof.
+9. **No stale negotiation:** PolicyEpoch/ServiceIncarnation/Endpoint changes invalidate unauthorized new-method admission.
+10. **No effect lie:** timeout, lost reply/commit report or server death cannot be interpreted as proof that external mutation never occurred; device fence != storage durability.
+
+### 13.3 Conditional liveness checks
+
+- Under working CPU/IRQ/timer, resident M0 reserve, finite honest Pager/worker servicing and bounded queue fairness, critical error detection/cleanup eventually makes progress or reaches declared fail-stop.
+- One malicious client cannot permanently exhaust every critical admission slot purely by claiming a non-M0 user's queue.
+- No liveness guarantee after a physical storage-controller hang, fraudulent device completion, pre-IOMMU DMA corruption or single-drive failure. Quarantine/refusal remains a valid safety result.
+- In a mixed-version session, if a common *secure* method exists and actual resources remain, a fresh negotiated request can complete; old policy defaults cannot be required for availability.
+
+**Model selection gate:** choose actual state variables, fairness assumptions and guards before claiming a model passed. This document does not contain executable TLA+, Alloy, PlusCal, Promela, Lean, Rust or test code.
+
+## 14. Exact cross-RFC edit and ADR handoff plan
+
+| Target | Minimal design change proposed | Must not change silently |
+|---|---|---|
+| RFC-003 §4 (CX-01) | correct E1 ChannelEndpoint table by removing DERIVE; explanatory erratum clarifies E2 deferred | type generic DERIVE in RFC-002 and E1 MOVE send failure semantics |
+| RFC-003 §5 | explicitly distinguish one Endpoint per Task from independent per-client connections, and in-flight invocation references | E2 not silently introduced; no global provider Endpoint cloned |
+| RFC-002 §5/§8 | add cross-ref to exclusive ChannelEndpoint object-kind prohibition and sender lineage/sponsor rules | general type-specific DERIVE for non-Channel objects |
+| RFC-009 §§6–7 | bind native Handle anti-ABA and lost result to E1 task-scoped operation/cap custody model | no numeric opcode/SDK binary ABI freeze |
+| RFC-018 §§4/§19.3 | clarify that multiple clients in bearer example own distinct E1 endpoints (or sequential MOVE), not same Endpoint simultaneously | preserve bearer vs human identity proof separation |
+| RFC-006 §14 | retain separate client channels/dispatcher and fresh ServiceIncarnation Endpoint | not turn registry strings into ambient grants |
+| RFC-007/008 | maintain DMA fence and durable receipt as independent proof gates | not reinterpret cap close as fence or IPC ACK as fsync |
+| Cross-RFC audit v0.1 | append editorial-resolution note once RFC-003 exact text is actually corrected | keep original historically true finding and proof still OPEN |
+| README | add this Proposed v0.1 joint contract alongside prior audit/RFCs | no accidental Accepted, implemented or validated badge |
+
+**ADR proposals for a future explicit decision meeting:**
+- ADR-CI-01: E1-exclusive endpoint and separate connection broker vs E2/shared synchronous alternatives.
+- ADR-CI-02: public handle reuse/ABA and invocation-reference linearization.
+- ADR-CI-03: guaranteed NOT_COMMITTED source rights, postcommit UNKNOWN and protected ticket discoverability.
+- ADR-CI-04: receiver escrow/publication and all-or-none cap install with ambiguous byte state.
+- ADR-CI-05: bearer-only versus authenticated principal-sensitive service methods and policy epochs.
+- ADR-CI-06: resource sponsorship and independent revoke/fence stages.
+- ADR-CI-07: SABI result/error reconciliation, durable effect and guest ABI mapping.
+
+**All are Proposed decision candidates, not new Accepted ADRs.**
+
+## 15. Design acceptance criteria, refusal conditions and roadmap
+
+**Joint contract R1: OPEN / NOT PASSED.** Do not approve code-level ABI/IDL choices until:
+1. RFC-003 rights contradiction is eliminated as a *document correction* with direct readback; E1 ownership/no-DERIVE remains proposed.
+2. One supported E1 client→broker→service connection topology and bootstrap issuer is specified with failure at each partial half-delivery, charge and READY condition.
+3. Concurrent Endpoint MOVE vs in-flight send/receive plus cap revoke B has one explicitly chosen linearization model.
+4. Public Task Handle ABA and fail-closed token exhaustion are defined with bit format still unfrozen.
+5. Kernel protected SEND receipt mechanism resolves status when even the returned ticket identifier is lost, or a documented fail-closed UNKNOWN policy is chosen.
+6. ReceiveClaim/data-byte publication/cap-install/decoder unknown-resource close is jointly modeled for hostile receiver faults and Task death.
+7. Identity-sensitive/consent methods use an issuer-attested origin or are explicitly excluded from bearer-only channel methods.
+8. Service session/policy epoch gets provenance and a linearization rule for old admitted effects after policy revocation.
+9. Resource charges for transit/lineage/pager/IRQ and quarantined device survive holders' Task death until actual approved adoption/reclaim.
+10. Remote file/network effects, durable receipt and guest Linux errno under no-reply failure have a truth-preserving status/refusal mapping.
+11. Selected kernel and IDL object/message layout is checked for bounded Ring-0 TCB and M0 recovery resources, not just "small method count."
+12. Versioned owner RFCs and the audit agree on names/scope/phase. The exact proof model and test plan must be reviewed before a later **separate** approval of prototype work.
+
+**Suggested order:** (i) E1 editorial fix and connection topology; (ii) cap MOVE/ReceiveClaim/ticket finite transition model; (iii) actual caller + policy epoch; (iv) sponsor/physical fence and storage effect; (v) ABI/IDL schema versioning and guest result; (vi) independent cross-RFC re-audit. Do not promise a running OS, native SDK binary compatibility or successful Linux ELF support merely because this paper is coherent.
+
+**Explicit rejection triggers:** any design that duplicates one E1 Endpoint across Tasks, treats raw IDL handle integer or ServiceID as native right, says decoder BAD_SCHEMA rewinds SEND, assumes no byte disclosure on failed usercopy, declares cap close equal DMA quiescence, silently upgrades caller identity from badge, lets old protocol bypass new security floor, maps remote UNKNOWN to no-effect success, or lets pageable service failure starve protected M0.
+
+## 16. Primary technical references and source-boundary cautions
+
+- **[S1] Fuchsia Channel kernel object:** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/channel — nonduplicable Channel Endpoint and transfer ordering under **Fuchsia**, not a UniOS proof.
+- **[S2] Fuchsia zx_channel_write:** https://fuchsia.dev/reference/syscalls/channel_write — basic API consumes attached handles on both success and failure, unlike proposed UniOS E1 NOT_COMMITTED contract.
+- **[S3] seL4 IPC tutorial:** https://docs.sel4.systems/Tutorials/ipc — cap IPC, badges, synchronous endpoint send/receive and one-shot reply authority. Shared badged endpoint is **not** E1 ownership.
+- **[S4] Fuchsia FIDL language:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language — strict/flexible, value/resource and unknown union/method differences.
+- **[S5] Protobuf proto3:** https://protobuf.dev/programming-guides/proto3/ — binary unknown field preservation versus transformations through JSON or field copy; no generic critical-policy forwarding guarantee.
+- **[S6] gRPC status codes:** https://grpc.io/docs/guides/status-codes/ — deadline may expire after state-changing effect occurred.
+- **[S7] Protobuf noncanonical serialization:** https://protobuf.dev/programming-guides/serialization-not-canonical/ — deterministic serialization is not a signed boot format guarantee.
+- **[S8] CBOR RFC 8949:** https://www.rfc-editor.org/rfc/rfc8949.html — deterministic encoding variants and duplicate/ambiguous map keys.
+- **[S9] Linux futex(2):** https://man7.org/linux/man-pages/man2/futex.2.html — atomic compare/block requirement separate from ordinary RPC.
+- **[S10] Linux close(2):** https://man7.org/linux/man-pages/man2/close.2.html — guest FD release can precede delayed close error; native cap close/FD identity separate.
+
+External examples are technical evidence for **what those other systems document**, not imported correctness guarantees, verified formal proofs, performance numbers or legal permission to copy code. No codec, kernel Channel version or SDK implementation was selected or run.
+
+---
+
+**Document history:** 2026-10-25 — v0.1 initial joint design specification, CAPIPC-A candidate, E1-exclusive per-client connection proposal, real cap-vector MOVE and exclusive ReceiveClaim phases, postcommit UNKNOWN, anti-ABA, trusted caller vs bearer/PolicyEpoch and status/physical fencing separation; 24 unexecuted attack cases, 36 unproved invariants, 24 open research gates and 16 Proposed decisions. Git design docs only; no implementation or tests.
