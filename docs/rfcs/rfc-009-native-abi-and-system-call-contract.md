@@ -268,3 +268,212 @@ Recommend future feature discovery via bounded kernel query returning interface 
 
 **No frozen v1 promise now:** conceptually use Experimental ABI generation and SDK compatibility gates in design proofs; changing syscall numbers/layout before acceptance is permitted and expected. When Stable ABI is declared, specify compatibility window, architecture coverage, deprecation and security-necessary exception process. Never call an untested snapshot of the current doc "binary-compatible".
 
+
+## 12. Native userspace runtime, executable formats and toolchain feasibility
+
+### 12.1 Native C ABI research profile
+
+The candidate SDK boundary is a plain C-compatible function calling convention per target architecture and toolchain: fixed-width scalars, explicit sized records, opaque handles with owned/borrowed/duplicated rights, no allocator cross-boundary free without contract, no exception or panic unwinding across FFI without separate runtime policy. Define which DLL/shared library and symbol/visibility/version mechanism will exist on UniOS, not pretend Linux .so, Mach-O dyld or Windows PE export structure is magically available.
+
+**ABI features to prove before stable native SDK:**
+- C calling convention, stack alignment and red zone, register save rules and variadic calls; x86-64 SysV is candidate only after deliberate choice, not assumed synonym for Linux KABI.
+- TLS access and per-Thread data, errno-equivalent SDK state, thread creation/exit and signal/event dispatch.
+- unwind tables, setjmp/longjmp, C++ exceptions, Rust panics, async executor stack/future state; no cross-domain escalation or arbitrary kernel unwind.
+- compatible symbol mangling rules and C++ ABI (Itanium vs alternatives) only under selected compiler/toolchain; Rust extern C is not a promise of Rust repr or crate binary stability.
+- usable static ELF first; dynamic loader, relocation, RELRO, ASLR, W^X, ELF TLS/IFUNC and library dependency resolution are independent technical gates.
+- libc/sysroot/compiler builtins/start files, linker scripts, trusted target metadata and signed releases/cap manifest; do not assume a stock Linux target triple provides UniOS behavior.
+- standard native filesystem/network/window APIs delivered through SABI, not direct privileged KABI shortcuts.
+
+### 12.2 Loader authority separation
+
+Boot M0 verified loader from RFC-006/017 may have more initial grants than an ordinary userspace application loader; signing an ELF image is not authorization to mint a new Task's privileged caps. App creation needs authorized executable content identity, controlled AddressSpace/Thread creation, verified SDK/runtime if policy demands, and a scoped capability bootstrap list that cannot include a guessed issuer/root handle.
+
+A native static program can be compiled and launched before a full dynamic linker/libc exists *if* necessary sysroot, entry point, TLS and syscall support is deliberately supplied. This is feasibility, not proof that any compiler target has been created. Compatibility loader selection must be a trusted policy decision, not arbitrary magic bytes that switch kernel dispatch security domain.
+
+### 12.3 Compat apps do not inherit native trust
+
+A Linux guest's effective UID0 may control its guest namespace but doesn't imply native root. Windows Administrator token and Darwin entitlement likewise are translated guest constructs. Guest launch must be given precise File/Directory/Network/Display/Process grants with brokered access. A guest can possess authorized native capabilities via a host broker only when independent native policy issues them; it cannot create them by translating a numeric FD, HANDLE, Mach port name or guessed PID.
+
+## 13. Linux x86_64 CLI compatibility as a separate GABI research program
+
+### 13.1 Launch versus syscall
+
+A restricted Linux ELF may include interpreter PT_INTERP, Linux auxiliary vector, ELF TLS, environment and initial stack, glibc/musl dynamic loader dependencies and vdso/vsyscall expectations. First study a constrained static binary with documented dependency set, then a dynamically linked CLI, signals/threading/mmap/futex/epoll, then complex apps. No unmodified Linux binary claim until actual guest ABI behavior is tested.
+
+Linux x86-64 SYSCALL number in rax and arguments in rdi/rsi/rdx/r10/r8/r9 are the Linux ABI (not UniOS native ABI). A plain CPU trap doesn't carry "Linux personality" automatically. Native kernel must use kernel-owned guest-domain entry and route required calls through a restricted handler, with no privilege escalation and explicit return/cancellation behavior.
+
+### 13.2 Personality workflow candidate
+
+~~~text
+Guest ELF loader authenticates/authorizes restricted guest Task
+ -> Kernel tags Thread/Task GuestDomain and allowed NativeBroker cap ceiling
+ -> Guest issues Linux x86-64 syscall ABI
+ -> Kernel intercepts based on trusted GuestDomain, saves full guest context
+ -> Restricted syscall forwarding/trap broker with bounded request ownership
+ -> Linux Personality service translates Linux syscalls to native scoped KABI/SABI
+ -> complete guest return registers/errno, signal/restart and side effects
+ -> kernel restores guest domain, denying any unauthorized native entry
+~~~
+
+**Not a statement this can be implemented cheaply:** user-mode intermediary needs a privileged trap redirection, safe guest register/TLS/signal and futex context, possible architecture emulation, and handling of arbitrary guest syscall instructions. A safe solution may require either a kernel-contained small shim (larger KABI TCB), hardware virtualization, binary rewriting, user-level emulator or independent control gate. RFC-001 G1/G2 approaches need joint proof. A userspace broker alone cannot intercept x86 SYSCALL from an uncontrolled guest without kernel/hardware participation.
+
+### 13.3 Kernel/user semantics trap
+
+Linux fork/clone/execve/wait, process IDs, namespaces, signal delivery/restart, futex atomic wait/wake with mapped addresses, io_uring, epoll, fsync/fdatasync, socket flags, ptrace/procfs/mount and thread credentials cannot be represented merely as one RPC each. Race and atomicity between guest address space, guest FDs, signal handlers, shared-memory fast paths and kernel scheduling must be checked. Linux seccomp filter is not a complete sandbox, and untrusted guest user-notif request may already have side effects; never infer Unix privilege model substitutes for UniOS native cap enforcement [S9].
+
+**Compatibility ladder (research gates, not promises):**
+- L0 ELF parse/validate static byte layout and CPU entry without guest syscall behavior.
+- L1 constrained static CLI: exit, write to scoped stream, time, basic read from brokered file with explicit syscall table.
+- L2 loaded ELF program, dynamic loader, auxv, TLS, libc startup, mmap and file IO.
+- L3 threading/futex/signals/fork/exec/wait and /proc assumptions.
+- L4 sockets/epoll/io_uring/namespace/host tools and broader distributions.
+Each level requires actual executed tests and a published supported syscall/semantic list on the selected hardware; none has yet been performed.
+
+### 13.4 Security and perf counterexamples
+
+Guest process passes rax=native-CapFactory index, points argument to kernel-sensitive memory, or maps a writable SDK stub: trusted domain routes/rejects; raw user pointer never creates grant. If a guest signal arrives while blocked in syscall broker and handler calls another Linux syscall, guest ABI restart/stack/domain must be preserved without leaked native Thread-control cap. If native broker sleeps waiting on guest Pager whose pages require the broker itself, deadlock occurs; M0/critical broker code must use separately admitted resident path or fail boundedly. If guest timeout triggers while VFS already committed rename, return semantics cannot fabricate NOT_COMMITTED.
+
+## 14. Windows, Darwin and virtualization — nonnative guest interfaces
+
+### 14.1 Windows/Wine
+
+A PE binary expects loader sections/import tables, Windows DLL routines, TLS and SEH/VEH, Win32 handles, synchronization objects, native NT status/Windows messages, registry, filesystem case rules, process security token semantics, COM and graphics/DirectX on a selected implementation. Wine or a comparable userspace compatibility project could be ported to UniOS-native services in stages, subject to dependency, license and graphics-driver feasibility. **Do not** attempt to make UniOS KABI equal to undocumented raw NT syscall numbers. Microsoft documents Ntdll user-mode entry and warns against relying on certain undocumented Nt/Zw surfaces [S11]. The detailed Windows compatibility study belongs to RFC-011 or dedicated RFC-012 as architecture index assigns.
+
+### 14.2 macOS/Darwin
+
+Mach-O and Darwin/BSD syscalls, Mach IPC/ports, dyld, Objective-C/Swift runtime and frameworks like AppKit/Metal are distinct technical/legal layers. Even limited CLI compatibility requires a service/loader/ABI study; GUI app compatibility remains long-term unproven research. Mapping Mach port integer to UniOS native Handle without an authorized broker breaks capability semantics. Apple binaries/framework redistribution and platform licenses must be evaluated independently; this RFC grants no Apple SDK use or copying rights.
+
+### 14.3 Full guest virtualization
+
+Running Linux/Windows/macOS as a separate guest OS inside a VM is not native unmodified binary compatibility; it requires CPU virtualization, virtual devices, memory/IOMMU integration, correct guest ABI and licensing. PCI passthrough is an RFC-007 hardware DeviceGroup security issue. Do not attribute a guest OS's own successful filesystem or Win32 stack to UniOS compatibility layer.
+
+## 15. SABI schema versioning, unknown data and handle safety
+
+### 15.1 Version negotiation
+
+Services advertise protocol identity, supported major/minor/feature ranges and their *current service instance* through an authorized channel. Clients use capability-granted Endpoint/Channel, not an untrusted registry string alone. A version can change interpretation of data and rights; select an agreed version before treating payload as authenticated method arguments. A process may have two old/new service instances concurrently during rollout; method request includes target service incarnation/IDL contract as needed, not an assumption that name is stable.
+
+### 15.2 Strict vs flexible fields
+
+- **Required unknown method/field/union/enum:** reject or close according to protocol contract, never default to a broadly permissive service method.
+- **Optional unknown value field:** may be skipped if length-bounded and absence has safe defaults.
+- **Unknown handle/resource field:** not just ignorable bytes; the kernel may have transferred an actual capability. Service must either account and close/drop the unexpected handle, preserve only under explicitly compatible proxy semantics, or reject transaction without hidden leaked right.
+- **Unknown status:** preserve semantic distinction if safe; a newer stronger success mode cannot be mapped silently to old generic SUCCESS.
+- **Reserved bits:** are zero or explicitly negotiated; arbitrary unknown rights never granted.
+- **Deprecation:** old/new clients must have a tested overlap window; version negotiation cannot create grants beyond caller's cap.
+
+### 15.3 Wire layout independent from code layout
+
+A kernel Channel moves bytes and a separate vector of capabilities. It does not transport raw Rust structs, process pointers or local numerical handle IDs; any tagged handle presence/role belongs to SABI and must match the actual kernel vector and declared rights. Fuchsia's FIDL wire format distinguishes on-wire handle placeholder from out-of-band handle transfer [S14]; this is a security precedent, not a selected UniOS encoding.
+
+## 16. Error taxonomy, idempotency and return rights
+
+| Layer/status | What it establishes | What it must NOT be taken to mean |
+|---|---|---|
+| KABI INVALID_HANDLE/WRONG_TYPE | local cap token invalid/type mismatch | remote object was not operating |
+| KABI ACCESS_DENIED/REVOKED | no new authorization for this invocation/grant lineage | all earlier effects undone / all DMA stopped |
+| KABI NOT_COMMITTED | particular enqueue/MOVE operation did not commit | prior RPC/sends on another queue did not run |
+| KABI COMMITTED | particular kernel enqueue/MOVE committed | receiver processed, file durable, peer didn't die |
+| KABI UNKNOWN_EFFECT | caller cannot establish a commit/effect state | safe blind retry |
+| SABI PEER_CLOSED/STALE_INSTANCE | endpoint/service generation invalid | remote external work has not occurred |
+| Wait DEADLINE_EXPIRED | local deadline expired | remote operation canceled successfully |
+| Wait CANCELLED_LOCAL | local pending wait/reply withdrawn | storage/phone/network write undone |
+| SABI VFS BUFFERED_VISIBLE | data visible in current file cache | persisted after power failure |
+| SABI FS SYNC_COMPLETED/Receipt | documented file+directory+journal+Flush dependencies under hardware assumptions | SSD guaranteed never to fail / disk not lying |
+| Device R1 / R2-F / R2-O | progressively stronger CPU cutoff, DMA physical fence, object-wide reclamation | one handle-close is identical to all three |
+| Guest errno / NTSTATUS / Mach status | guest-specific translated status of a supported semantic | any native kernel numeric enum always identical |
+
+**Error mapping safety rule:** translate a native result to guest success only if all guest-visible preconditions have truly been met. When unsupported, prefer a real error over false success. A guest expects EINTR/SA_RESTART or SEH exception codes; translating generic DEADLINE_EXPIRED to guest EINTR without matching interruption rules can cause data corruption. Exact mappings remain RFC-018/010 research.
+
+## 17. Representative ABI failure/race matrix
+
+| Attack or race | Dangerous shortcut | Expected research safety contract |
+|---|---|---|
+| Guest rax equals native privileged opcode | dispatch solely on numeric value | kernel-owned execution domain before dispatch |
+| Guest changes TLS "native" flag | trust userspace domain label | kernel tag and authorized guest↔native transitions only |
+| Kernel checks pointer once then rereads | TOCTOU through another Thread/DMA | snapshot or pinned stable generation |
+| User passes length*count overflow | unchecked allocation or copy | checked bounds/type/finite quotas |
+| Kernel faults on Pager while global lock | self-deadlock | no faultable copyin in critical lock; bounded wired path |
+| Copyout fails after handle transfer | report NOT_COMMITTED / leak moved handle | explicit commit/copyout distinction and conservation |
+| IPC carries same handle twice | double-move or duplicated rights | detect duplicate descriptors; single transfer transaction |
+| Receiver buffer too small for message cap vector | bytes arrive but caps disappear | bounded preflight, retained/discard semantics defined |
+| Task dies after creating object but before output | invisible resource leak/refund | sponsor/object cleanup and reconcilable state |
+| Stale handle integer reused | old wait completes for new object | kernel generation/lineage+registration validation |
+| Revocation B completed, DMA still active | all memory reclaimed | R1/R2-F/R2-O separate hardware gating |
+| Client RPC times out after VFS commit | remote effect rolled back | UNKNOWN_REMOTE_EFFECT/transaction recovery |
+| Cancel Wait/ReplyToken | client assumes server aborted | cancel local only, remote separate |
+| Server restarts with same ServiceID | old reply/IRQ appears valid | service instance generation and fresh caps |
+| Two Wait subscriptions with same key | automatic dedup assumed | account each or explicitly reject duplicate |
+| Level-trigger event treated as edge-count | missed wake/deadlock | contract specifies coalescing/arming |
+| Infinite timeout overflow | wraps into immediate expiry | bounded monotonic arithmetic and explicit clock |
+| Thread fault + kill + PageSupply | old Pager wakes a dead/new Thread | private FaultWaiter and generation |
+| Scheduler throttled essential Pager | "higher priority client" makes progress | independent M0/essential budget and admitted dependency |
+| Guest/Linux syscall raw pointer contains host cap token | guest UID0 creates native cap | no unmediated guest authority |
+| Windows HANDLE reused as native handle | bitwise identity assumed | guest handle table and brokered mapping |
+| Mach port integer copied to native cap | code bypasses entitlements | translation restricted by host granted rights |
+| Unknown SABI field contains transferred handle | skip data leaving live cap | close/reject/explicit proxy under role rights |
+| New status value unknown to older client | interpret as success | strict status/version negotiation |
+| Native SDK Rust struct default repr | compiler version changes layout | extern-C sized records only |
+| ARM64 port reuses x86_64 syscall register ABI | corrupt registers/args | separate per-architecture entry conventions |
+| 32-bit guest length sign-extends negative | 64-bit memory overwrite | checked guest-width conversions |
+| User service claims SIGPIPE/EINTR parity from IPC | incorrect process semantics | guest personality tests |
+| File rename reported success before DirectorySync | data loss on power cut | scoped FS DurableReceipt |
+| Untrusted service registry returns root handle | discovery equals authority | issuer-issued attenuated cap only |
+| Bootstrap M0 depends on late dynamic SDK loader | recovery recursive Pager cycle | wired minimal runtime and ABI |
+| Linux seccomp filter allows syscall | complete sandbox promised | native cap check always authoritative |
+| Client downgrades protocol version to gain cap | old schema loses required rights field | signed/authorized policy + strict required field |
+| Fastpath differs from slowpath for cap semantics | security depends on performance path | model equivalence and linearization proof |
+| Thread Sysret noncanonical return IP | user controls kernel fault path | canonical return/alternate IRET-safe transition |
+| Device interrupt claims USER IRQ vector | raw integer becomes privilege | typed IRQSource+device group |
+| OSSigned new kernel but old SDK status enum | unknown privilege accepted | version/feature refusal and maintenance contract |
+
+## 18. Proposed correctness/security invariants (ABI-01…ABI-45) — NOT proved
+
+| ID | Candidate obligation, no implementation/proof |
+|---|---|
+| ABI-01 | Native KABI, versioned userspace SABI, SDK C ABI and guest Linux/Windows/Darwin ABIs are independently specified and versioned. |
+| ABI-02 | KABI dispatch happens after checking kernel-owned Thread/Task execution domain, not user registers/TLS/loader string. |
+| ABI-03 | Guest raw syscall/opcode cannot invoke privileged native object operations without independent native authority. |
+| ABI-04 | Native syscall input pointers/lengths/versions/flags are validated with overflow and cross-page copy/fault race handling. |
+| ABI-05 | A userspace wrapper/vDSO never substitutes for kernel-side rights and raw-entry validation. |
+| ABI-06 | Bounded kernel descriptor snapshot or justified stable pin prevents argument TOCTOU use after authorization. |
+| ABI-07 | Copyout/cancel/Task death after commit cannot be misreported as no kernel effect or leak acquired authority. |
+| ABI-08 | Handle integer is Task-local, not global credential, and generation/revocation lineage guards stale use. |
+| ABI-09 | Dup/derive attenuates rights and CREATE authority/sponsor cannot be minted from a held ordinary handle. |
+| ABI-10 | R0 close, B deny, R1 CPU cutoff, R2-F physical DMA fence and R2-O object reclaim remain distinct results. |
+| ABI-11 | Data+cap MOVE on bounded Channel has one defined atomic enqueue commit, respecting original owner and lineage. |
+| ABI-12 | Message delivery and receiver cap install have independent commit/error semantics from sender enqueue. |
+| ABI-13 | ReplyToken is one-shot, kernel-minted and scoped to caller/request/service incarnation. |
+| ABI-14 | Deadline expiry/CancelLocal/PeerClosed never claim remote operation rollback without separate evidence. |
+| ABI-15 | IPC queue bytes, handles, Wait and Reply registrations are admitted and charged to scoped ResourceBudget. |
+| ABI-16 | A SABI method name, ServiceID, numeric PID, UID0 or registry URL cannot authorize kernel object access alone. |
+| ABI-17 | SABI unknown required methods/fields/handle types are safely refused; optional extensible fields need explicit authorization-safe semantics. |
+| ABI-18 | On-wire handle placeholder/role never carries an actual transferable Task-local integer credential by itself. |
+| ABI-19 | SABI negotiation and capability transit cannot widen the sender's kernel rights or revocation lineage. |
+| ABI-20 | A returned native status names the exact phase committed, not a general remote-processing or durable-file result. |
+| ABI-21 | FileSyncData/DirectorySync and user-storage DurableReceipt are service semantics and hardware-conditioned, not implicit kernel syscall success. |
+| ABI-22 | User/guest libc errno, NTSTATUS and Mach error values map via personality, not assumed equal to native KABI status. |
+| ABI-23 | CPU mapped R1 does not imply DMA R2-F or reliable storage persistence, irrespective of syscall used. |
+| ABI-24 | FaultWaiter identity is kernel-private, scoped to PagerBinding/Task generation; user Pager cannot resume foreign thread. |
+| ABI-25 | Kernel copyin page fault never silently demands normal Pager while holding essential nonfaultable kernel/M0 resources. |
+| ABI-26 | Thread state wait, quota eligibility and CPU ownership remain orthogonal under timeout/fault/kill races. |
+| ABI-27 | Scheduling weight, CPU cap and guaranteed reservation remain independent with hardware/scheduler preconditions. |
+| ABI-28 | Critical boot/rescue KABI works from wired M0 without requiring late dynamic loader/VFS/network services. |
+| ABI-29 | Guest Linux syscall dispatch/return uses explicit x86 ABI and secure personality domain, not UniOS native opcode overlap. |
+| ABI-30 | GABI 32/64-bit pointer/size conversion cannot extend guest authority or overflow host range. |
+| ABI-31 | Guest Thread/exception/signal/futex/FD and blocking behavior is explicitly modeled before claiming Linux binary compatibility. |
+| ABI-32 | Windows/Darwin guest HANDLE/Mach port identity and privileges cannot become native CapHandle by bitwise translation. |
+| ABI-33 | C-compatible SDK boundary uses declared scalar/struct calling conventions, not default Rust or compiler-private layouts. |
+| ABI-34 | Public SDK ABI controls panic/exceptions, allocator/ownership and lifetime across FFI before stable release. |
+| ABI-35 | Unknown KABI mandatory feature/opcode or incompatible record version fails closed, never silently grants additional rights. |
+| ABI-36 | Optional SABI fields must not allow old clients to ignore security-critical new requirements. |
+| ABI-37 | KABI/SABI/SDK/guest ABI versions are independently negotiated without conflating signed BootPolicy and security floor. |
+| ABI-38 | User-mode fastpaths and optional batch/ring transports preserve ordinary syscall authorization/commit semantics. |
+| ABI-39 | Event/WaitSet registration generations, duplicates, quotas, cancellations and coalescing are defined with no stale wake. |
+| ABI-40 | IRQ/DeviceGroup/MMIO/DMA operation requires typed native grants and actual hardware ownership, not numerical BDF/IOVA. |
+| ABI-41 | Native/guest context transitions preserve FS/GS/TLS/return RIP/RFLAGS and failure state without privilege confusion. |
+| ABI-42 | Runtime service reincarnation does not make stale Endpoint/ReplyToken/Wait/IOVA/file receipt valid in a new instance. |
+| ABI-43 | Native object creation/outcome can be recovered or safely cleaned if Task dies during user output delivery. |
+| ABI-44 | A compatibility claim is tied to an explicitly tested target set of binaries, SDK/ABI versions and hardware, not extrapolated from one app. |
+| ABI-45 | Proposed operation families, machine registers and status labels are NOT Accepted ABI v1 or implementation authorization. |
+
