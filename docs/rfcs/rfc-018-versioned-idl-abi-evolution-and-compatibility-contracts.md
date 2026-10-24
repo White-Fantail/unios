@@ -297,3 +297,126 @@ gRPC expressly documents that DEADLINE_EXCEEDED can happen after state-changing 
 
 An IDL request_id is only a correlation value; it is not exactly-once execution. Reliable dedupe requires authenticated request identity, exact method+argument digest, durable result log written with correct ordering to the external effect, bounded retention and boot/service-incarnation recovery. If external downstream write and local receipt are not atomically coordinated, exactly-once across both is not promised. Service-issued persistent transaction IDs cannot gain issuer authority from a client string.
 
+
+## 9. Signed boot manifest, canonical bytes and trust isolation
+
+### 9.1 Boot policy is NOT a lenient runtime IDL packet
+
+RFC-017 requires BootPolicyManifest independently signed/verified from pre-existing Root trust, hardware/security version-floor policy, exact kernel/M0/SystemImage digest and small typed BootstrapDescriptor. A runtime SABI codec chosen for convenience is not automatically suitable as a signed manifest; generic Protobuf deterministic serialization is explicitly **not** generally canonical [S6]. CBOR RFC 8949 can specify a deterministic restricted profile, but duplicate map keys, canonical tag/number choices, invalid text, nesting and algorithm confusion require a strict custom format/profile [S12]. Cap'n Proto can canonicalize, but default encoders do not always emit canonical form [S8].
+
+**Choose later:** signed exact canonical byte string (or exact verified raw bytes with policy-defined encoding), size and cryptographic digest, schema/revision and security-extension criticality, Root/key epoch, enforceable independent version floor and exact signer policy. A manifest cannot select arbitrary new signing key to validate itself; a boot service's protocol version cannot override trusted Root/signer policy or grant ceiling. Any unknown critical signer/rights/security policy field leads to rejected boot candidate or explicit recovery-only mode, not a default allow.
+
+### 9.2 Parser and trust zone
+
+The signing parser belongs to a minimal verified loader or narrowly trusted M0 under bounded startup resource budget, with the kernel consuming only a small fixed typed bootstrap record (RFC-006/017). Do not put generic user RPC Protobuf/FIDL/CBOR whole-parser, reflection metadata, dynamic language runtime and network certificate graph in Ring 0 solely to parse BootPolicyManifest. A self-described required field cannot be ignored if a newer signed policy requires it; old rescue loader can only boot under a separately signed explicitly compatible image with correct floor/key/data schema.
+
+### 9.3 Update and data format coupling
+
+- App and SABI version upgrade may happen while clients remain running and old services have in-flight ReplyTokens; not the same as OS image A/B update.
+- DataVolume schema migration after B trial can prevent older but signed A reading user files. A successful old SABI decoder says nothing about data/key recovery.
+- TPM-backed security index, signer/root epoch and locally trusted TUF metadata versions are distinct; IDL version cannot arbitrarily increase or lower them.
+- A/B Good and FloorWriter authority are separate kernel/boot-policy grants. A client calling a method named MarkGood/FloorAdvance does not get that authority by name.
+- Persistent idempotency ledger and rollback record must have independent crash-durability and policy version semantics. On loss, effects are UNKNOWN, not silently replayed.
+
+**No proof of universal rollback:** even if binary wire is backwards readable, durable data, persistent signing policy and hardware rescue availability may not be compatible. The update protocol must state which dimensions are jointly required for a permitted floor/key transition.
+
+## 10. SDK and guest ABI evolution contracts
+
+### 10.1 Native C ABI candidate separate from IDL code generation
+
+A generated Rust client may use internal structs, slices, future executors and enum layouts. None is automatically stable across compiler versions. Public Native SDK C ABI requires fixed calling convention, numeric width, struct size/alignment, outparam ownership, symbol version, stack/unwind and allocator semantics proven on selected architecture. IDL change producing new generated Rust code can be source-compatible and still be binary-incompatible if runtime wrappers or C signatures change. Bindings must never trust user-space static type checks as kernel authorization.
+
+### 10.2 Linux guest semantics remain Linux
+
+LinuxPersonality guest errno, signal restart, close/dup/epoll FD/OFD semantics, shared mmap/futex, exec and entropy behavior defined by RFC-010 are separate from SABI method and error changes. For example a new Native FS method might include a stronger DurableReceipt; the guest fsync result may only return after its correct Linux file/directory scope, not after generic IPC ACK. When Linux old binary does close(fd) and receives EIO, it may have lost FD already; a new SABI INVALID_HANDLE reply does not license repeating close on a recycled integer.
+
+Windows and Darwin guest runtime method/property interfaces are separate compatibility studies. An opaque Linux FD or Windows HANDLE value cannot be passed into an IDL typed Capability field as if it were a native kernel token.
+
+### 10.3 Version binding by session, not by mutable service name
+
+A guest or native app holds an authorized Endpoint tied to protocol family, service generation and allowed feature set. An upgrade can replace service instance and schema but old pending handle cap transit/replies must settle under previous generation. Reconnection to newly discovered service requires new issuer-granted Endpoint, repeated secure feature negotiation and explicit reconciliation of previous effects. No old address/port name or nominal string is a shared globally trusted identity.
+
+## 11. Critical adversarial cases (C18-01…C18-32)
+
+| ID | Adversarial input or transition | What must be proved or refused |
+|---|---|---|
+| C18-01 | old client ignores new optional authorization-required field | server enforces restriction independently or refuses old version |
+| C18-02 | resource field added to flexible union, unknown to old decoder | actual moved cap closed/rejected/proxied under explicit authorization |
+| C18-03 | IDL payload contains fake native handle integer | cannot mint kernel cap by deserializing bytes |
+| C18-04 | method ordinal recycled after delete | stable ID registry tombstones it and negotiation rejects misuse |
+| C18-05 | old flexible enum receives new numeric SUCCESS_WITH_LIMITS and maps plain SUCCESS | unknown success/status fails closed |
+| C18-06 | field default changes from needConsent=true to false | semantic/security incompatibility blocks rollout |
+| C18-07 | duplicate permission field one deny and one allow | deterministic single interpretation or reject duplicate |
+| C18-08 | nested list count/offset overflows size, decoder allocates gigabytes | bounded parser, checked arithmetic and sponsor quota |
+| C18-09 | in-band Endpoint name claims BootFloorWrite capability | actual typed cap/issuer required |
+| C18-10 | sender double-moves same handle in one message | one committed ownership event or no move, never duplicates |
+| C18-11 | sender NOT_COMMITTED while other Task sees cap | prohibited; preserves source ownership/charge |
+| C18-12 | IPC COMMITTED then sender loses return | caller UNKNOWN, cannot blindly repeat MOVE |
+| C18-13 | receiver copies secret bytes then cap install fails | no false rollback/privacy guarantee, bounded exclusive claim |
+| C18-14 | receiver holds ReceiveClaim, never ACK | quotas, timeout/abort/cleanup and protected M0 reserve |
+| C18-15 | old server returns unknown resource role, new client not prepared | explicit close/reject and no leaked native authority |
+| C18-16 | a proxy preserves unknown handle automatically and forwards to unrelated service | must not silently extend scope/lineage or destination authority |
+| C18-17 | new ServiceInstance with same service name receives stale ReplyToken | reject due to generation and issuer |
+| C18-18 | attacker reuses another caller's request ID / idempotency key | scope by authenticated principal, method, exact digest |
+| C18-19 | external file rename committed, result lost, client deadline expired | server effect UNKNOWN or durable reconciliation, not safe retry |
+| C18-20 | idempotency ledger stored after external effect, crash occurs between writes | duplicate effect remains possible; exactly-once claim denied |
+| C18-21 | backend FileSync reports file data but unsynced parent directory | scoped receipt not automatic namespace durability |
+| C18-22 | older SDK maps new result type to generic SUCCESS | reject unknown effect/durability classes |
+| C18-23 | wrong monotonic deadline clock after suspend/resume | explicit clock identity, overflow rules, local cancellation only |
+| C18-24 | negotiation downgrades to old method with broader default rights | security floor enforced by issuer/server, no rights union |
+| C18-25 | signed manifest uses Protobuf deterministic bytes assumed canonical across schema versions | reject unreviewed signing encoding; separate signed profile |
+| C18-26 | CBOR map contains duplicate RootKey and ambiguous parser interpretation | strict unique key validation / abort; no last-wins trust |
+| C18-27 | loader reads unknown security-critical extension but treats it as optional | fail closed or independently signed compatible rescue |
+| C18-28 | new Root/Update schema with older A still signed but unable to read DataVolume V2 | compatibility is data/key/signer/floor/hardware joint gate |
+| C18-29 | Linux guest uid=0 chooses version supporting raw DeviceGroup method | guest ID not kernel-native capability |
+| C18-30 | SABI byte message holds expired transferred IRQ cap after R2-F unresolved | no reuse/claim hardware quiescence without actual fence |
+| C18-31 | old/new server overlap, old client reconnects and gets old stale Endpoint | issuance, service generation and rights revalidated |
+| C18-32 | mixed SDK languages interpret endian/field presence/default differently | golden vectors, cross-language schema conformance gates |
+
+## 12. Proposed invariants (IDL-01…IDL-42) — NOT proved
+
+| ID | Safety/compatibility obligation (proposed, not verified) |
+|---|---|
+| IDL-01 | KABI transport envelope, user-space SABI IDL, Native SDK ABI, guest ABI, signed manifest and DataVolume format have separately versioned trust boundaries. |
+| IDL-02 | Kernel never parses arbitrary user method IDL nor elevates typed capabilities from user-supplied bytes/ServiceID. |
+| IDL-03 | Protocol negotiation occurs only through an issuer-authorized Endpoint grant and cannot independently mint capabilities. |
+| IDL-04 | Effective method authority is intersection of kernel cap rights/scope and current service authorization, never feature bit union. |
+| IDL-05 | An old protocol version cannot bypass a newly mandatory authorization, consent, encryption, durability or safety condition. |
+| IDL-06 | Missing secure feature intersection causes explicit Unsupported/deny, never silent fallback to insecure default. |
+| IDL-07 | Message byte length, depth, element count, handle count and decoder work are checked and sponsor bounded. |
+| IDL-08 | Arithmetic overflow, duplicate critical fields, ambiguous encodings and malformed mandatory values cause reject. |
+| IDL-09 | Unknown optional scalar fields can be skipped only when semantically and resource safe for that method. |
+| IDL-10 | Unknown required security fields/methods/enum result kinds fail closed under declared protocol policy. |
+| IDL-11 | Unknown transferred Capability field must have explicit close/reject/authorized proxy and resource accounting, never plain ignore. |
+| IDL-12 | Actual cap existence, type, rights, scope, lineage and sponsor derive from kernel transfer, not IDL declaration. |
+| IDL-13 | SABI resource role indices/count and expected types align exactly with kernel cap-transfer vector. |
+| IDL-14 | No raw sender Task-local handle integer, guest FD, Windows HANDLE or Mach port name is a native transferable grant. |
+| IDL-15 | Candidate E1 NOT_COMMITTED preserves sender source grants; COMMITTED moves all authorized caps to kernel transit once. |
+| IDL-16 | UNKNOWN send result never allows blind repeated MOVE or non-idempotent service invocation. |
+| IDL-17 | ReceiveClaim, byte publication, cap-table install and queue removal are distinct, bounded states; partial user memory writes aren't magically rolled back. |
+| IDL-18 | Unrecognized resource-bearing unions/fields do not widen authority during proxy/forward or schema evolution. |
+| IDL-19 | Resource-bearing service operations are charged and reclaimed across failure, claimed messages and service death. |
+| IDL-20 | One-shot ReplyToken cannot be forged/replayed as a bare user request ID or revived in a new service incarnation. |
+| IDL-21 | Service name/protocol ID/version are metadata, not globally trusted issuer identities. |
+| IDL-22 | KABI enqueue commit is not service execution, side-effect completion, user receipt or persistent data durability. |
+| IDL-23 | Deadline and local cancellation do not assert server canceled/undid an external effect. |
+| IDL-24 | Status values state the exact effect phase and cannot be translated unknown/new SUCCESS to older plain SUCCESS. |
+| IDL-25 | Idempotency/reconciliation guarantees require an authenticated actual backend ledger and appropriate durable ordering, not solely client request_id. |
+| IDL-26 | "Exactly once" is not promised for arbitrary cross-device/network transactions solely from a message schema. |
+| IDL-27 | FileSync/DirectorySync receipts remain scoped by immutable write generation and honest RFC-008 device assumptions. |
+| IDL-28 | Stable field/method/status/resource ordinals cannot be reassigned to incompatible semantics; tombstones remain reserved. |
+| IDL-29 | A field default, type/presence, strictness or requirement change is examined for semantic and security compatibility, not only wire parser acceptance. |
+| IDL-30 | Mixed old/new clients/servers use explicit feature and lifecycle limits; no silent unapproved security downgrade. |
+| IDL-31 | A prior service reply/handle/wait/transaction result is not reattached to a different service incarnation by name reuse. |
+| IDL-32 | Signed BootPolicyManifest uses independently justified canonical/exact byte authorization, not generic runtime SABI flexibility. |
+| IDL-33 | Untrusted manifest cannot choose its own signing root, security floor, kernel grants or unknown-critical extension bypass. |
+| IDL-34 | A valid SABI version handshake does not establish compatibility with current DataVolume schema, sealed key or signer/floor eligibility. |
+| IDL-35 | Native SDK C ABI calling convention and Rust generated types are not equated or frozen without separate binary/layout proof. |
+| IDL-36 | Linux errno/FD/futex/signal/exec and Windows/Mach guest semantics remain outside native SABI numeric status contract. |
+| IDL-37 | A guest's UID0 or native policy string cannot promote Endpoint to FileRoot/IRQ/BootFloor authority. |
+| IDL-38 | Kernel M0 boot/rescue does not depend on a pageable full userspace IDL reflection/runtime/registry service. |
+| IDL-39 | A schema compatible on paper is not declared compatible for products until cross-version, cross-language and adversarial tests exist. |
+| IDL-40 | Optional shared-memory/zero-copy serialization preserves validated immutable snapshot/ownership despite user pointer races. |
+| IDL-41 | Security key rotation, update floor and user-data format transitions require independent recovery predicates even if RPC encoding stable. |
+| IDL-42 | All IDL choices remain Proposed; neither numeric values nor executable codec/SDK compiler or stable v1 ABI is authorized. |
+
