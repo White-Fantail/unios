@@ -6,6 +6,22 @@
 > **Scope:** Kernel objects, handles, rights, creation authority, quotas, derivation, transfer, revocation, destruction, safety and verification.
 > **Restriction:** Architecture research only; no implementation authorization, binary compatibility claim, stable ABI, security certification or hardware support assertion.
 
+## 핵심 결정 요약 (한국어)
+
+**RFC 상태는 Proposed v0.1이다.** 기존 D1~D8과 RFC-001의 커널 경계를 상세화하는 *설계 가설*이며, 커널이나 서비스의 구현·검증·ABI 동결을 뜻하지 않는다. 세부 계약이 명확해졌다는 이유만으로 아키텍처의 안전성이 입증되지는 않는다.
+
+**1차 연구 권고: H1 — 실용적 혼합형 Capability 객체 모델.** 독립 커널에는 Task별 opaque handle table, type-specific 권한, 객체 생성 허가, 리소스 쿼터, 권한 파생 기록을 두고, VFS·권한 UI·네트워크·호환성 정책은 사용자 공간에 둔다. 다만 H1은 *유일한 최선*으로 확정하지 않는다. 자원 재사용과 회수의 일관성을 명시적으로 보장하는 seL4형(H0), 단순하고 성숙한 핸들/Job 모델의 Zircon형(H2), 서비스 RPC 프록시(H3)를 함께 비교한다.
+
+**객체의 5가지 지위를 혼동하지 않는다:** (1) 생성한 Task, (2) 현재 핸들 보유자, (3) 실제 권한을 부여한 Grant, (4) 커널 메모리·IPC·페이지·DMA 비용을 부담하는 Sponsor, (5) 객체를 살아 있게 하는 모든 참조. 예를 들어 A가 MemoryObject를 만들고 B에 읽기 권한을 주더라도, B가 핸들을 받았다는 이유만으로 A의 리소스 비용이 사라지거나 B에게 권한 재위임권이 생겨서는 안 된다.
+
+**권한을 끊는 것과 안전하게 자원을 회수하는 것은 다르다.** R0는 로컬 핸들 닫기, R1은 파생 권한에 대한 *향후 접근 차단과 필요한 CPU 매핑 무효화 완료*, R2는 이미 승인된 작업·TLB·DMA/IRQ까지 안전하게 종료된 *자원 재사용 가능 상태*이다. 이미 읽은 데이터나 완료한 파일 저장은 회수할 수 없다. 장치 DMA를 안전하게 멈췄다고 확인할 수 없다면 해당 자원은 Quarantined로 두어야 한다.
+
+**권고 변경 가능 조건:** R1 강제 경로가 IPC 성능·커널 TCB를 과도하게 증가시키거나, 권한 파생 그래프의 대량 정리를 안전하게 수행할 수 없거나, 자원 쿼터 회계가 유실되는 반례가 발견되면 H1을 고수하지 않는다. H0/H2로 전환하거나, 일부 서비스에서는 커널 레벨 회수를 포기하고 서비스 수준 접근 중지만 제공할 수 있다. 그 경우 보안 목표·지원 범위 차이를 공개해야 한다.
+
+**검증 순서:** CAP-01~18의 모델·반례 설계 → RFC-003 IPC 원자성 + RFC-004 매핑/페이지 + RFC-006 부팅/종료 공동 검토 → RFC-007 DMA 그룹 신뢰 조건 → RFC-009/010 Linux 제한 실행 → RFC-015 보안 게이트. 미해결 P0 8건이 남아 있으며 R1 설계 종료를 선언하지 않는다.
+
+---
+
 ## 0. Executive recommendation
 
 **Proposed comparative baseline H1:** task-local opaque handles to typed kernel objects, kernel-enforced fine-grained rights, explicit creation authority and hierarchical resource budgets, provenance-aware delegated grants, and a distinct revocation/physical-reclamation lifecycle.
