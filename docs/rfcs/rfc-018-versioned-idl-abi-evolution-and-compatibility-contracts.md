@@ -148,11 +148,11 @@ Client's required security properties (e.g. only scoped DirectoryCap, mandatory 
 
 ### 4.3 Unknown field/method classes
 
-- **Unknown optional value-only field:** may be skipped/retained if bounded and specified to be semantically irrelevant to the older consumer; forwarding unknown values must not create hidden policy changes.
+- **Unknown optional value-only field:** may be skipped/retained only if bounded and security-neutral. Protobuf-to-JSON or manually rebuilt messages may drop unknown data [S19], so end-to-end preservation needs proof for every relay.
 - **Unknown required security field:** reject transaction or require compatible schema upgrade. Never silently default "allow", "not encrypted", "non-durable", "full access" or "not revoked".
 - **Unknown method ordinal:** strict protocol/critical method refuses with declared error/close policy; flexible unknown interaction may invoke a bounded handler only if negotiated as safe (FIDL's closed/ajar/open research).
 - **Unknown enum/union:** strict security values fail closed; flexible value unknown-case allowed only with safe unsupported/ignore branch explicitly implemented. Unknown SUCCESS/effect/rights enum MUST NOT become generic SUCCESS.
-- **Unknown resource/handle role:** actual cap already moved in kernel transport and MUST be accounted for and closed/rejected, or intentionally retained by an authorized typed proxy; opaque user bytes cannot hide installed authority.
+- **Unknown resource/handle role:** kernel SEND/MOVE may have COMMITTED before userspace decoding fails. Live caps in transit/claim/receiver custody MUST be accounted for and closed/rejected or explicitly proxied. Decode rejection NEVER retroactively restores source ownership. Handle close does not imply actual DeviceGroup DMA R2-F fence.
 - **Duplicate field/role and malformed encoding:** reject when ambiguous; especially reject conflicting authorization, durability, sender identity, resource role and request IDs. Numeric overflow or nested-object quota is a decode failure, not a service operation.
 
 ### 4.4 Tombstones and ID reuse
@@ -211,7 +211,7 @@ Fuchsia basic ChannelWrite can consume source handles even on failure; UniOS's p
 
 ### 6.2 Unknown resource field trap
 
-A flexible unknown scalar can be safely skipped only if guaranteed semantically optional. An unknown resource-bearing union can include an **actual cap moved by kernel**, so discarding bytes without consuming/closing/rejecting the cap leaks authority. Candidate secure alternatives: fail method with an accounted close/drop; or explicitly negotiated trusted proxy that can receive and forward opaque typed cap with unchanged/narrowed rights, updated lineage, charged resource and allowed destination. Default is **reject unknown cap roles**, not forward automatically.
+A flexible unknown scalar can be safely skipped only if guaranteed semantically optional. An unknown resource-bearing union can include an **actual cap moved by kernel**, so discarding bytes without consuming/closing/rejecting the cap leaks authority. Candidate secure alternatives: fail method with an accounted close/drop; or explicitly negotiated trusted proxy that can receive and forward opaque typed cap with unchanged/narrowed rights, updated lineage, charged resource and allowed destination. Default is **reject unknown cap roles**, not forward automatically. After SEND_COMMITTED, rejection must settle already transferred authority in a bounded transit/receiver state; sender source caps are not automatically restored. Close/drop of a DeviceGroup handle does not establish R2-F quiescence.
 
 A generated typed binding may prevent accidental double-close and distinguish moved vs borrowed handles; it is only developer assistance. Kernel rights checks and server-side live type validation still mandatory for raw malicious syscall/IPC callers.
 
@@ -250,7 +250,7 @@ Protobuf/Thrift show field presence, default and reserved numeric values matter 
 
 ### 7.3 Version negotiation and downgrade
 
-Candidate protocol family ID + major/minor + required feature set + negotiated handle-role set, all bounded and versioned under **one already-authorized Endpoint grant**. A server-side security minimum is not client negotiable: "I only support old protocol" cannot let a deprecated client ask for global DirectoryCap, legacy unsigned executable load or weakened data durability. If there's no common secure intersection, reject method or session.
+Candidate protocol family ID + major/minor + required feature set + negotiated handle-role set, all bounded and versioned under **one already-authorized Endpoint grant**. A server-side security minimum is not client negotiable: "I only support old protocol" cannot let a deprecated client ask for global DirectoryCap, legacy unsigned executable load or weakened data durability. If there's no common secure intersection, reject method or session. Negotiation is bound to actual Endpoint grant, server incarnation, required features, policy epoch and resource-role schema; prior handshake cannot survive revocation, policy update, server restart or wider cap change without revalidation.
 
 Protocol identity/ServiceID in a payload is not authenticated by itself. A trusted launcher/portal grants actual Endpoint; on restart the endpoint's service instance/generation must be revalidated. Mixing client versions under rolling update needs tests for OldClient→NewServer and NewClient→OldServer, with mandatory feature rejection. An older SDK may connect only if it can represent required status and own every cap transferred.
 
@@ -270,7 +270,9 @@ D: exact FileSync/DirectorySync/Flush-based durability receipt achieved
 O: client actually observed the report for the named phase
 ~~~
 
-No implication T→R→E→D→O without independent evidence. An ACK may be lost at O even after D; a deadline can expire when external operation already succeeded. RFC-008's disk durability is conditional on actual honest hardware and scoped metadata; signed receipt not media proof.
+No implication T→R→E→D→O without independent evidence. **Effect and observation precision:** T/R/E/D/O are separately evidenced milestones, not mandatory steps for every operation. Every claimed effect or receipt needs trusted issuer, exact resource/generation and phase. If a guest SDK cannot represent EFFECT_UNKNOWN without implying success or no effect, deny compatibility/contain the session rather than fabricate a safe error.
+
+An ACK may be lost at O even after D; a deadline can expire when external operation already succeeded. RFC-008's disk durability is conditional on actual honest hardware and scoped metadata; signed receipt not media proof.
 
 | Logical status (no numeric assignment) | Truthful scope |
 |---|---|
@@ -301,14 +303,14 @@ gRPC expressly documents that DEADLINE_EXCEEDED can happen after state-changing 
 | FileSync | request may be repeated with new scope, generation and deadline | must inspect exact write/receipt status |
 | firmware trust/floor change | not generic RPC / guest interface | never use RPC retry semantics as key operation authorization |
 
-An IDL request_id is only a correlation value; it is not exactly-once execution. Reliable dedupe requires authenticated request identity, exact method+argument digest, durable result log written with correct ordering to the external effect, bounded retention and boot/service-incarnation recovery. If external downstream write and local receipt are not atomically coordinated, exactly-once across both is not promised. Service-issued persistent transaction IDs cannot gain issuer authority from a client string.
+An IDL request_id is only a correlation value; it is not exactly-once execution. Caller, method, exact effect digest, policy/service generation, dedupe retention and authenticated durable ledger matter independently; an untrusted proxy cannot reuse another caller's request ID as effect authorization. Reliable dedupe requires authenticated request identity, exact method+argument digest, durable result log written with correct ordering to the external effect, bounded retention and boot/service-incarnation recovery. If external downstream write and local receipt are not atomically coordinated, exactly-once across both is not promised. Service-issued persistent transaction IDs cannot gain issuer authority from a client string.
 
 
 ## 9. Signed boot manifest, canonical bytes and trust isolation
 
 ### 9.1 Boot policy is NOT a lenient runtime IDL packet
 
-RFC-017 requires BootPolicyManifest independently signed/verified from pre-existing Root trust, hardware/security version-floor policy, exact kernel/M0/SystemImage digest and small typed BootstrapDescriptor. A runtime SABI codec chosen for convenience is not automatically suitable as a signed manifest; generic Protobuf deterministic serialization is explicitly **not** generally canonical [S6]. CBOR RFC 8949 can specify a deterministic restricted profile, but duplicate map keys, canonical tag/number choices, invalid text, nesting and algorithm confusion require a strict custom format/profile [S12]. Cap'n Proto can canonicalize, but default encoders do not always emit canonical form [S8].
+RFC-017 requires BootPolicyManifest independently signed/verified from pre-existing Root trust, hardware/security version-floor policy, exact kernel/M0/SystemImage digest and small typed BootstrapDescriptor. Signed bytes alone are insufficient if trusted readers disagree on parsed security meaning. Bind signing domain/role, exact canonical or accepted input bytes, parser-equivalence and key/critical-field semantics, signer epoch and hardware profile; refuse ambiguous duplicates or unknown policy-critical extensions. A runtime SABI codec chosen for convenience is not automatically suitable as a signed manifest; a manifest signature must be domain-separated from an app message or DataVolume record even when payload bytes match. generic Protobuf deterministic serialization is explicitly **not** generally canonical [S6]. CBOR RFC 8949 can specify a deterministic restricted profile, but duplicate map keys, canonical tag/number choices, invalid text, nesting and algorithm confusion require a strict custom format/profile [S12]. Cap'n Proto can canonicalize, but default encoders do not always emit canonical form [S8].
 
 **Choose later:** signed exact canonical byte string (or exact verified raw bytes with policy-defined encoding), size and cryptographic digest, schema/revision and security-extension criticality, Root/key epoch, enforceable independent version floor and exact signer policy. A manifest cannot select arbitrary new signing key to validate itself; a boot service's protocol version cannot override trusted Root/signer policy or grant ceiling. Any unknown critical signer/rights/security policy field leads to rejected boot candidate or explicit recovery-only mode, not a default allow.
 
