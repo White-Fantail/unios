@@ -419,3 +419,15 @@ This is a specification/counterexample review of cited official resources, not a
 **Still proposed:** H1 is only a comparative research baseline, not the proven optimal design. H0 and H2 remain alternatives; universal kernel lineage revocation may be too costly for a desktop. Pending P0s must be addressed before RFC acceptance.
 
 **History:** v0.1 was registered 2026-10-24 and is retained in Git history. v0.2 updates only research documentation; D1–D8 and ADR-002 remain Accepted at direction level. No implementation or stable ABI is authorized.
+
+## 21. 2026-10-25 Native Task Handle namespace and Receipt cross-RFC review — Proposed
+
+**Non-normative handoff:** [CAPIPC Task Handle Namespace & Kernel Receive Receipts v0.1](../models/capipc-task-handle-namespace-and-receipt-v0.1.md). This review refines RFC-002 §7 public Token/ABA and §§9–11 MOVE/sponsor but **does not accept a Handle encoding, widen DERIVE rights, implement any OS code or prove existing invariants**.
+
+- **External public ID vs internal slot:** a kernel-internal HandleSlot may be recycled, but an old Task-public value must not later authorize an unrelated grant within the same live TaskGeneration under current proposed CAP-10. Candidate HN-B encodes externally checked nonwrapping generation with fail-closed per-slot retirement; HN-A uses monotonic Task-public IDs. **No public numeric width/bit layout is approved.**
+- **Crucial external comparison:** official Fuchsia Zircon Handle documentation explicitly says it **may reuse numeric values of closed Handles**. UniOS's Proposed no-stale-rebind is *stricter* and demands explicit finite turnover/availability proof; it must not be falsely attributed to Fuchsia. Same-Task Handle integer guessing does not manufacture a security boundary between Threads or plugins inside one Task.
+- **Reservation visibility:** internally provisional IDs that provably were never live or exposed may be reclaimable after proof; possibly user-published IDs (including partial copyout attempts) cannot later bind unrelated CapGrants in the same Task. Random identifiers without lifetime issued-history do not prove deterministic nonreuse.
+- **Receipt rights are distinct from source cap rights:** after SEND K-S original source CapHandle is invalid; a Task must be able to query status using **separately scoped, preissued** operation-result authority if reconciliation is promised. Caller nonce is correlation, not an issuer cap, and another Task/ServiceID cannot inspect the record from numeric bytes alone.
+- **Resource sponsor:** reserved handle IDs, receipt/tombstone metadata, queue/claim and DMA pins each have independent accounting; receipt expiry/Task death is not proof that committed MOVE or device effect was rolled back.
+
+**P0 still open:** HN-A vs HN-B and finite overflow/Task-lifetime quota, exact public/partial-copyout exposure proof, preidentified receipt bootstrap and per-Task generation, independent roots and B/R1/R2-F/R2-O. This is design documentation only; RFC-002 stays **Proposed v0.2**.
