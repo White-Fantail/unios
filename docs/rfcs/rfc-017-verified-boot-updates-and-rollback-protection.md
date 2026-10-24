@@ -293,3 +293,192 @@ Counterexamples: authorized production boot of revoked image; self-signed manife
 
 Test tools *if future implementation is authorized*: bounded TLA+/PlusCal model, fuzz manifest parsing and canonical encoding, simulate interrupted device/TPM/NVRAM slot writes in QEMU/OVMF only with explicit virtual hardware, then inspect a sacrificial Reference PC for actual EFI, TPM NV and SSD features. Real key enrollment, firmware updates, power interruption or destructive disk tests require separate authorization and precautions. **None were executed here.**
 
+
+## 13. Proposed safety, security and liveness invariants (TRUST-01…TRUST-40) — NOT proved
+
+| ID | Candidate requirement, without proof or implementation |
+|---|---|
+| TRUST-01 | UEFI admission of EFI image is not equivalent to authentication of kernel, M0, immutable backing or later app pages. |
+| TRUST-02 | ProductionVerified can be asserted only under effective platform trust mode and verified full UniOS boot path; DevUnsigned/DevSigned never silently qualify. |
+| TRUST-03 | A manifest cannot choose its own independent Root trust anchor or lower the floor against which it is checked. |
+| TRUST-04 | All image signatures bind exact canonical bytes, digest, byte length, permitted role, release policy and key epoch without ambiguous required fields. |
+| TRUST-05 | Kernel/bootstrap grant vector is typed, bounded and independently enforced; signed ServiceID alone never mints native global privileges. |
+| TRUST-06 | Verified boot code/data cannot change by memory alias, PagerSupply or untrusted DMA between authentication and use without renewed validation. |
+| TRUST-07 | Runtime immutable executable pages derive from an authenticated root and fail closed on digest/backing identity mismatch. |
+| TRUST-08 | Firmware secure boot signer/PK/KEK/db/dbx and UniOS Root/Targets roles are not treated as interchangeable. |
+| TRUST-09 | No unsigned, revoked or below-floor image executes as ProductionVerified, irrespective of valid older signature. |
+| TRUST-10 | Update repository Root/Targets/Snapshot/Timestamp signatures and thresholds remain distinct; online Timestamp cannot mint release authority. |
+| TRUST-11 | Metadata rollback, freeze and mix-and-match checks rely on verified versions, hashes, root delegation and explicit time assumptions. |
+| TRUST-12 | An offline stale RTC cannot be silently called a proof of current update freshness; offline authorized boot policy is separately defined. |
+| TRUST-13 | Trusted Root rotation follows current-and-successor authorization policy; no untrusted server-declared key is accepted as new Root. |
+| TRUST-14 | Firmware dbx update and UniOS package/update signers do not implicitly share writer authority or recovery permissions. |
+| TRUST-15 | Slot staged bytes and manifest are flushed, read-verified and reauthenticated at boot before marked TrialBootable. |
+| TRUST-16 | A/B ImageVerified, TrialBootable, Good, security floor, health and actual rescue availability have distinct predicates. |
+| TRUST-17 | Normal Supervisor READY/heartbeat alone cannot authorize Good or security floor promotion. |
+| TRUST-18 | HealthReceipt binds specific verified image, policy, bounded essential check set, issuer and boot generation; cannot promise future liveness. |
+| TRUST-19 | BootSlotStateWriter, independent Good witness and security FloorWriter are separate typed scoped authorities. |
+| TRUST-20 | Persistent trial retry budget survives normal reboot or fails boundedly; a BootEpoch-local RAM retry counter never substitutes. |
+| TRUST-21 | Security floor is monotonic under declared device threat model, not replayable by restoring a signed old GPT/DataVolume record. |
+| TRUST-22 | Floor promotion is gated by actual authorized readable bootable alternative/rescue and compatible keys/schema, not rescue hash alone. |
+| TRUST-23 | Every permitted crash cut among slot, floor, attempt, boot-good and data migration records has a valid policy-defined outcome or explicit failure. |
+| TRUST-24 | Independent UEFI variable, TPM NV and disk records are not claimed to be one atomic transaction. |
+| TRUST-25 | TPM PCR measurement/event log or remote quote alone does not grant execution permission or certify bytes never measured. |
+| TRUST-26 | Attestation freshness and expected reference policy are validated separately from signer enforcement; optional privacy controls apply. |
+| TRUST-27 | TPM presence does not imply available protected monotonic counter, no NV errors, or universal key unsealing after firmware updates. |
+| TRUST-28 | Encrypted DataVolume recovery depends on key/PCR/recovery material compatibility, not only filesystem format and signed image. |
+| TRUST-29 | Valid A/B fallback code does not imply it can read user data migrated to a newer schema. |
+| TRUST-30 | A security floor cannot be advanced solely because B is signed, downloaded, booted or a GUI process appeared. |
+| TRUST-31 | Rescue on the same failed physical medium is not independent availability; advertised recovery scope names physical assumptions. |
+| TRUST-32 | Unavailable rescue and no authorized image may end in RecoveryUnavailable or fail-stop; no silent auto-boot of revoked image. |
+| TRUST-33 | Device DMA isolation/reset and storage Flush/FUA truth remain external required gates to boot image immutability/durability. |
+| TRUST-34 | Boot/status/attestation report names effective enforcement, issuer, checked artifact/version and unverified hardware dependencies, not vague Secure labels. |
+| TRUST-35 | User/guest UID0, network package path and unsigned disk metadata cannot write firmware keys, Root, Floor or foreign slot state without explicit native authority. |
+| TRUST-36 | Key compromise/revocation and rotation cannot silently orphan every eligible rescue without approved fail/recovery policy. |
+| TRUST-37 | Recovery/developer override never silently retains ProductionVerified mode or promises data unseal when policy changed. |
+| TRUST-38 | A future TPM/UEFI/EFI/OEM profile is declared per actual PC; OVMF emulator behavior is not physical Reference PC evidence. |
+| TRUST-39 | Signing code, measuring PCR, marking slot Good, and reaching storage durability are separate proof obligations. |
+| TRUST-40 | No detailed TRUST decision is Accepted and no real key/firmware/boot implementation is authorized by this RFC. |
+
+## 14. Architecture choices and trade-offs
+
+| Option | Possible benefit | TCB/correctness risks | Current recommendation |
+|---|---|---|---|
+| TRUST-A independently verified loader + TUF-inspired delivery + A/B and optional TPM | limits release-role compromise, offline boot, explicit recovery and floor | largest integration graph; complex crash cuts and key management | first research target, unverified |
+| TRUST-B local signed update without repo role separation | smaller release infrastructure | distribution freeze/compromised online key consequences | low-complexity comparison only |
+| TRUST-C firmware/OEM trust-rooted selected PC | narrower first physical test set | OEM dependency, key enrollment/boot coexistence, limited rescue control | alternative for a fixed supported device |
+| TRUST-D unlocked/dev keys | rapid VM research | not anti-rollback/protected user data; no production assurance | explicit Development mode, not substitute |
+| No hardware floor | boot code signatures possible | signed vulnerable old code still eligible under disk replay attacker | visibly weaker claim or refuse ProductionVerified floor |
+| TPM PCR-sealed DataVolume key | conditional hardware binding | legitimate update/repair may lock out users; key recovery needed | optional future independent user-data policy |
+
+A specific algorithm or role threshold must not be selected solely by mirroring another OS. Release chain size, reproducibility, signer custody, CPU/boot performance, firmware compatibility and physical PC TPM/NV constraints need feasibility evidence.
+
+## 15. Open design blockers O17-01…O17-36
+
+| ID | Priority | Question and proof gap | Co-review |
+|---|---|---|---|
+| O17-01 | P0 | Real UniOS Root trust anchor independent from attacker-controlled manifest and EFI signer scope? | 001/006/017 |
+| O17-02 | P0 | Loader vs resident M0 parser, canonical signed schema and bounded kernel bootstrap descriptor? | 001/006/017/018 |
+| O17-03 | P0 | Use-time immutable image/pages and writable alias/DMA protection? | 004/007/008/017 |
+| O17-04 | P0 | Actual physical firmware Secure Boot state, owner PK/KEK/db/dbx and enrolled signing route? | 006/017 |
+| O17-05 | P0 | Hardware-backed anti-rollback floor store exists with exact auth/monotonic behavior on reference PC? | 006/017 |
+| O17-06 | P0 | Security version index vector, component signer/key epoch and release schema compatibility? | 006/017/018 |
+| O17-07 | P0 | A/B trial Good witness independence, exact policy and self-report forgery defense? | 005/006/017 |
+| O17-08 | P0 | Durable slot state, persistent attempts and interruption between distinct storage stores? | 006/008/017 |
+| O17-09 | P0 | Irreversible floor promotion without stranding last physically eligible rescue? | 006/008/017 |
+| O17-10 | P0 | Independent rescue exact bytes readable, usable drivers and hardware boot path? | 006/007/017 |
+| O17-11 | P0 | User DataVolume schema/key/PCR recovery after B trial changes and A rollback? | 006/008/017 |
+| O17-12 | P0 | Firmware dbx/key revocation and installed other OS/USB rescue compatibility? | 017 |
+| O17-13 | P0 | TPM NV absent/full/worn/replaced or EFI variable unsupported: safe production policy? | 006/008/017 |
+| O17-14 | P0 | Key role compromise, emergency Root rotation and valid successor rescue? | 015/017 |
+| O17-15 | P0 | Root/Targets signing and online metadata threshold custody/legal operational feasibility? | 015/017 |
+| O17-16 | P0 | Trusted time and offline update freshness/expiry without bricking authorized old image? | 017 |
+| O17-17 | P0 | Malicious local disk rollback of signed old floor or BootGood record bypassing verification? | 008/017 |
+| O17-18 | P0 | Multi-store crash cut includes partial secure-floor update after Good but before new rescue? | 006/008/017 |
+| O17-19 | P0 | Dev vs product trust mode effective firmware enforcement, visible status, user-data unlock? | 006/016/017 |
+| O17-20 | P0 | Physical platform pre-boot DMA/firmware authority assumptions for signed image immutability? | 006/007/017 |
+| O17-21 | P1 | TUF threshold, root rotation and timestamp/snapshot metadata version storage format? | 017/018 |
+| O17-22 | P1 | TUF freeze and fast-forward handling under failed RTC, offline mirror and revoked signer? | 017 |
+| O17-23 | P1 | Signed rescue semantics when root revoked/floor raised and recovery is read-only only? | 006/008/017 |
+| O17-24 | P1 | Remote attestation verifier nonce/log/reference/TPM AK handling and consent? | 015/016/017 |
+| O17-25 | P1 | PCR bank/platform measurements and sealing policy changes across OS/firmware updates? | 016/017 |
+| O17-26 | P1 | User data recovery key escrow/local-only/backup and consent after hardware replacement? | 016/017 |
+| O17-27 | P1 | Partial image/package hash/hardware compatibility and decompression parser bounds? | 006/017/018 |
+| O17-28 | P1 | A/B image vs package/component update version coupling, drivers and ABI migration? | 006/011/017 |
+| O17-29 | P1 | Root key lifecycle release build supply-chain and transparency evidence? | 015/017 |
+| O17-30 | P1 | Firmware EFI runtime variables reset/power-cut effect and write budget? | 006/008/017 |
+| O17-31 | P1 | Snapshot merge first-stage daemon boot dependency and crash recovery if selected? | 004/006/008 |
+| O17-32 | P1 | Persistent attempt budget tamper/availability when media state and NV writes diverge? | 006/017 |
+| O17-33 | P1 | Error/repair UX when no display/keyboard/storage works and all slots rejected? | 006/016/017 |
+| O17-34 | P1 | Stable native trust report/boot success/floor control errors and versioned manifest ABI? | 009/017/018 |
+| O17-35 | P2 | Reproducible build provenance, signing transparency, managed-device attestation policy? | 015/017 |
+| O17-36 | P2 | Firmware capsule updates and Secure Boot CA future rotation on broader PC catalog? | 007/017 |
+
+## 16. Proposed decision register TRUST-D01…TRUST-D22 — NONE Accepted
+
+- **TRUST-D01:** TRUST-A independently rooted loader validation, TUF-inspired update roles, scoped A/B Good, physically available rescue and conditional protected floor is first research baseline.
+- **TRUST-D02:** UEFI firmware signer trust, UniOS release Root, measured boot and version floor are different objects and permissions.
+- **TRUST-D03:** Loader/M0 verifies kernel/BootBundle/immutable image against independently trusted manifest/root; kernel consumes bounded typed grants.
+- **TRUST-D04:** A signed BootPolicyManifest cannot self-authorize a signer, floor downgrade, firmware key enrollment or global grant expansion.
+- **TRUST-D05:** Use-time immutable bytes and all demand-paged executable data require authenticated content lineage and protected backing.
+- **TRUST-D06:** TUF Root/Targets/Snapshot/Timestamp threshold separation and metadata freshness are delivery research targets, not accepted implementation or automatic spec compliance.
+- **TRUST-D07:** Local authorized offline boot and checking freshness of a new online update have explicitly different clock/network requirements.
+- **TRUST-D08:** A/B slot flags, durable retry count, independent HealthReceipt, authenticated BootGood and monotonic FloorWriter are separate state/authority.
+- **TRUST-D09:** New floor promotion is not triggered before B is durably Good and a physically accessible, post-floor eligible recovery path is verified including data/key compatibility.
+- **TRUST-D10:** Signed but missing/incompatible rescue or bootloader revoked in dbx is not an eligible safety fallback.
+- **TRUST-D11:** No claim that EFI per-variable writes, TPM NV floor and DataVolume schema/slot records form one atomic transaction.
+- **TRUST-D12:** With no suitable protected monotonic floor medium, strict anti-rollback claim must be denied, although an explicit lesser DevSigned profile may boot.
+- **TRUST-D13:** Default consumer research baseline does not require remote attestation or online time to launch an already authorized local image.
+- **TRUST-D14:** Measured TPM PCRs and quote are evidence, not signature enforcement; remote verifier and consent required before attestation trust.
+- **TRUST-D15:** PCR-bound user-data key access requires separate recovery material and update/firmware migration; signed fallback alone is insufficient.
+- **TRUST-D16:** Firmware dbx/PK/KEK changes are independent owner-approved hardware-sensitive operations, not routine OS package actions.
+- **TRUST-D17:** Revoked/compromised Root or Targets signer triggers explicit incident/key rotation, no false assurance of self-repair under stolen Root quorum.
+- **TRUST-D18:** Startup Good receipts are bounded observations of essential services, not future success or durable user data evidence.
+- **TRUST-D19:** Boot attempt budgets must persist across reboot or fail boundedly, not be reset by BootEpoch alone.
+- **TRUST-D20:** Product trust mode distinguishes unlocked, developer-signed, unsupported hardware, production candidate and future verified chain.
+- **TRUST-D21:** Every permitted crash cut across image staging, slot, floor, rescue and DataVolume migration must have an explicit safe outcome or documented fail-stop.
+- **TRUST-D22:** No implementation, key operation, TPM/EFI write, physical boot experiment or crypto security certification authorized before open P0 gates close.
+
+## 17. Cross-RFC correctness and authority integration
+
+| RFC | Linked proof obligation |
+|---|---|
+| RFC-001 | actual kernel/loader/manifest verifier trusted computing base, asset-specific firmware/platform trust |
+| RFC-002 | signer policy cannot mint arbitrary caps; issuer/revocation/sponsor and bootstrap grant ceilings |
+| RFC-003 | health/BootGood messages cannot be forged by ServiceID or ordinary IPC COMMITTED; timeout/UNKNOWN |
+| RFC-004 | signed immutable page root and PagerSupply use-time content identity, wired M0 bootstrap |
+| RFC-005 | finite CPU/IRQ for trusted HealthWitness and M0; watchdog not proof of successful boot |
+| RFC-006 | BOOT-A root trust, RA-2, A/B slot ledger, GoodReceipt, floor-safe rescue and persistent attempt budget |
+| RFC-007 | pre-IOMMU DMA, trusted device mapping/reset and physical rescue availability |
+| RFC-008 | Flush/FUA honest slot metadata/image persistence, user data V1/V2/key, snapshot replay and cross-device crash states |
+| RFC-009 | typed native trust report/health status/floor metadata boundaries; not yet ABI |
+| RFC-010 | guest Linux UID0 and raw EFI/device calls do not become native root capabilities |
+| RFC-011 | native package/update Target roles and versioned installed app/service signing policies |
+| RFC-015 | crypto parser fuzz, boot root/role threat model, signature-key security, model-check/fault injection |
+| RFC-016 | user owner consent for firmware keys, unlock, recovery key/attestation privacy |
+| RFC-018 | signed manifest canonical schema, version vectors, service/slot/boot epoch and status encoding |
+
+**P0 co-review clusters:** (006+008+017) authenticated/ durable slot Good vs floor + media + rescue/data schema; (001+002+006+017) loader manifest verification, kernel grant attenuation; (004+007+017) verified file bytes vs DMA/writable alias; (015+017) root compromise, signed release, trusted time and algorithm assurance. These cannot be signed off by calling one layer "secure boot."
+
+## 18. Research exit gates and refusal criteria
+
+**R1 trust-chain design exit: NOT PASSED.** Before Accepted detailed spec or product claims:
+1. Specify exact independent trust roots and firmware UEFI mode plus owned vs third-party PK/KEK/db/dbx on named hardware.
+2. Show loader/M0 verification chain, typed kernel bootstrap descriptor, canonical signed manifest and immutable/read-time SystemImage proof.
+3. Model TUF signature thresholds, Root replacement, Snapshot/Targets consistency, Timestamp expiration and offline bad RTC.
+4. Determine actual selected hardware TPM NV/UEFI authenticated variable semantics or explicitly unsupported anti-rollback profile.
+5. Enumerate all power-cut transitions from B staged image to B Good and F→F', including independent variables/TPM/media and failed writes.
+6. Prove every irreversible floor/key revocation leaves an actually readable, signer/floor-eligible, device-bootable and data-schema/key-compatible recovery path, or abort promotion.
+7. Produce independently authorized essential-health/BootGood issuer threat analysis and finite attempts across reboot.
+8. Specify PCR/event log/quote/measurement scope and user data seal/recovery migration without promising universal TPM access.
+9. Contrast TRUST-A/B/C/D cost, TCB, platform lock-in, developer UX, key custody, user consent and offline fallback on identical threat model.
+10. After an explicit later implementation authorization, test safe QEMU/OVMF simulated modes and one *sacrificial reference PC* without touching existing personal boot keys or user disk, then independently evaluate key/TPM operations.
+
+**Explicit rejection outcomes:** no working trusted verifier, no robust floor store on strict-profile PC, no eligible alternate after promotion, unavailable physical rescue, inability to recover DataVolume keys/schema, insecure loader rollback, unbounded persistent reboot loops, or fundamental platform DMA compromise -> decline ProductionVerified/anti-rollback or return RecoveryUnavailable/FailStop. A partial document does not grant go-live.
+
+**Suggested next design step:** independent adversarial review RFC-017 v0.1→v0.2, then RFC-009 Native KABI and RFC-018 versioned status/canonical manifest bindings. The eight D1–D8 direction decisions remain Accepted only at top-level, not this proposal.
+
+## 19. Official first-party references (reviewed 2026-10-24)
+
+- **[S1] UEFI 2.11 Boot Manager, PK/KEK/db/dbx and Secure Boot state:** https://uefi.org/specs/UEFI/2.11/03_Boot_Manager.html
+- **[S2] UEFI 2.11 Runtime Variable Services and authenticated variable semantics:** https://uefi.org/specs/UEFI/2.11/08_Services_Runtime_Services.html
+- **[S3] The Update Framework Specification v1.0.36:** https://theupdateframework.github.io/specification/v1.0.36/
+- **[S4] TUF required Roles and Metadata:** https://theupdateframework.io/docs/metadata/
+- **[S5] Android Verified Boot 2.0 (official source):** https://android.googlesource.com/platform/external/avb/+/master/README.md
+- **[S6] Android A/B system update slot/trial controls:** https://source.android.com/docs/core/ota/ab
+- **[S7] Android current Virtual A/B overview:** https://source.android.com/docs/core/ota/virtual_ab
+- **[S8] TCG PC Client Reference Integrity Manifest and TPM PCR log context:** https://www.trustedcomputinggroup.org/resources/documents/tcg-pc-client-reference-integrity-manifest-specification
+- **[S9] TCG TPM 2.0 Library latest specs and errata:** https://www.trustedcomputinggroup.org/resources/documents/tpm-library-specification
+- **[S10] Microsoft How Windows Uses TPM (PCR and key unlock):** https://learn.microsoft.com/en-us/windows/security/hardware-security/tpm/how-windows-uses-the-tpm
+- **[S11] Microsoft Secure Boot PK/KEK/db/dbx explanation:** https://learn.microsoft.com/en/windows-hardware/design/device-experiences/oem-secure-boot
+- **[S12] TUF key security and expiry FAQ:** https://theupdateframework.io/docs/faq/
+- **[S13] Linux fs-verity authenticated read-only file backing:** https://docs.kernel.org/filesystems/fsverity.html
+- **[S14] Linux dm-verity read-only block backing:** https://docs.kernel.org/admin-guide/device-mapper/verity.html
+- **[S15] Linux volatile block writeback cache/Flush/FUA:** https://docs.kernel.org/block/writeback_cache_control.html
+- **[S16] Microsoft 2026 UEFI Secure Boot key rotation and coexistence guidance:** https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-secure-boot-key-creation-and-management-guidance
+- **[S17] TUF specification threat defenses (rollback/freeze/mix-and-match):** https://theupdateframework.github.io/specification/v1.0.36/
+
+Third-party sources are technical comparisons and not proof of UniOS correctness or an authorization to import code, root certificates or license-restricted implementations. Actual UEFI/TPM functionality depends on a selected hardware/firmware configuration; none was tested.
+
+---
+
+**Document history:** 2026-10-24 — RFC-017 Proposed Specification v0.1 initial design research draft, no implementation/firmware enrollment/TPM write/signing ceremony/boot experiment/benchmark/formal model.
