@@ -333,3 +333,190 @@ One command printing "hello" would establish only that specific executable behav
 | LX-44 | External licenses, source provenance and compatibility redistribution obligations are reviewed before runtime code adoption. |
 | LX-45 | No LX proposal is accepted as working Linux binary compatibility, and no code/hardware test is authorized in this RFC. |
 
+
+## 16. Open research blockers (O10-01…O10-40)
+
+| ID | Priority | Unresolved question / exact proof gap | Co-review |
+|---|---|---|---|
+| O10-01 | P0 | Real x86_64 GuestDomain SYSCALL capture, return and native opcode non-bypass with small kernel TCB? | 001/009/010 |
+| O10-02 | P0 | Guest Task vs native broker separate AddressSpace/cap table and untrusted pointer snapshot? | 002/003/009/010 |
+| O10-03 | P0 | LINUX-A kernel trap forwarding vs LINUX-B userspace emulator technical feasibility and TCB/latency? | 001/009/010 |
+| O10-04 | P0 | Selected x86_64 ELF PT_LOAD/PIE/PT_INTERP image parser, W^X, relocations and signature? | 004/010/017 |
+| O10-05 | P0 | Exact known static ELF and linker/libc startup syscall footprint; no unknown boot dependency? | 009/010/015 |
+| O10-06 | P0 | Real initial stack, auxv/HWCAP, FS/TLS, entry stack, CPU features and OS ABI? | 005/009/010 |
+| O10-07 | P0 | Kernel↔broker guest request state and effect/copyout failure with source pointer mutation? | 003/004/009/010 |
+| O10-08 | P0 | Linux errno/restart/EINTR vs committed native file or network external effects? | 003/008/010 |
+| O10-09 | P0 | Basic 32-bit futex atomic compare-block and wait-key identity over shared MemoryObject/aliasing? | 004/005/009/010 |
+| O10-10 | P0 | Guest MAP_PRIVATE COW, shared mmap/dirty backing, mprotect, unmap, and fault-to-signal? | 004/008/010 |
+| O10-11 | P0 | Guest ThreadGroup/TID/TGID PID lifetimes and safe stale PID, wait, signals? | 002/009/010 |
+| O10-12 | P0 | Clone shared VM/FD/Sighand/TLS flags, TID clear, thread/group leader exit? | 004/005/009/010 |
+| O10-13 | P0 | Guest exec and ELF interpreter replacement preserving process ID/FDT and runtime trust? | 004/009/010 |
+| O10-14 | P0 | Linux signal frame/rt_sigreturn CPU state privilege validation and nested signal/alt stack? | 001/004/009/010 |
+| O10-15 | P0 | Native FileCaps mapped to FDEntry/OpenFileDescription with dup/fork/close and offset atomics? | 002/008/010 |
+| O10-16 | P0 | Guest cwd/mount namespace/openat2 symlink/magiclink escape vs native DirectoryCap? | 002/008/010 |
+| O10-17 | P0 | Linux credential UID/GID/root/setuid/no_new_privs/capabilities scope and non-escalation? | 002/009/010/016 |
+| O10-18 | P0 | Shared dependent Pager/CPU/IPC budgets so Linux broker never blocks M0 recovery? | 004/005/006/010 |
+| O10-19 | P0 | Guest support-tier reporting cannot label unsupported seccomp/futex/rseq as success? | 009/010/015 |
+| O10-20 | P0 | Linux ABI/version/host feature matrix and exact behavioral test oracle/later proof? | 009/010/015/018 |
+| O10-21 | P1 | glibc/musl selected interpreter and relocation/ld.so/ABI symbol-version and license? | 009/010/018 |
+| O10-22 | P1 | Correct AT_SECURE, LD_* filtering, auxv version and vDSO contract for selected libc? | 009/010/017 |
+| O10-23 | P1 | rseq original vs V2 feature size, CPU migration and signal abort; libc fallback? | 005/009/010 |
+| O10-24 | P1 | Robust futex/PI/requeue/FUTEX_WAITV owner death and scheduling donation? | 003/005/009/010 |
+| O10-25 | P1 | Guest scheduler policy and POSIX clocks vs native CPU/time permissions? | 005/009/010 |
+| O10-26 | P1 | Signal realtime queue, signalfd, SIGCHLD, SA_RESTART matrix vs broker restart? | 003/005/009/010 |
+| O10-27 | P1 | Guest epoll edge/level, EPOLLONESHOT/EXCLUSIVE, FD reuse and open-file-description reachability? | 003/010 |
+| O10-28 | P1 | Pipe PTY/termios/ioctl, process group/job control and SIGPIPE/PIPE_BUF semantics? | 003/010 |
+| O10-29 | P1 | Sockets/SCM_RIGHTS AF_UNIX, network namespace and actual native NetworkCap routes? | 002/010 |
+| O10-30 | P1 | Synthetic /proc/self/fd/maps/cpuinfo and /sys data minimizing leakage and magiclink? | 002/004/010/016 |
+| O10-31 | P1 | Precise guest fsync/fdatasync/msync, O_APPEND and data/dir durability mapping? | 008/009/010 |
+| O10-32 | P1 | Linux clone/exec fork under broker death or parent exit, zombie reaping and PID namespace? | 003/009/010 |
+| O10-33 | P1 | Shared memory futex key correctness through mremap, COW and partial revoke? | 002/004/010 |
+| O10-34 | P1 | Guest seccomp/ptrace/capability checks treated as secure or explicitly unsupported? | 002/010/015 |
+| O10-35 | P1 | Legal copy/redistribution of glibc, musl, ld.so and transitive DSO dependencies? | 010/018 |
+| O10-36 | P1 | Debug, compatibility traces, crash reports and privacy-safe guest/native state separation? | 009/010/015/016 |
+| O10-37 | P2 | Broader static/musl/glibc/PIE CLI performance and memory overhead on reference PC? | 005/010/015 |
+| O10-38 | P2 | Native wine/Windows and Darwin personalities share services without cross-guest authority? | 009/010/012/014 |
+| O10-39 | P2 | Linux virtualization alternative VM hardware/virtio/PCI passthrough/security feasibility? | 007/010/015 |
+| O10-40 | P2 | Multi-arch x32/i386/arm64 guest future legal and semantic support boundaries? | 009/010/018 |
+
+## 17. Proposed decision register (LX-D01…LX-D24) — NONE Accepted
+
+- **LX-D01:** LINUX-A protected guest Task + separate native LinuxPersonality broker is preferred conditional design hypothesis, not selected implementation.
+- **LX-D02:** POSIX source port, Linux binary personality, and Linux guest OS virtualization are separately described and measured.
+- **LX-D03:** GuestDomain is kernel-owned and dispatches raw Linux syscall separately from native KABI; no guest register/TLS/ELF switch can promote privileges.
+- **LX-D04:** G1 guest Task and privileged broker must not share unprotected code/data/cap execution domain; G2 same-address-space policy remains unadmitted.
+- **LX-D05:** LINUX-B emulator remains a serious alternative if safe direct syscall interception is too costly or invasive.
+- **LX-D06:** Start x86_64 only with L0 validation, L1 bounded static CLI, L2 selected dynamic libc, L3 threads/signals, L4 scoped network/epoll, each as unproved stage.
+- **LX-D07:** Guest ELF/PT_INTERP/auxv/TLS/vDSO/runtime metadata follow their selected Linux ABI, never native SDK struct identity.
+- **LX-D08:** Linux loader and runtime are confined to an authorized guest DirectoryCap tree and CPU feature/trust policy.
+- **LX-D09:** Native Task/Thread mapping, Linux ThreadGroup/TGID/TID, FD and signal state are distinct; no naive single TaskCreate abstraction.
+- **LX-D10:** Guest UID0, setuid, namespace caps and package signature do not mint UniOS CapIssuer, DMA, IRQ or BootFloor authority.
+- **LX-D11:** Linux futex compare-and-block needs proven MemoryObject-aware atomicity, else multithreaded guest scope denied; robust/PI separately gated.
+- **LX-D12:** rseq must have real scheduler/migration/signal guarantees or explicit unsupported behavior tested against chosen libc.
+- **LX-D13:** Guest signal frame/return, SA_RESTART/EINTR, exec and syscall copyout must not enable privilege confusion or side-effect lies.
+- **LX-D14:** Linux FDEntry/OpenFileDescription shared-offset and lifetime semantics map through authorized native FileCaps.
+- **LX-D15:** Guest openat2, cwd, mount, symlinks and proc magiclinks never traverse beyond issued DirectoryCaps.
+- **LX-D16:** epoll edge/level/oneshot/file-description semantics must be proved over native WaitSet, not inferred from notification existence.
+- **LX-D17:** Socket/SCM_RIGHTS and network rights remain delegated and constrained, no raw host handles or network admin from guest credential.
+- **LX-D18:** Guest errno and syscall restart are mapped from exact native effect phase; no automatic retry after committed rename/send.
+- **LX-D19:** Guest mmap/private vs shared writable/pager and fsync/file durability respect RFC-004 M-stages and RFC-008 receipts.
+- **LX-D20:** Guest broker/FD/futex/Thread and process queues are resource sponsor bounded and may fail safely when hardware/scheduler unavailable.
+- **LX-D21:** Unsupported Linux security-sensitive syscalls cannot claim success merely to avoid libc/program errors.
+- **LX-D22:** Every published Linux compatibility claim names executable hash, library versions, CPU, syscall/flag/feature tier and observed tests.
+- **LX-D23:** Compiler/runtime third-party licenses and upstream provenance reviewed before any code import or redistribution.
+- **LX-D24:** No native syscall number, Linux ABI freeze, loader implementation, compatibility test, source import or product guarantee authorized until P0 gates reviewed.
+
+## 18. Cross-RFC integration, contradictions and ownership
+
+| RFC | Dependency or possible contradiction |
+|---|---|
+| RFC-001 | extra Linux syscall handling must not turn small independent microkernel into privileged POSIX parser without explicit ADR |
+| RFC-002 | broker grants from native issuer, FD/PID numbers not caps, no ABA, sponsor inheritance not infinite |
+| RFC-003 | E1 Channel bytes+MOVE, ReceiveEscrow, ReplyToken one-shot, UNKNOWN effects, service incarnation |
+| RFC-004 | COW, guest mmap/PagerFault, private FaultWaiter, shared-memory futex keys, M3 writable backing |
+| RFC-005 | Linux rseq scheduler event, guest nice/real-time policy vs protected M0 budgets, futex PI |
+| RFC-006 | M0 startup and service recovery must work independent of guest runtime; no guest process needed for rescue |
+| RFC-007 | guest direct MMIO/IOMMU/driver/ioctl not allowed, hardware group/DMA fence needed for genuine device work |
+| RFC-008 | native FileCaps, durability receipt, dirty mmap, directory fsync, writeback error loss limitations |
+| RFC-009 | ABI-A separation, G1 distinct guest and privileged broker, native KABI independent of Linux registers/errno |
+| RFC-010 | L0–L4 explicit coverage, guest PID/FD/syscall ABI and resourcing; no Linux claims beyond evidence |
+| RFC-011 | install/package and guest runtime/library management not code signing grant issuer |
+| RFC-012 | Windows/Wine remains separate ABI, shared native services must not leak guest privilege |
+| RFC-013 | desktop terminal/GUI/GPU capabilities separately researched |
+| RFC-014 | Darwin/Mach-O remains a separate guest execution and licensing scope |
+| RFC-015 | CPU trap, syscalls, malicious ELF, futex/signal clone races and fuzz suite/proof gates |
+| RFC-016 | user file/network/device permission grants and consent; guest credential not identity proof |
+| RFC-017 | verified signed BootBundle/SystemImage, untrusted executable signing vs real native grants |
+| RFC-018 | syscall version ID, guest ABI structs/errno, typed SABI handle roles and compatibility matrix |
+
+**Joint P0 groups:** (001/009/010) actual raw Linux SYSCALL interception + native privilege boundary; (002/003/004/009/010) argument snapshot and cap transfer; (004/005/010) futex atomic compare/block and rseq migration; (008/009/010) FD/path and durable effect errors; (006/010/017) signed launch vs permission and recovery. This RFC cannot resolve them by simply naming a broker.
+
+## 19. Proposed bounded model and future validation plan
+
+### 19.1 Finite model sketch
+
+Two Guest Tasks plus one Native Broker Task and one Native VFS; two guest Threads in one ThreadGroup, a shared MemoryObject with two different VAs referencing same futex word, a private COW mapping, GuestFD 3 with reused number, two FileDescriptions, one guest PID reused after child exit, one signal mask/disposition, one pending rt_sigreturn frame, one broker request and ReplyToken, one service restart, a Thread with CPU budget zero, a Pager that may die and one native DeviceCap that only broker holds.
+
+Transitions: guest raw syscall native opcode injection; ELF launch with forged HWCAP; clone flags; fork/exec wait; guest pointer modification after trap; futex value check+wake+block; signal before/after blocked syscall; broker forwards FS rename; VFS commits then broker dies; guest retries; mmap COW and shared aliases; FD close+reuse during epoll wake; path rename/openat2 magiclink race; signed/unsigned guest launch; resource sponsor exhaustion.
+
+**Safety properties:**
+- no guest native privilege amplification or cross-Task broker instruction jump;
+- no host cap from UID0, FD, PID, ELF signature or raw syscall opcode;
+- futex no lost wake under declared atomic contract; no wrongly shared/private wait key;
+- guest signal frame cannot restore privileged native context;
+- FD/PID reused number cannot redirect stale operation;
+- file write/rename committed but lost response never treated as proven undone;
+- path resolution stays within issued DirectoryCap and data durability reports actual scope;
+- no capability or resource leak under broker crash/guest death.
+
+**Conditional liveness:** only under working CPU, timer, Pager, memory and broker resources. Successful Linux emulation cannot be promised when storage firmware lies, DMA hardware is uncontained, or the broker CPU budget is exhausted.
+
+### 19.2 Future experiments (NONE performed)
+
+1. Static ELF malformed-header/overflow fuzz with trusted native loader sandbox and read-only sacrificial test image.
+2. Controlled CPU guest trap/return register tests: syscall opcodes, kernel-owned domain, sign extension, noncanonical RIP/RSP and FS/GS.
+3. Basic static unmodified CLI candidate with exact syscall trace, version hash and x86_64 CPU/hardware profile.
+4. Chosen glibc/musl dynamic loader/auxv/DSO/TLS/IFUNC and vDSO probes with versioned symbols and secure-exec cases.
+5. Shared futex compare-and-block adversarial interleavings (lost wake, alias, owner death) and scheduler/rseq migration/signal abort.
+6. Fork/clone/exec/wait ThreadGroup and PID reuse with signal mask, handler, SA_RESTART and malformed rt_sigreturn frame.
+7. Guest FD dup/fork shared offset, CLOEXEC, namespace path escapes, proc magiclinks and openat2 RESOLVE_* races.
+8. epoll ET/LT, ONESHOT, duplicate FD/file description and close/reuse race, pipe/terminal/SCM_RIGHTS.
+9. Service death after native VFS/Network already committed; effect status, EINTR/restart and reconciliations.
+10. CPU/IPC/Pager sponsor quota exhaustion, broker crash and M0 independence.
+11. Security comparison with userspace emulator and raw in-kernel Linux ABI on same threat model and workloads.
+12. Actual-reference-PC vs QEMU hardware-specific performance and verified compatibility reports, once later authorized.
+
+**None of these are run now.** A test plan is not a test report or proof; no binary may be called supported until actually run on a named target and judged against the required behavior and security boundary.
+
+## 20. Exit gates / Go-No-Go for design approval
+
+**RFC-010 R1 research exit: OPEN / NOT PASSED.** Before considering detailed architecture Accepted, let alone code:
+1. Demonstrate a coherent kernel-owned guest SYSCALL entry and *separate privileged broker* under direct jump/injection/pointer faults, or select an emulator/defer unchanged binaries.
+2. Name one target Linux x86_64 ELF/libc/ld.so and obtain a complete expected initial-stack/auxv/TLS/ELF loader schema and test oracle.
+3. Define guest process/ThreadGroup/FD/OpenFileDescription/PID/Namespace objects with exact race/close/restart ownership and sponsor.
+4. Either prove basic futex atomic compare-and-block/shared alias behavior or exclude Linux threaded apps in published tier.
+5. Model rseq registration and scheduler migration/signals, or prove chosen libc fallback under explicit unsupported.
+6. Model clone/fork/exec and Linux signal frame/rt_sigreturn/SA_RESTART with actual guest machine ABI and interruptibility.
+7. Specify FD/path/openat2 and epoll/socket/terminal features with native restricted cap policies and unavailable-feature error semantics.
+8. Define exact VFS/Network effect commit, guest errno, EINTR/restart, copyout error and dirty file durability mapping with RFC-003/008.
+9. Define CPU/IPC/VM/Pager resource and M0 recovery independence across broker failure and malicious quota exhaustion.
+10. Compare LINUX-A/B/C/D with equivalent security assumptions and hardware/test numbers after explicit separate implementation Go.
+11. Audit any imported C runtime, ELF parser, loader and guest root filesystem content license before reuse.
+12. Publish compatibility tier/report format with explicit unimplemented features and revocation/upgrade behavior.
+13. Review spec independently for P0 counterexamples and align RFC-009/018 IDL ABI before freezing any native or guest syscall representation.
+
+**Verdict:** LINUX-A is a good direction to research, but raw guest interception, futex atomics and process/signal semantics remain unproven. No source, compiler, runtime or guest implementation is permitted by this document.
+
+**Next proposed research:** independent critical RFC-010 v0.1→v0.2 review, then RFC-018 versioned IDL/status and Native/Guest ABI compatibility mapping. This design only, and D1–D8 remain the only broad Accepted directions.
+
+## 21. Official primary sources, verified scope (researched 2026-10-24)
+
+- **[S1]** Linux syscall(2) architecture calling conventions: https://man7.org/linux/man-pages/man2/syscall.2.html
+- **[S2]** Linux execve(2), process image and credentials: https://man7.org/linux/man-pages/man2/execve.2.html
+- **[S3]** Linux ld.so(8), dynamic ELF loader and search order: https://man7.org/linux/man-pages/man8/ld.so.8.html
+- **[S4]** Linux getauxval(3) auxiliary vector: https://man7.org/linux/man-pages/man3/getauxval.3.html
+- **[S5]** Linux vDSO(7) architecture-specific mapped ELF: https://man7.org/linux/man-pages/man7/vdso.7.html
+- **[S6]** Linux futex(2), atomic compare-and-block: https://man7.org/linux/man-pages/man2/futex.2.html
+- **[S7]** Linux clone(2)/clone3(2), shared VM and ThreadGroup: https://man7.org/linux/man-pages/man2/clone.2.html
+- **[S8]** Linux signal(7), SA_RESTART, per-thread masks: https://man7.org/linux/man-pages/man7/signal.7.html
+- **[S9]** Linux rt_sigreturn(2) saved user signal frame: https://man7.org/linux/man-pages/man2/sigreturn.2.html
+- **[S10]** Linux epoll(7) ET/LT and queue behavior: https://man7.org/linux/man-pages/man7/epoll.7.html
+- **[S11]** Linux openat2(2), RESOLVE_BENEATH/IN_ROOT/NO_MAGICLINKS: https://man7.org/linux/man-pages/man2/openat2.2.html
+- **[S12]** Linux user_namespaces(7), UID0 scoping: https://man7.org/linux/man-pages/man7/user_namespaces.7.html
+- **[S13]** Linux no_new_privs and exec security: https://docs.kernel.org/userspace-api/no_new_privs.html
+- **[S14]** Linux seccomp BPF and non-sandbox warning: https://docs.kernel.org/userspace-api/seccomp_filter.html
+- **[S15]** Linux restartable sequences (rseq) and CPU migration: https://docs.kernel.org/userspace-api/rseq.html
+- **[S16]** Linux fsync(2) file versus directory durability: https://man7.org/linux/man-pages/man2/fsync.2.html
+- **[S17]** Linux proc(5) pseudo-filesystem behavior: https://man7.org/linux/man-pages/man5/proc.5.html
+- **[S18]** Linux mmap(2) shared/private mapping: https://man7.org/linux/man-pages/man2/mmap.2.html
+- **[S19]** Linux capabilities(7) Linux credential rights: https://man7.org/linux/man-pages/man7/capabilities.7.html
+- **[S20]** Linux pidfd_open(2), PID reuse-resistant process reference: https://man7.org/linux/man-pages/man2/pidfd_open.2.html
+- **[S21]** Linux socket(7), socket behavior: https://man7.org/linux/man-pages/man7/socket.7.html
+- **[S22]** Linux ELF(5), executable format: https://man7.org/linux/man-pages/man5/elf.5.html
+- **[S23]** Linux epoll_ctl(2), registration and flags: https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
+
+Technical references describe existing Linux interfaces and not UniOS implementation or legal authorization to redistribute components. Implementation source, runtime versions, exact compatibility/ABI profile and compiler target are all future decisions.
+
+---
+
+**Document history:** 2026-10-24 — RFC-010 Proposed v0.1 research draft, LINUX-A vs alternatives, restricted ELF/syscall/credential/ThreadGroup/VFS design, 45 unverified invariants, 40 open blockers and 24 proposed decisions. No Linux binary run, kernel code, loader/libc port, test, benchmark, hardware operation, formal model or freeze of native/guest ABI.
