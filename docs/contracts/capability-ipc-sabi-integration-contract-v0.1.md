@@ -20,7 +20,7 @@ A complete integration requires seven **separate** commitments, none proven:
 6. **Policy epoch:** a negotiated SABI session is tied to exact Endpoint/grant generation, actual ServiceIncarnation, required features/resource roles and current authorization-policy epoch. Revocation and policy strengthening require revalidation at each effect admission.
 7. **Result truth:** kernel queue commit, received caps, method admission, remote effect, hardware fence, file/directory durability and observed result are distinct. A timeout/old ReplyToken has no automatic rollback or exactly-once semantics.
 
-**Direct conflict addressed as editorial only:** RFC-003 §4 currently lists ChannelEndpoint DERIVE in the generic table while immediately forbidding E1 Endpoint DERIVE/DUPLICATE and in IPC-D13. The intended E1 comparison is nonduplicable. The exact right-table correction is specified in §2; this new document does not by itself override the original RFC.
+**Historical conflict and its documented correction:** the 2026-10-25 audit found RFC-003 §4 listed DERIVE despite E1 prohibiting DERIVE/DUPLICATE in prose and IPC-D13. A **separate editorial RFC-003 §4 correction** now removes DERIVE from the E1 table and links this joint contract. This is a Proposed text consistency repair only; implementation, E1 approval and correctness proofs remain open.
 
 ### 0.1 Trade-off countermodels
 
@@ -80,7 +80,7 @@ The single-owner rule concerns **one E1 Endpoint object**, not all services, not
 
 ### 2.1 Exact RFC-003 editorial collision and correction candidate
 
-The RFC-003 §4 table currently says ChannelEndpoint rights INCLUDE DERIVE; the prose and IPC-D13 say E1 DERIVE/DUPLICATE forbidden. The smallest coherent E1-specific row proposal is:
+The original RFC-003 §4 table (preserved in Git history) listed ChannelEndpoint DERIVE even though E1 prose and IPC-D13 forbade DERIVE/DUPLICATE. Its **Proposed E1 table has since been editorially corrected** to remove DERIVE and explicitly defer E2. The smallest coherent E1-specific row proposal is:
 
 ~~~text
 E1 ChannelEndpoint | SEND, RECEIVE, WAIT, TRANSFER, QUERY_BASIC
@@ -88,7 +88,7 @@ E1 ChannelEndpoint | SEND, RECEIVE, WAIT, TRANSFER, QUERY_BASIC
                     E2 multiowner / derivation = different future profile
 ~~~
 
-This is a correction of a **Proposed** table, not approval of a final right bitmask. SEND/RECEIVE may also need per-operation direction/rights validation; existing task-level concurrency is not proof safe transfer. RFC-002 generic DERIVE stays type-specific and does not force a ChannelEndpoint duplicate.
+This documented E1 table correction remains **Proposed**: it does not approve final rights, transfer algorithms or a stable bitmask. SEND/RECEIVE may also need per-operation direction/rights validation; existing task-level concurrency is not proof safe transfer. RFC-002 generic DERIVE stays type-specific and does not force a ChannelEndpoint duplicate.
 
 ### 2.2 Connection establishment without hidden global Endpoint copy
 
@@ -469,14 +469,14 @@ Transitions: CREATE/GRANT, DERIVE allowed-by-type, E1 endpoint MOVE, SEND prefli
 
 | Target | Minimal design change proposed | Must not change silently |
 |---|---|---|
-| RFC-003 §4 (CX-01) | correct E1 ChannelEndpoint table by removing DERIVE; explanatory erratum clarifies E2 deferred | type generic DERIVE in RFC-002 and E1 MOVE send failure semantics |
+| RFC-003 §4 (CX-01) | **editorial fix applied**: removed DERIVE from E1 right table with E2 deferred; next review must verify all references | generic DERIVE in RFC-002 and E1 MOVE failure semantics unchanged |
 | RFC-003 §5 | explicitly distinguish one Endpoint per Task from independent per-client connections, and in-flight invocation references | E2 not silently introduced; no global provider Endpoint cloned |
 | RFC-002 §5/§8 | add cross-ref to exclusive ChannelEndpoint object-kind prohibition and sender lineage/sponsor rules | general type-specific DERIVE for non-Channel objects |
 | RFC-009 §§6–7 | bind native Handle anti-ABA and lost result to E1 task-scoped operation/cap custody model | no numeric opcode/SDK binary ABI freeze |
-| RFC-018 §§4/§19.3 | clarify that multiple clients in bearer example own distinct E1 endpoints (or sequential MOVE), not same Endpoint simultaneously | preserve bearer vs human identity proof separation |
+| RFC-018 §§4/§19.3 | **clarification applied** in §19.3: multiple client Tasks own distinct E1 Endpoints, or sequential MOVE | bearer versus human identity proof remains separate and unproved |
 | RFC-006 §14 | retain separate client channels/dispatcher and fresh ServiceIncarnation Endpoint | not turn registry strings into ambient grants |
 | RFC-007/008 | maintain DMA fence and durable receipt as independent proof gates | not reinterpret cap close as fence or IPC ACK as fsync |
-| Cross-RFC audit v0.1 | append editorial-resolution note once RFC-003 exact text is actually corrected | keep original historically true finding and proof still OPEN |
+| Cross-RFC audit v0.1 | **append an editorial-resolution note** now that RFC-003 E1 right table was actually corrected | preserve historic confirmed finding; remaining proof gates stay OPEN |
 | README | add this Proposed v0.1 joint contract alongside prior audit/RFCs | no accidental Accepted, implemented or validated badge |
 
 **ADR proposals for a future explicit decision meeting:**
@@ -493,7 +493,7 @@ Transitions: CREATE/GRANT, DERIVE allowed-by-type, E1 endpoint MOVE, SEND prefli
 ## 15. Design acceptance criteria, refusal conditions and roadmap
 
 **Joint contract R1: OPEN / NOT PASSED.** Do not approve code-level ABI/IDL choices until:
-1. RFC-003 rights contradiction is eliminated as a *document correction* with direct readback; E1 ownership/no-DERIVE remains proposed.
+1. RFC-003 E1 DERIVE right-table contradiction is eliminated as a **document correction**, confirmed by readback; independently re-review rights, MOVE races and E2 exclusion before adopting any E1 architecture.
 2. One supported E1 client→broker→service connection topology and bootstrap issuer is specified with failure at each partial half-delivery, charge and READY condition.
 3. Concurrent Endpoint MOVE vs in-flight send/receive plus cap revoke B has one explicitly chosen linearization model.
 4. Public Task Handle ABA and fail-closed token exhaustion are defined with bit format still unfrozen.
@@ -527,4 +527,4 @@ External examples are technical evidence for **what those other systems document
 
 ---
 
-**Document history:** 2026-10-25 — v0.1 initial joint design specification, CAPIPC-A candidate, E1-exclusive per-client connection proposal, real cap-vector MOVE and exclusive ReceiveClaim phases, postcommit UNKNOWN, anti-ABA, trusted caller vs bearer/PolicyEpoch and status/physical fencing separation; 24 unexecuted attack cases, 36 unproved invariants, 24 open research gates and 16 Proposed decisions. Git design docs only; no implementation or tests.
+**Document history:** 2026-10-25 — v0.1 initial joint design specification, CAPIPC-A candidate, E1-exclusive per-client connection proposal, real cap-vector MOVE and exclusive ReceiveClaim phases, postcommit UNKNOWN, anti-ABA, trusted caller vs bearer/PolicyEpoch and status/physical fencing separation; 24 unexecuted attack cases, 36 unproved invariants, 24 open research gates and 16 Proposed decisions. Later same-day cross-reference edits record independent RFC-003 E1 rights-table correction and RFC-018 per-client endpoint clarification; the remaining P0 proof obligations stay OPEN. Git design docs only; no implementation or tests.
