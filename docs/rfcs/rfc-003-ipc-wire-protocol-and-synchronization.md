@@ -644,3 +644,11 @@ The detailed KABI call/handle bit format, receipt query namespace, queue budget,
 **Anti-ABA / privacy:** receipt identities cannot rebind old published slot+generation/nonce to another operation as if it were the original, including after ACK/GC. Query access must not require the already MOVEd source handle or leak another Task's Endpoint/cap/count/rights by guessing a nonce. Historical COMMITTED_KI never duplicates or resurrects CapGrants another Thread already closed or revoker invalidated. Every receipt record/tombstone and pending message has bounded sponsor and M0-safe cleanup.
 
 **P0 open:** bootstrap lost-slot ID, operation fingerprint and duplicate nonce race, K-S/K-I versus protected record coherent SMP linearization, revocation B and Endpoint MOVE, final receipt GC, metadata privacy and Linux guest status mapping. One E1 Endpoint owner and no DERIVE/DUPLICATE remain unchanged and Proposed; no type-rights table alteration follows from this addendum.
+
+## 27. 2026-10-25 Monotonic Task operation admission and Receipt GC — Proposed
+
+**Source:** [CAPIPC Finite Handle Namespace, Receipt Ledger & GC v0.1](../models/capipc-finite-handle-namespace-receipt-ledger-gc-v0.1.md). This is **research**, not accepted IPC semantics or a new syscall.
+
+A new KR-M1 candidate separates **no re-admission** from **retained result knowledge**: for one live TaskGeneration, an operation sequence q known before K-S/K-I/K-U is admitted only when q equals protected high-water mark H+1. The admission cut both advances H and installs immutable PENDING record with reserved quota. A later q≤H can consult retained protected status or return EXPIRED_EVIDENCE/UNKNOWN after final GC, but **must never perform a second irreversible mutation**. Query PENDING still cannot authorize retry; only FINAL_NOT_COMMITTED proves that precise operation cannot later commit.
+
+**P0 OPEN:** strict q admission serializes entry order and causes multi-Thread out-of-order/gap liveness difficulties; bounded window KR-M2 is a more complex comparator. Neither replaces actual K-S/K-I receipt linearization, queued custody, ReceiveClaim exposure rules, ServiceRequestId idempotency or finite sponsor/Q limits. The old KR-A1/A2 proposal remains a comparator, not superseded.
