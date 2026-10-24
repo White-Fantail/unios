@@ -476,7 +476,7 @@ Not necessarily. A software-only emulator, CPU-only boot and truly non-DMA seria
 | Group quiesce blocked, unrelated UI healthy | whole desktop stuck unnecessarily | scope quarantine to affected resources; independent software may run |
 | IOMMU/invalidation fails while mapping removed | memory recycled prematurely | fail fence, preserve pin+quarantine, error observable |
 
-## 17. Security and correctness invariants (DEV-01…DEV-40) — Proposed
+## 17. Security and correctness invariants (DEV-01…DEV-49) — Proposed
 
 | ID | Proposed obligation, NOT proven |
 |---|---|
@@ -520,6 +520,15 @@ Not necessarily. A software-only emulator, CPU-only boot and truly non-DMA seria
 | DEV-38 | Unsafe device power/reset operations respect actual multi-function/sibling group impacts or deny operation. |
 | DEV-39 | Device fault/IRQ/IOVA/metadata memory pressure cannot silently consume the protected M0 cleanup reserve. |
 | DEV-40 | QEMU simulated isolation and production physical Reference PC DMA safety are reported as separate evidence levels. |
+| DEV-41 | IOMMU isolation DeviceGroup and ResetCouplingSet/IRQ/P2P/firmware-reserved overlays are analyzed independently; reset isolation is never inferred from group membership. |
+| DEV-42 | Firmware RMRR/IVRS identity-map exceptions never automatically authorize untrusted DriverHost DMA access to platform-reserved memory. |
+| DEV-43 | A physically active unrestricted DMA endpoint without effective isolation cannot be reported safely contained by software buffer quarantine. |
+| DEV-44 | Completion of IOVA invalidate alone never asserts that previously accepted, posted or peer-path device writes are drained or undone. |
+| DEV-45 | Hardware reset/fence evidence states a precise affected-device set, generation, physical stop/ordering mechanism and remaining uncertainty. |
+| DEV-46 | Raw MMIO BAR access is denied or mediated where it can reconfigure device isolation, interrupt routing, firmware control or unauthorized DMA path. |
+| DEV-47 | EFI PCI DMA flush/completion is separate from ExitBootServices and from new UniOS IOMMU policy; boot handoff doesn't invent a hardware drain. |
+| DEV-48 | Security-protected device group and firmware reservation never share unrestricted identity mappings with normal untrusted DMA. |
+| DEV-49 | A controller/sibling affected by bus-reset collateral may be independently isolated but still unavailable; recovery/liveness policy accounts for the actual ResetCouplingSet. |
 
 The property names do not implement hardware state machines, prove DMA exclusion, guarantee reset/IRQ delivery or assert stable ABI. No DEV invariant is verified for UniOS hardware.
 
@@ -574,7 +583,7 @@ Under an operating CPU/IRQ timer, finite kernel critical sections, healthy IOMMU
 
 **Important impossibility case:** a PCI endpoint that can freely write arbitrary physical memory while no effective IOMMU exists cannot be confined by a Ring 0 CPU page table or a userspace service boundary. The answer may be "this device/hardware configuration is unsupported" instead of a kernel feature request.
 
-## 20. Open research blockers O7-01…O7-34
+## 20. Open research blockers O7-01…O7-43
 
 | ID | Priority | Decision / missing evidence | Cross-RFC |
 |---|---|---|---|
@@ -612,17 +621,26 @@ Under an operating CPU/IRQ timer, finite kernel critical sections, healthy IOMMU
 | O7-32 | P1 | Hardware reset timeout/unsafe P2P causes indefinite quarantine vs safe recovery? | 006/007 |
 | O7-33 | P2 | Advanced ATS/PRI/PASID/SVA nested translation and revocation design? | 004/007/010 |
 | O7-34 | P2 | Device cost, pinned memory performance and impact of bounce/copy policy? | 004/007/015 |
+| O7-35 | P0 | RMRR/IVRS device+reserved memory identity maps vs strict default-deny untrusted hardware profile? | 006/007/017 |
+| O7-36 | P0 | ResetCouplingSet vs IOMMU DeviceGroup: FLR, AER, bus reset and boot-storage sibling effects? | 006/007/008 |
+| O7-37 | P0 | Exact physical R2-F ordering: in-flight posted DMA, IOMMU invalidation, device reset and provenance of success? | 002/004/007 |
+| O7-38 | P0 | Raw MMIO backdoor/control registers can bypass filtered PCI config/ACS/bus master guards? | 001/002/007 |
+| O7-39 | P0 | Unsafe no-IOMMU device actively DMAing to arbitrary RAM: required whole-system fail-stop and protected future boot? | 006/007/017 |
+| O7-40 | P0 | UEFI PCI driver DMA completion/Flush/Unmap vs ExitBootServices handoff of firmware-owned buffers? | 006/007/017 |
+| O7-41 | P1 | Independent mapping/device/IRQ/P2P/reset overlays versioned across hotplug and driver restart? | 002/006/007 |
+| O7-42 | P1 | Effective hardware bus/power isolation mechanism, trusted reset completion and failure containment evidence? | 007/015 |
+| O7-43 | P1 | Vendor-specific IO ordering and device cache controls required to reclaim buffer after posted writes? | 004/007/015 |
 
-## 21. Proposed decisions DEV-D01…DEV-D20 — NONE Accepted
+## 21. Proposed decisions DEV-D01…DEV-D26 — NONE Accepted
 
 - **DEV-D01:** DEV-A kernel-minimal protected IOMMU/IRQ/MMIO+userspace DeviceAuthority/DriverHost is first conditional research target.
 - **DEV-D02:** DEV-B explicit broad-TCB trusted-only device and DEV-C larger trusted kernel driver remain alternatives for incompatible hardware.
-- **DEV-D03:** Assign and revoke direct device access at verified *DeviceGroup*, never assumed per-PCI-function, granularity.
+- **DEV-D03 [revised]:** Assign direct DMA ownership at actual IOMMU *DeviceGroup* granularity; treat ResetCouplingSet, IRQ routing domain, P2P routes and FirmwareReservedMapSet as distinct additional security/availability gates, never assume every overlay has the same membership.
 - **DEV-D04:** Typed DeviceGroup/FunctionView/Domain/IOVA/Pin/IRQ/Reset objects are candidate; raw hardware IDs are never capabilities.
-- **DEV-D05:** Deny bus master and direct unsafe config/MMIO until group isolation and blocked-default domain validated.
+- **DEV-D05 [revised]:** Deny untrusted bus-master/config/MMIO until secure group domain and protected-memory policy; firmware RMRR/IVRS exceptions are **trusted-only constrained mappings or unsupported**, never silently extended to untrusted devices.
 - **DEV-D06:** IOMMU device ownership/attachment, pin/map and IRQ remap have distinct authorization and lifetime states.
 - **DEV-D07:** Untrusted DMA maps only typed authorized MemoryObject frames/ranges/directions with sponsor and cache ownership.
-- **DEV-D08:** R0/B/R1/R2-F/R2-O are separate; R2-F requires trusted actual hardware stop plus relevant translation/device cache invalidation.
+- **DEV-D08 [revised]:** R0/B/R1/R2-F/R2-O are separate. R2-F requires source-specific trusted physical quiescence/posted-write ordering, relevant translation/device cache invalidation and proof of which group/mappings it covers; an invalidate completion or driver-reported fence alone is insufficient.
 - **DEV-D09:** Failed reset/invalidation/fence retains relevant group, frames and metadata in Quarantine, no false safe reuse.
 - **DEV-D10:** PCI P2P/ACS and MSI interrupt remap are independent isolation gates; an IOMMU present flag is insufficient.
 - **DEV-D11:** No-IOMMU bounce buffering never counts as security isolation from hostile bus-master DMA; HW-T is visibly weaker.
@@ -635,6 +653,12 @@ Under an operating CPU/IRQ timer, finite kernel critical sections, healthy IOMMU
 - **DEV-D18:** Device faults, pins, IOMMU metadata, IRQ credits and quarantine debt remain charged under sponsor budgets after service death.
 - **DEV-D19:** QEMU/OVMF optional virtual IOMMU tests and early physical PC hardware isolation tests are separate mandatory evidence classes.
 - **DEV-D20:** No user-space driver isolation/product trust claim and no code implementation until P0 group/DMA/IRQ/fence/boot gates are reviewed.
+- **DEV-D21 [new]:** RMRR/IVRS firmware-reserved DMA must be explicitly mapped to a constrained trusted device context or denied under strict isolation, with protected RAM excluded.
+- **DEV-D22 [new]:** Reset collateral domains are separate from IOMMU group; operation may be denied if the reset would disable boot-critical/persistent-data hardware.
+- **DEV-D23 [new]:** Hardware fence proofs must report source of evidence, physical in-flight DMA/posted-write ordering, IRQ/ATS/IOTLB completion and exact scope; failed/incomplete evidence means quarantine.
+- **DEV-D24 [new]:** Unsafe Device MMIO/PIO reconfiguration must be mediated or restricted; a safe PCI config filter alone does not authorize all BAR bytes.
+- **DEV-D25 [new]:** Active unrestricted no-IOMMU malicious bus mastering may require full fail-stop/power isolation, not just local pinned-frame quarantine.
+- **DEV-D26 [new]:** UEFI PCI DMA map/unmap/flush and ExitBootServices are separate transitions; early boot handoff needs trusted ordered termination or explicit unprotected assumption.
 
 These remain **Proposed — Specification**, not ADR Accepted. They do not modify D1–D8 architecture directions, existing ABI or other RFCs. A security-profile exception must be an explicit future ADR with a restricted device/support claim.
 
@@ -661,13 +685,13 @@ These remain **Proposed — Specification**, not ADR Accepted. They do not modif
 
 ## 23. Exit gates / future research milestones
 
-**RFC-007 v0.1 is NOT design-accepted.** The following research evidence is required before a "verified user-space DMA driver" product claim:
+**RFC-007 v0.2 is NOT design-accepted; its prior v0.1 remains in Git history.** The following research evidence is required before a "verified user-space DMA driver" product claim:
 
-1. Select a concrete x86_64 physical Reference PC and enumerate real group/ACS/IOMMU/interrupt-remap topology from authoritative device/vendor/firmware sources. If unknown, use a weaker explicitly marked profile or disable direct DMA.
+1. Select a concrete x86_64 physical Reference PC and enumerate real group/ACS/IOMMU/interrupt-remap topology **plus reset collateral sets and RMRR/IVRS firmware reserved mappings** from authoritative device/vendor/firmware sources. If unknown, use a weaker explicitly marked profile or disable direct DMA.
 2. Draw initial firmware→blocked-domain→first DriverHost bootstrap protocol, covering residual boot DMA and safe ExitBootServices handoff. Not all physical firmware trust can be proven by UniOS.
 3. Specify minimal privileged config/IOMMU/IRQ enforcement with a complete capability+budget table; compare DEV-A vs kernel TCB increase.
-4. Model DmaPin/IOVA attach/cache sync/unmap, posted transactions, device reset and invalidation order with a precise **R2-F physical safety predicate** for at least one real device family.
-5. Prove group owner exclusivity with sibling functions, P2P and MSI/interrupt remap. Report unsupported hardware rather than weakening isolation silently.
+4. Model DmaPin/IOVA attach/cache sync/unmap, posted transactions, **completion/flush ordering under UEFI and PCI**, device reset and invalidation order with a precise **R2-F physical safety predicate** for at least one real device family; do not substitute driver-declared completion for a trusted fence.
+5. Prove group owner exclusivity with sibling functions, P2P and MSI/interrupt remap, **and separately evaluate whether resetting the group affects a different essential sibling or device**. Report unsupported hardware rather than weakening isolation silently.
 6. Model DriverHost death, old cap/IRQ/IOVA generation, resource sponsor debts, failed reset quarantine and unaffected software recovery.
 7. Show protected M0 wired storage/IRQ/CPU/IPC graph; explicitly account boot driver executable and queue memory without file Pager recursion.
 8. Define fatal/unsupported/degraded product disclosures and secure limited fallback; never claim dirty data persistence or global recovery merely because DMA was fenced.
@@ -692,9 +716,11 @@ These remain **Proposed — Specification**, not ADR Accepted. They do not modif
 - **[S12] Linux DMA synchronization attributes:** https://docs.kernel.org/core-api/dma-attributes.html
 - **[S13] Linux VFIO cdev, group ownership and no-IOMMU contrast:** https://docs.kernel.org/6.12/driver-api/vfio.html
 - **[S14] UEFI Boot Services/ExitBootServices:** https://uefi.org/specs/UEFI/2.10/07_Services_Boot_Services.html
+- **[S15] UEFI 2.10 PCI Bus Support, DMA Map/Unmap and posted-write Flush:** https://uefi.org/specs/UEFI/2.10/14_Protocols_PCI_Bus_Support.html
+- **[S16] Linux PCI Error Recovery / bridge reset and collateral effects:** https://docs.kernel.org/PCI/pci-error-recovery.html
 
 All links are references to third-party published technical descriptions. External correctness/security claims belong to their owning systems and **do not verify UniOS**. Platform documentation and API details may evolve; future hardware profiling must check relevant device/firmware specifications. No external source code was imported.
 
 ---
 
-**Document history:** 2026-10-24 — RFC-007 v0.1 Proposed design draft created; research only. No boot, device discovery/configuration, driver, DMA mapping, physical experiment, test or proof.
+**Document history:** 2026-10-24 v0.1 original Proposed design retained in Git; 2026-10-24 v0.2 critical adversarial re-review corrected RMRR/IVRS firmware exceptions, reset collateral distinct from IOMMU groups, physically evidenced DMA fences, unsafe MMIO and uncontained no-IOMMU drivers. Research only: no actual PCI/IOMMU device configuration, driver code, boot, physical experiment, test or proof.
