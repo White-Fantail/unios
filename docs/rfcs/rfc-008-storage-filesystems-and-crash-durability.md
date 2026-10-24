@@ -519,7 +519,7 @@ Storage might not respond within any bounded time after power failure or control
 | Persistent boot retry counter stored in normal VFS | dying VFS controls secure floor | separate trusted boot metadata writer |
 | Recovery daemon itself demand-paged by broken drive | deadlock during repair | M0 wired critical path or fail-stop |
 
-## 17. Proposed correctness/security invariants FS-01…FS-42 — NOT verified
+## 17. Proposed correctness/security invariants FS-01…FS-53 — NOT verified
 
 | ID | Proposed invariant — no validation claim |
 |---|---|
@@ -537,7 +537,7 @@ Storage might not respond within any bounded time after power failure or control
 | FS-12 | Journal root/commit sequence guards ABA and rejects stale generations under stated checksum assumptions. |
 | FS-13 | DurableReceipt does not grant FileCaps or new I/O authority and is bound to file/volume/epoch/scope. |
 | FS-14 | Old StorageHost/FS service generation completions cannot mark new work as flushed or durable. |
-| FS-15 | Buffered writeback errors persist as observable error epochs until legitimately acknowledged by every relevant client. |
+| FS-15 | Buffered writeback errors remain observable through explicitly scoped per-file/per-observer cursors while the error ledger itself survives; **persistence across OS crash requires a separate durable ledger and cannot be inferred from RAM**. |
 | FS-16 | File Pager detach, Task exit or object close does not silently discard dirty data while reporting durable success. |
 | FS-17 | Concurrent new dirty writes survive earlier writeback completion without incorrect CleanDurable transition. |
 | FS-18 | mmap faults and PagerSupply cannot authorize a foreign MemoryObject or suppress file backing generation checks. |
@@ -565,16 +565,29 @@ Storage might not respond within any bounded time after power failure or control
 | FS-40 | Storage reset/DMA fencing cannot retroactively undo already persisted writes or restore corrupted data. |
 | FS-41 | Physical disk loss and dishonest firmware are stated exclusions from software-only durable recovery proof. |
 | FS-42 | Emulator power-cut result is distinguished from physical NVMe cache/PLP and reboot/rescue reliability evidence. |
+| FS-43 | SystemImage/DataVolume trust-volume split and writable FS implementation/journal algorithm are independent compatible design axes. |
+| FS-44 | WAL needed for recovery is durably ordered before home-page overwrite, and home pages are durably ordered before WAL truncation/reuse. |
+| FS-45 | Readers pinning WAL/checkpoint generations cannot have recovery data reclaimed merely because an incomplete checkpoint returned. |
+| FS-46 | Rollback-journal DELETE commit may require journal-directory persistence beyond FULL data flush; mode-specific sync policies are explicit. |
+| FS-47 | Powersafe overwrite is never treated as atomicity of bytes within the actual write range. |
+| FS-48 | Error epochs spanning user-service restart are distinct from error evidence surviving OS crash; unknown lost writes never reported as successfully recovered. |
+| FS-49 | Error sampling scope includes independent observers and cannot falsely attribute one failed physical write exclusively to the initiating file handle. |
+| FS-50 | A mature imported filesystem/database writer must pass exact-version advisories and concurrent checkpoint/rename/commit regression gates before claiming correctness. |
+| FS-51 | Flush/fence guarantee is conditional on truthful hardware and exact covered device/volume, not generic proof of NAND survival or cross-device atomicity. |
+| FS-52 | Namespace persistence claim names and orders affected directory/journal creation/removal/rename metadata in addition to file contents. |
+| FS-53 | Log/CoW checkpoint starvation and bounded emergency space cannot induce unsafe eviction of committed recovery data or stale root. |
 
-## 18. Comparative feasibility/TCB decision matrix
+## 18. Independent architectural axes, feasibility and TCB matrix (v0.2)
 
 | Candidate | Advantage | P0 risk | Possible refusal reason |
 |---|---|---|---|
-| STORE-A immutable system + separate data service | trust/update separation, simple early verified boot, scoped writable risks | real block flush/rollback/data schema; userspace FS crash TCB | fails if no independent wired boot storage reader |
-| STORE-B adapted existing format | mature on-disk ecosystem, data tooling potential | licensing/reader-writer correctness, parser and journaling parity, compatibility | only read parser exists, unsupported license or no crash-consistent writer |
+| STORE-A **volume/trust axis**: immutable system + separate data service | trust/update separation, simple early verified boot, scoped writable risks | real block flush/rollback/data schema; userspace FS crash TCB | fails if no independent wired boot storage reader |
+| STORE-B **writer/format axis**: adapted existing format | mature on-disk ecosystem, data tooling potential | licensing, exact library version and writer correctness, parser and journaling parity | only read parser exists, known unfixed corruption defect, unsupported license or no crash-consistent writer |
 | STORE-C new CoW/checksum FS | snapshots, on-disk root model, checksum opportunity | ENOSPC, GC/refcount, space amplification, root durability, many unsolved races | proof surface dominates rest of OS before basic desktop |
 | STORE-D metadata journal with explicit data ordering | known recovery ideas and bounded normal paths | data vs metadata exposure, journal resource and flush ordering | cannot define persistent semantics on selected hardware |
 | STORE-E read-only early-only | smallest write integrity TCB, signed image possible | not full general-purpose user desktop | insufficient end-state features |
+
+**Axes are orthogonal:** STORE-A may be combined with STORE-B, STORE-C or STORE-D; STORE-E represents a temporary read-only feature profile. The filesystem's journal/CoW technique can itself be combined with reuse of an existing implementation. Native sync tier, hardware profile and update policy are additional independent variables. **Do not select STORE-A instead of STORE-C**: they solve different problems.
 
 **Comparative gates:** no algorithm selection without (1) signed/verified read-only image provenance, (2) crash-state model, (3) selected device flush/atomic write assumptions, (4) file/namespace sync API, (5) allocation/ENOSPC proof, (6) isolated user-space VFS attack surface, (7) license and third-party artifact provenance, (8) physical PC plan. Native storage format and POSIX facade can evolve independently only if precise semantic mapping is documented.
 
@@ -618,7 +631,7 @@ Transitions: create, buffered write, rename, unlink, truncate, mmap write, fault
 
 **None have been executed for UniOS**. Formal model language TLA+/Alloy or equivalent is a future decision; proposing a model is not a completed proof.
 
-## 20. Open design blockers O8-01…O8-36
+## 20. Open design blockers O8-01…O8-48
 
 | ID | Priority | Unresolved research question | Co-review |
 |---|---|---|---|
@@ -658,18 +671,30 @@ Transitions: create, buffered write, rename, unlink, truncate, mmap write, fault
 | O8-34 | P2 | TRIM/discard, thin provisioning, deallocated reads and advanced NVMe namespaces? | 007/008 |
 | O8-35 | P2 | Remote filesystem/net storage and independent server/fsync guarantees? | 008/010 |
 | O8-36 | P2 | Whole-volume backup, incremental snapshot replication, ransomware rollback, recovery key UX? | 008/016/017 |
+| O8-37 | P0 | STORE-A trust split vs STORE-B/C/D writer format/journal techniques as independent composable decision axes? | 004/006/008 |
+| O8-38 | P0 | Crash-cut proof of WAL sync→checkpoint copy→database flush→WAL reset, incl. concurrent writers? | 004/008/015 |
+| O8-39 | P0 | WAL snapshot readers blocking checkpoint; bounded file growth, ENOSPC/GC while pinned? | 004/008/015 |
+| O8-40 | P0 | SQLite rollback-journal FULL vs EXTRA and journal deletion/parent DirectorySync durability analogue? | 008/009/010 |
+| O8-41 | P0 | Volatile service-restart writeback-error epoch vs durable after OS power loss; reporting limits? | 003/004/008 |
+| O8-42 | P0 | Exact per-observer cursor and concurrent fsync errors under multiple file handles/writers? | 004/008/009 |
+| O8-43 | P0 | Device atomic granule vs PSOW/torn write/ordering claims under actual reference hardware? | 007/008 |
+| O8-44 | P0 | End-to-end truthful flush and receipt device/namespace scope including multi-device constraints? | 007/008/015 |
+| O8-45 | P1 | Exact upstream-version fixes and security/corruption regressions for imported mature FS/DB writer? | 008/015/018 |
+| O8-46 | P1 | Old/new directory entries and journal file unlink/truncate commit ordering under crash? | 008/009/010 |
+| O8-47 | P1 | If error ledger cannot be persisted after power failure, what LOST/UNKNOWN report can honestly be made? | 004/006/008 |
+| O8-48 | P1 | Concurrent checkpoint/WAL reset generation ABA and snapshot reader token invalidation? | 003/008/015 |
 
-## 21. Proposed decision register FS-D01…FS-D20 — NOT Accepted
+## 21. Proposed decision register FS-D01…FS-D28 — NOT Accepted
 
-- **FS-D01:** STORE-A immutable verified SystemImage and separately scoped writable DataVolume with userspace FS/VFS is primary research hypothesis, not final filesystem selection.
-- **FS-D02:** STORE-B mature format, STORE-C native CoW, STORE-D metadata journal and STORE-E read-only remain evidence-driven alternatives.
+- **FS-D01 [clarified]:** STORE-A is the **trust/volume architectural axis**: immutable verified SystemImage and separately scoped writable DataVolume with userspace FS/VFS; it does not choose the filesystem algorithm.
+- **FS-D02 [clarified]:** STORE-B writer/format reuse, STORE-C CoW and STORE-D journaling are **partly combinable choices** within STORE-A's DataVolume; STORE-E is only a read-only feature stage, not a competing volume architecture.
 - **FS-D03:** Kernel enforces caps/memory/IPC/DMA/IRQ, not general inode/path/journal parsers by default; FS is asset-specific user-space TCB-S.
 - **FS-D04:** Distinguish accepted buffered write, storage device ACK, filesystem commit, hardware flush/FUA and scoped strong DurableReceipt.
-- **FS-D05:** Strong sync return requires declared file bytes/inode/directory namespace dependency plus compliant hardware barrier; unsupported flush denies strong durability.
+- **FS-D05 [clarified]:** Strong sync return requires exactly named file bytes/inode/namespace/journal-delete dependency and compliant device/volume barrier. Unsupported/failing flush or missing namespace guarantee denies strong durability; **no sync proves a lying device or physical disk survival**.
 - **FS-D06:** Namespace rename visibility and crash persistence differ; FileSyncData and DirectorySync/Transaction must be explicit.
 - **FS-D07:** Default metadata journaling alone cannot advertise full user-data power-loss durability; chosen algorithm requires precise guarantee.
 - **FS-D08:** Writes and mmap dirty/writeback carry generation and sponsor; old completion does not clean newer dirty contents.
-- **FS-D09:** Async writeback errors must be observable after successful buffered writes and survive relevant client/server changes until accounted.
+- **FS-D09 [clarified]:** Async writeback errors must remain observable by scoped live per-file/per-observer cursors after buffered write and permitted user-service restart; **after system power loss, survival of error evidence requires its own durable journal**. Do not fabricate provenance for lost dirty RAM.
 - **FS-D10:** StorageHost/FilesystemService death does not undo committed IO, drain DMA or make old pending FS requests atomic rollback.
 - **FS-D11:** R0/B/R1/R2-F/R2-O and DeviceGroup isolation remain separate from persistent media order or filesystem commit.
 - **FS-D12:** Journal/WAL/CoW replay must be idempotent and bounded or return corruption/read-only/fail-stop rather than fabricate repaired user data.
@@ -681,6 +706,14 @@ Transitions: create, buffered write, rename, unlink, truncate, mmap write, fault
 - **FS-D18:** No stable POSIX/Windows/Darwin mapping, on-disk FS format, atomic block size or numeric timings adopted before RFC-009/010/018 and real device evidence.
 - **FS-D19:** Product claims name the hardware/power fault model; QEMU results and physical NVMe PLP/Flush reliability have distinct evidence levels.
 - **FS-D20:** All FS choices and R1 exit gates remain Proposed; no implementation, boot metadata writes, real power-cut test or third-party code imports authorized.
+- **FS-D21 [new]:** Track STORE-A volume/trust separation independently from filesystem implementation, journal and durability tiers; no false forced choice between them.
+- **FS-D22 [new]:** WAL checkpoint may overwrite home blocks only after relevant WAL commit state is synced, and may reuse WAL only after home blocks are synced and reader holds resolved.
+- **FS-D23 [new]:** Native durable namespace commit must account for file/old/new parent/journal-file deletion metadata under chosen filesystem semantics; FULL and EXTRA are not equivalent across SQLite modes.
+- **FS-D24 [new]:** Runtime error epochs survive service crash only via independent in-memory ledger; cross-reboot observability and loss detection cannot be guaranteed without its own persistent record.
+- **FS-D25 [new]:** Model PSOW, atomic sector, torn write, volatile cache, FLUSH/FUA honesty and physical media loss as independent test assumptions.
+- **FS-D26 [new]:** Before any third-party FS/DB adoption, review exact upstream version, advisory history (e.g. SQLite's March 2026 WAL-reset race), concurrent operations and license.
+- **FS-D27 [new]:** A strong DurableReceipt names the scoped file/namespace generation, complete software barriers and device profile; it is not an independent physical truth attestation.
+- **FS-D28 [new]:** WAL/CoW log-space budgets and pinned reader/snapshot epochs must not permit premature overwrite of recovery material; fail NO_SPACE/degraded rather than claim safe checkpoint.
 
 ## 22. Cross-RFC integration and conflict register
 
@@ -737,9 +770,15 @@ Transitions: create, buffered write, rename, unlink, truncate, mmap write, fault
 - **[S14] Linux ext4 orphan file cleanup after crash:** https://docs.kernel.org/filesystems/ext4/orphan.html
 - **[S15] Linux DMA API mapping vs hardware operation lifecycle:** https://docs.kernel.org/core-api/dma-api-howto.html
 - **[S16] PostgreSQL introduction to WAL and crash recovery:** https://www.postgresql.org/docs/current/wal-intro.html
+- **[S17] Current Linux VFS documentation — writeback errors and observer descriptors:** https://docs.kernel.org/filesystems/vfs.html
+- **[S18] SQLite WAL guide, documented 2026 WAL-reset bug/fix and race scenario:** https://www.sqlite.org/wal.html
+- **[S19] SQLite powersafe overwrite — NOT atomic write:** https://www.sqlite.org/psow.html
+- **[S20] SQLite file format — WAL checkpoint sync order:** https://www.sqlite.org/fileformat2.html
+- **[S21] Current Linux block volatile writeback/FUA semantics:** https://docs.kernel.org/block/writeback_cache_control.html
+- **[S22] SQLite synchronous FULL/EXTRA and WAL vs rollback journal modes:** https://www.sqlite.org/pragma.html
 
 **Interpretation:** Official external documents describe existing systems and standards. They do not prove UniOS safety or authorize copying third-party filesystems. License/provenance review is separate from selecting a design idea. Actual device behavior and correctness require verified platform-specific evidence.
 
 ---
 
-**History:** 2026-10-24 — RFC-008 v0.1 Proposed Specification drafted for architecture research; no code, filesystem implementation, driver, boot, disk formatting, hardware experiment, power interruption test, model checking or validated performance result.
+**History:** 2026-10-24 v0.1 initial draft remains in Git history. 2026-10-24 v0.2 adversarial correction: orthogonal design axes, checkpoint barriers and pinned WAL, rollback journal namespace durability, error evidence lifetime, PSOW/atomicity, exact-version bugs and conditional hardware receipt. No code, drivers, filesystem implementation, boot/disk operations, tests or model proof.
