@@ -1,6 +1,6 @@
 # UniOS RFC-003 — IPC Wire Protocol & Synchronization
 
-> **Status:** Proposed — Specification v0.1 (미승인·미검증)
+> **Status:** Proposed — Specification v0.2 (재검토 개정·미승인·미검증)
 > **Date:** 2026-10-24 (NZDT)
 > **Scope:** IPC 메시지, Kernel Envelope/Service Wire, Channel/ReplyToken/Event/WaitSet, 핸들 MOVE, 원자성, 시간 제한, 취소, backpressure, 장애 복구와 검증
 > **Baseline:** [Architecture v0.2](../architecture/unios-architecture-v0.2.md); [RFC-001 v0.2](rfc-001-kernel-boundary-and-tcb.md); [RFC-002 v0.2](rfc-002-object-capability-lifetime-delegation-revocation.md)
@@ -8,7 +8,9 @@
 
 ## 0. Executive recommendation
 
-**권장 연구 기준선 IPC-A:** bounded asynchronous Channel + one-shot ReplyToken + Event/WaitSet + optional shared MemoryObject. 커널은 메시지 전달과 보호·소유권·회계·대기/깨우기를 수행하고, 파일/네트워크/GUI/Windows/Linux/Darwin 의미론이나 복잡한 RPC 파서는 user-space SABI 서비스에 배치한다.
+**권장 연구 기준선 IPC-A:** bounded asynchronous Channel (**E1 단일 소유 Endpoint 연구안**) + one-shot ReplyToken + Event/WaitSet (**W1/W2 관찰 계약 비교**) + optional shared MemoryObject. 커널은 메시지 전달과 보호·소유권·회계·대기/깨우기를 수행하고, 파일/네트워크/GUI/Windows/Linux/Darwin 의미론이나 복잡한 RPC 파서는 user-space SABI 서비스에 배치한다.
+
+**v0.2 변경:** Endpoint 소유권, 수신 커밋 전 데이터 공개, ReplyToken과 Supervisor 인스턴스의 구별, WaitSet observer 수명, backpressure의 busy retry 및 Channel 순환을 강화한다.
 
 이 모델이 최적이라고 **확정하지 않는다**. IPC-B는 seL4 유사 rendezvous-first synchronous endpoint, IPC-C는 completion-queue 중심 asynchronous RPC/port를 비교 기준선으로 유지한다. IPC-A의 커널 queue/reply/receipt/WaitSet 객체 수 증가와 동시성 리스크를 모델 검사·향후 성능 비교로 정당화할 수 없으면 단순화하거나 IPC-B/C를 다시 심사한다.
 
@@ -56,9 +58,9 @@
 | seL4 IPC [S1] | 동기 endpoint, Send/Recv/Call/Reply, cap transfer, badge와 small-message fastpath | rendezvous와 one-shot reply의 작은 TCB·성능 기준 |
 | seL4 MCS [S2] | scheduling context, passive server, reply object, 시간 예산 기부 | IPC 답장과 CPU budget 반환·timeout은 결합될 수 있으나 RFC-005 합동 검증 필요 |
 | seL4 Notification [S3] | signal coalescing, OR된 badge, shared memory notification | 알림은 정확한 메시지 수가 아니라 상태·힌트 |
-| Zircon Channel [S4,S5] | Channel queue 내 bytes 및 handles 전송과 수신 handle 설치, 두 endpoint | GUI/파일 서비스의 일반적 비동기 IPC 모델 |
+| Zircon Channel [S4,S5] | 양방향 queue의 bytes/handles 이동; **Channel Endpoint는 복제할 수 없는 단일 owner handle** | UniOS의 다중 Task 동일 Endpoint 소유를 E2 별도 연구로 분리 |
 | Zircon Channel Call [S6] | transaction ID 응답 매칭, timeouts/late reply 관련 주의 | 숫자 ID 재사용만으로 잘못된 늦은 응답을 막지 못함 |
-| Zircon Wait/Signals [S7,S8] | READABLE/PEER_CLOSED 및 비동기 wait 등록, stale readiness | wake 후 조건 재검사, register/close race 검증 |
+| Zircon Wait/Signals [S7,S8] | 비동기 observer가 packet enqueue 후 종료되는 **one-shot zx_object_wait_async** | UniOS의 persistent-level WaitSet과 동일하지 않으므로 W1/W2 비교 |
 | Fuchsia FIDL [S9,S10] | service ordinals/version/unknown interaction/transaction header | SABI IDL·wire format은 kernel native syscall ABI와 분리 |
 
 **참고 사실과 UniOS 제안을 구별한다.** 특히 seL4 rendezvous와 Zircon 기본 write의 handle consume-on-error는 UniOS의 proposed IPC-A와 동일하다고 가정하지 않는다.
@@ -100,16 +102,18 @@ Service의 versioned protocol은 필요한 경우 method_id, protocol_id/version
 | MemoryObject | typed MAP/READ/WRITE/EXECUTE scope | Channel SEND만으로 무단 map |
 | ResourceBudget | ALLOCATE, OBSERVE, DELEGATE 범위 | 크기만으로 다른 Task 자원 취득 |
 
-**초기 권고:** Channel 전송은 MOVE-only. COPY를 원하는 송신자는 RFC-002 DERIVE로 별도 자식 grant를 만든 뒤 해당 새 grant를 MOVE. 원본 권한·계보·revoke anchor는 보존. 별도 DUPLICATE_IN_SEND는 성능상 필요성이 입증되기 전까지 보류. 이 역시 확정 API가 아니라 비교 기준.
+**초기 권고:** 메시지 내 Capability 이동은 MOVE-only. COPY하려면 RFC-002 DERIVE로 새 grant를 만든 뒤 MOVE. **E1 ChannelEndpoint 자체는 DERIVE/DUPLICATE 불가 타입**으로 제안. 원본 권한·계보·revoke anchor는 보존. 별도 DUPLICATE_IN_SEND는 성능상 필요성이 입증되기 전까지 보류. 이 역시 확정 API가 아니라 비교 기준.
 
 ## 5. Bounded Channel & ordering
 
-- 두 endpoint를 가진 full-duplex Channel의 **방향별 유한 큐** 후보. Endpoint handle이 여러 Task로 파생·이전될 수 있으므로 handle 하나 close가 상대 peer-closed를 의미하지 않는다.
+- 두 Endpoint를 가진 full-duplex Channel의 방향별 유한 큐 후보. **E1 프로파일에서는 Endpoint당 유효 소유 handle이 하나**이고, 동일 Task의 스레드끼리 공유 가능하지만 Task 간에는 MOVE로만 이전한다. E2 다중 Task 소유는 별도 제안. in-transit Endpoint와 이미 허가된 invocation reference는 handle table 소유권과 수명이 다르다.
 - 한 방향의 성공적으로 커밋된 메시지에 대해 FIFO total order. Multi-core concurrent sender는 서로 경쟁하며 **커밋 순서**가 순서를 정의한다. 반대 방향과 다른 Channel 간 global ordering 없음.
 - 한 queue record는 bytes + move된 kernel caps metadata + sponsor charge를 하나의 단위로 취급. Receiver는 모든 handles가 설치되거나 아무것도 설치되지 않는다.
 - Readiness는 같은 queue에 대한 다른 receiver가 먼저 소모하면 사라질 수 있는 상태. IPC-A는 Peek 이후 레이스가 가능하므로 repeated receive에 WOULD_BLOCK가 정상.
 - Queue messages는 **비영속**. 전원 재시작, 서비스 crash, endpoint Abort는 재전송·durable commit을 보증하지 않는다.
-- Gratuitous global peer-name lookup, implicit cap on registry search, hidden privilege inheritance를 금지한다.
+- 임의 peer-name lookup/registry에서의 암묵적 cap 발급과 hidden inheritance를 금지한다.
+- **송신에 이용하는 Endpoint 자신을 동일 메시지의 MOVE 목록에 넣는 것을 금지**한다. Cross-channel cycle은 bounded iterative reclaim 또는 초기 기능 제한 필요.
+- Endpoint MOVE와 이미 시작된 send/receive/close는 선형화/인용 참조 수명 계약이 있어야 한다.
 
 ### 5.1 송신 전이
 
@@ -159,8 +163,8 @@ Zircon의 기본 zx_channel_write는 성공·실패 모두 전달 handle을 소�
 
 ### 6.2 비교할 receive 전략
 
-- **RCV-A ReceiveEscrow 후보:** 한 Task의 커널 관리 staging/claim과 authenticated status를 통해 partial copyout·interrupted return을 복구. Kernel escrow retention/quota 증가 우려가 있으므로 검증 필요.
-- **RCV-B copy-before-commit:** 모든 bytes를 먼저 복사, 그 뒤 handle table 설치+dequeue. copy 단계에서 user buffer의 부분 변경은 가능하고 메시지는 아직 큐에 있음. race/fault와 data consistency 별도 설계.
+- **RCV-A ReceiveEscrow 후보:** 한 Task의 독점 Claim 및 kernel-managed staging/receipt 후보. 사용자 버퍼 공개 이전 Claim/권한 인가를 별도로 정의하고 Task death/revoke/timeout과 copyout 실패의 상태 전이를 검증. Kernel escrow retention/quota 증가는 별도 P0.
+- **RCV-B copy-before-commit:** **hostile receiver 모델에서 기본 기각.** 사용자 메모리에 payload를 공개하면 receive commit이 실패해도 회수할 수 없다. 다른 receiver가 같은 message를 소비할 수 있다. 독점 Claim과 권한 인가, 공개 자체의 커밋 의미, 실패 시 노출 범위를 증명하지 않는 한 채택 금지.
 - **RCV-C register-only small IPC:** 인라인 메시지를 register-return에 제한해 copyout 혼란 감소, bulk는 MemoryObject 경로에서 처리. 범용 데스크톱 프로토콜에 불편할 수 있음.
 
 **P0 보류:** RCV-A/B/C의 정확한 선택, in-kernel lock order, usercopy fault 중 Pager 재진입, 다중 수신자 레이스. Invalid user pointer 때문에 커널 패닉/권한 상승/자기 pager 교착이 발생하지 않아야 한다.
@@ -176,7 +180,7 @@ Server:             Receive -> Work -> Reply(token) -> TokenConsumed
                                \-> Dies / TokenRevoked / LateReplyRejected
 ~~~
 
-Kernel이 승인된 Call을 위해 만들고 범위를 제한한 ReplyToken은 **특정 client Task/Thread, request incarnation, service scope**에 결박되어야 한다. Server가 임의 숫자를 조작해 타 Task의 request에 응답하거나 여러 번 reply를 수신한 것처럼 꾸밀 수 없어야 한다.
+Kernel이 승인된 Call을 위해 만든 ReplyToken은 **client Task/Thread, request generation, kernel Endpoint object/generation, grant scope**에 결박한다. Supervisor의 service incarnation/registry 이름을 커널이 해석할 필요는 없다. 새 서비스에 옛 kernel grant를 발행하지 않는 것은 Supervisor의 별도 책임. Server가 임의 숫자를 조작해 타 Task의 request에 응답하거나 여러 번 reply를 수신한 것처럼 꾸밀 수 없어야 한다.
 
 - ReplyToken은 one-shot. reply commit, client death, scoped revoke, 명시적 close 등으로 상태가 전이됨.
 - Server가 async worker에 위임하려면 기본적으로 **같은 service incarnation 안의 최소 scope WorkerTransfer**만 연구하고 무조건 임의 Task로 넘기는 것은 금지.
@@ -200,12 +204,12 @@ seL4 MCS는 Call/Reply와 CPU Scheduling Context를 연결한다 [S2]. 그러나
 
 ### 8.1 Level-triggered readiness proposal
 
-WaitSet의 초기 후보는 **level-triggered readiness** + registration generation. Channel READABLE/WRITABLE, PEER_CLOSED, Event signaled, deadline/timer, service generation lost, cancelled wait 등을 *각 object 타입에서 정의한 조건*으로 관찰한다.
+WaitSet은 **level-triggered 상태 조건** + registration generation을 후보로 하되, **W1: one-shot observer+rearm** 또는 **W2: persistent-level observer+coalesced ready-set**을 별도로 비교한다. Zircon zx_object_wait_async는 W1의 예이며 W2와 동등하지 않다. Channel READABLE/WRITABLE, PEER_CLOSED, Event signaled, deadline/timer, service generation lost, cancelled wait 등을 *각 object 타입에서 정의한 조건*으로 관찰한다.
 
 - register + 상태 확인 + arm 사이의 lost-wakeup 경합을 하나의 atomic synchronization discipline으로 해결해야 함.
 - readiness를 관찰했어도 다른 receiver가 큐를 먼저 비울 수 있다. Receive가 WOULD_BLOCK을 반환하면 다시 조건을 확인해야 함.
 - unregister/close/revoke 후 queue에 남은 이벤트는 registration generation/epoch로 stale delivery 방지.
-- 중복 등록 또는 event storm은 per-Task/WaitSet quota 적용. Packet을 정확히 한 번 수신한다는 근거 없는 약속 금지.
+- 중복 등록/event storm은 per-Task/WaitSet quota 적용. W1 재등록의 missed wake, W2의 계속 true인 조건으로 인한 spinning/repeated packets, close 후 stale completion을 각자 검토한다. Exactly-once event 보장 금지.
 - edge-triggered mode는 rearm 누락과 lost-wakeup 리스크가 커서 별도 재검토 후 선택.
 
 ### 8.2 Event notification은 counting semaphore가 아니다
@@ -231,7 +235,8 @@ Deadline은 monotonic source 기반. 시간 단위·absolute vs relative·suspen
 | shared MemoryObject maps/pins | object sponsor + consumer mapping charges | oversized zero-copy/copy-on-write pressure |
 | wired Pager/Boot emergency path | independent reserved pool | total service deadlock |
 
-- **Queue full ≠ Peer closed.** WOULD_BLOCK/QUOTA_EXCEEDED/PEER_CLOSED가 명확히 구분되어야 함.
+- **Queue full ≠ Peer closed.** WOULD_BLOCK/QUOTA_EXCEEDED/PEER_CLOSED를 구별한다. Zircon IPC limit는 정책 예외를 사용할 수 있어 UniOS WOULD_BLOCK와 동일하지 않다 [S13].
+- WOULD_BLOCK tight retry는 livelock/DoS가 될 수 있다. SDK는 bounded backoff·wait readiness·SABI credits/cancellation을 검토하고, WRITABLE이 모든 크기의 메시지 성공을 보장한다고 주장하지 않는다.
 - 커널 자체 대기에서는 취소/권한 회수/peer death 중도 해제 가능해야 하며 unbounded lock hold/recursive queue drain 금지.
 - 예약 charge는 commit 전에 확보하며, commit 이후에는 실제 queue/references/cleanup이 끝날 때만 해제.
 - FIFO ordering만으로 서로 다른 sender 간 starvation이 사라지지 않는다. Per-producer budget/credit 또는 fair scheduling 후보 평가.
@@ -242,16 +247,16 @@ Deadline은 monotonic source 기반. 시간 단위·absolute vs relative·suspen
 
 ### 10.1 Endpoint close vs peer closed
 
-하나의 endpoint handle을 닫았어도 동일 endpoint의 다른 legitimate handle/in-transit grant가 존재하면 peer가 닫혔다고 단언할 수 없다. 마지막 유효 endpoint 참조와 kernel queue/fault references의 관계를 정의해야 한다.
+E1에는 동일 endpoint의 복제 handle이 없지만, endpoint가 **in-transit**이거나 허가된 kernel invocation reference가 존재하는 상태와 Task-local handle 종료는 다르다. PEER_CLOSED는 최종 참조·상태 기계를 고려해 정의한다. 마지막 유효 endpoint 참조와 kernel queue/fault references의 관계를 정의해야 한다.
 
-- **Graceful shutdown 후보:** 새 send를 차단하고 이미 커밋된 inbound queue를 drain한 후 EOF/PEER_CLOSED 관측.
+- **Graceful shutdown 후보:** 새 send를 차단하고 커밋된 inbound queue를 drain한 뒤 EOF/PEER_CLOSED 관측. 단, 대상 큐 방향·timeout/abort escalation 필수. Zircon의 마지막 endpoint close는 해당 endpoint의 unread queue를 파기한다 [S4].
 - **Abort/Task kill 후보:** 남아 있는 queue 메시지를 취소·폐기, cap lineage 및 charges 정리; caller remote side effect 결과는 UNKNOWN일 수 있음.
 - 구현이 둘을 명시하지 않는 한 graceful flush를 보증할 수 없다.
 - 큐에 이동한 handles는 Kernel의 in-transit references이며 상대 앱 Task kill에 의해 자동으로 최초 송신자에게 복귀하지 않는다.
 
 ### 10.2 Service incarnation isolation
 
-Supervisor/launcher가 승인한 새로운 service instance는 **새 endpoint/cap grant와 generation**을 받는다. Old ReplyToken/WaitRegistration/completion은 새 instance와 결합되지 않음. Registry 이름이 같다는 사실은 권한도 세대도 같다는 뜻이 아니다.
+Supervisor/launcher가 승인한 새로운 service instance는 **새 endpoint/cap grant와 generation**을 받는다. Kernel object generation과 user-space service incarnation은 별개로 구분하고 옛 권한이 새 instance로 자동 연결되지 않게 한다. Old ReplyToken/WaitRegistration/completion은 새 instance와 결합되지 않음. Registry 이름이 같다는 사실은 권한도 세대도 같다는 뜻이 아니다.
 
 Client가 재시도하려면 명시적 re-discovery 및 새 grant가 필요. 이미 commit된 파일/외부 부작용이 불확실하면 서비스 내 transaction ID와 내구적 recovery 정보로 확인해야 한다. Kernel의 완료 통지는 durable storage acknowledgement가 아니다.
 
@@ -303,7 +308,7 @@ Driver.Call(Pager) -> Pager.Call(BlockDriver) => bootstrap deadlock risk
 
 Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Native SDK 오류 코드/상수/시그니처는 RFC-009/018.
 
-## 14. Invariants: 26 proof obligations, 모두 Proposed
+## 14. Invariants: 32 proof obligations, 모두 Proposed
 
 | ID | 검증해야 할 불변식 |
 |---|---|
@@ -333,6 +338,12 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 | IPC-24 | cleanup/wait/revoke 경로의 kernel lock hold와 queue drain은 bounded. |
 | IPC-25 | Linux/Windows/Darwin guest 권한 숫자가 native IPC grant를 자동 부여하지 않음. |
 | IPC-26 | Unknown/malformed SABI method는 kernel/object ownership 또는 memory isolation을 우회하지 못함. |
+| IPC-27 | E1 Endpoint 단일 소유는 Task 간 MOVE와 in-flight syscall의 선형화로 유지된다. |
+| IPC-28 | User buffer payload 공개는 독점 Claim/권한 인가로 정당화되며 미완료 receive에서 기밀 데이터가 중복 노출되지 않는다. |
+| IPC-29 | Kernel ReplyToken generation과 Supervisor service incarnation 혼동이 stale 권한을 새 서비스로 확대하지 않는다. |
+| IPC-30 | WaitSet W1/W2 각각 재등록/지속 알림, stale packet, 중복 observer와 busy-loop 규칙이 명확하다. |
+| IPC-31 | WOULD_BLOCK busy retry와 queue/credit 제한을 악용한 무제한 privileged work 또는 critical reserve 고갈이 방지된다. |
+| IPC-32 | 동일 send에서 송신 Endpoint 자체 MOVE가 차단되고 순환 Endpoint graph에 bounded cleanup 또는 제한 정책이 존재한다. |
 
 각 속성은 전제(지원 CPU/펌웨어/잠금/메모리), 실패 모드 및 수학적/테스트 검증 방법을 명시해야 한다. 아직 formal verification이나 running test를 통과한 속성은 하나도 없다.
 
@@ -404,7 +415,7 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 
 **P0 공동 리뷰 묶음:** (RFC-002+003+009) Commit/result ambiguity; (003+004+006) Pager fault/deadlock; (003+005) Reply/CPU donation; (002+003+007) in-transit cap vs DMA revoke.
 
-## 19. Open issues (20)
+## 19. Open issues (26)
 
 | ID | Priority | Unresolved decision | Cross-RFC |
 |---|---|---|---|
@@ -428,23 +439,52 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 | I3-18 | P1 | Strict/flexible SABI schema upgrade and idempotent reconnect? | 016/018 |
 | I3-19 | P1 | Native errors vs guest errno/NTSTATUS, no kernel UAPI pollution? | 009/010/011 |
 | I3-20 | P2 | DMA/IO rings, fastpath and co-location after evidence? | 003/007/013 |
+| I3-21 | P0 | E1 exclusive Endpoint vs E2 multi-owner, handoff and service fan-in? | 002/003/006 |
+| I3-22 | P0 | Receive pre-commit disclosure/Claim and copyout racing other readers? | 002/003/004/009 |
+| I3-23 | P0 | Kernel ReplyToken vs Supervisor service incarnation, stale reply rights? | 002/003/006 |
+| I3-24 | P0 | WaitSet W1 one-shot vs W2 persistent, rearm/lost wake/stale packets? | 003/005 |
+| I3-25 | P0 | Async queue flow control, sender credits, WOULD_BLOCK livelock/fairness? | 002/003/015 |
+| I3-26 | P0 | Self endpoint MOVE and cyclic ownership, bounded nonrecursive cleanup? | 002/003/006 |
 
-## 20. Decision proposals (12, not yet Accepted)
+## 20. Decision proposals (16, not yet Accepted)
 
-- **IPC-D01:** IPC-A bounded asynchronous Channel + one-shot ReplyToken + Event/WaitSet is a research default; IPC-B/C remain contenders.
+- **IPC-D01 [revised]:** IPC-A bounded Channel with E1 exclusive Endpoint, one-shot ReplyToken and W1/W2 WaitSet research is baseline; E2/IPC-B/C remain alternatives.
 - **IPC-D02:** Kernel Envelope and versioned user-space SABI/IDL must remain distinct; no guest syscall semantics inside native kernel IPC.
 - **IPC-D03:** Small control messages transfer kernel-verified scoped cap metadata; exact wire layout/count is not frozen.
 - **IPC-D04:** Send queue append and sender handle removal have one commit; receive install/dequeue is a separate commit.
 - **IPC-D05:** Precommit failure retains sender handles; committed/lost result requires protected status or fail-closed handling.
 - **IPC-D06:** Kernel-origin scoped one-shot ReplyToken is an initial hypothesis to block late-response confusion.
 - **IPC-D07:** Timeout/local cancellation cannot be represented as rollback of remote effects.
-- **IPC-D08:** Prefer level-triggered readiness + registration generations; Signal is not a precise message counter.
+- **IPC-D08 [revised]:** Prefer level-ready conditions with registration generation, but select W1 one-shot/rearm vs W2 persistent before ABI freeze; Signal is not a precise count.
 - **IPC-D09:** Every queue, Reply, ticket, WaitSet, transit cap has bounded sponsor budget, with protected critical reserves.
 - **IPC-D10:** MemoryObject is optional bulk-data path, not universal zero-copy/safety proof.
 - **IPC-D11:** Service incarnations and old scopes are distinct, reconnection requires explicit new grants.
 - **IPC-D12:** Budget donation and fast-path optimizations are deferred to RFC-005 and evidence-driven later decisions.
+- **IPC-D13 [new]:** E1 ChannelEndpoint는 복제/파생 불가, 자기 전송 MOVE 금지; E2 멀티소유는 별도 연구.
+- **IPC-D14 [new]:** RCV-B receive-before-commit usercopy는 독점 Claim/권한 보장이 없으면 채택 금지.
+- **IPC-D15 [new]:** ReplyToken kernel scope와 Supervisor service incarnation은 분리.
+- **IPC-D16 [new]:** W1/W2, flow control과 cyclic endpoint cleanup의 liveness를 IPC-A 승인 전 검증.
 
 **Status discipline:** These are Proposed Specification choices only. D1–D8 and ADR-002 stay Accepted — Direction; RFC-001/002 baseline is not silently amended. This RFC does not mean kernel code, ABI, hardware support, verified security or implementation Go.
+
+## 22. Critical re-review record: v0.1 → v0.2
+
+**Evidence and limits:** Official seL4 IPC/MCS, Zircon Channel/Read/Call/Wait and IPC Limits were checked alongside RFC-001/002. This is a document-level adversarial counterexample review, NOT formal verification, independent audit, implementation or performance validation.
+
+| Finding | v0.1 vulnerability | v0.2 research change |
+|---|---|---|
+| Channel ownership | Assumed duplicated/shared Endpoint is ordinary | E1 exclusive-ownership candidate, E2 optional |
+| Receive data secrecy | Bytes can leak to loser of receive race before commit | Claim/auth before user disclosure; RCV-B default rejected |
+| Service identity | Kernel ReplyToken could be tied to user-space registry identity | Scope Kernel object/generation separately from Supervisor incarnation |
+| Wait observation | Zircon one-shot wait mistaken for persistent Level WaitSet | W1 one-shot rearm vs W2 persistent level |
+| Async memory pressure | Queue bounds / WOULD_BLOCK alone imply stability | IPC limits, flow control, no tight retry, critical reservation |
+| Endpoint self-transfer | Sender endpoint could be moved in own send; cycles unclear | Reject self MOVE, cycle proof or feature gate |
+| Graceful shutdown | Drain direction/deadline not stated | Explicit grace/abort escalation and in-transit state |
+| Source behavior | Zircon policy exception differs from UniOS errors | Mark external documentation vs independent UniOS proposal |
+
+**Proof blockers:** E1 MOVE vs concurrent invocation; claim/disclose/dequeue with untrusted usercopy; W1/W2 wait register race; bounded receipt/ticket and Reply lifecycle; end-to-end flow-control; Task kill with cyclic endpoints. These must be tested using model checking and later separately approved fault injection. Never treat a design invariant as a proven feature.
+
+**Decision:** Retain IPC-A as conditional baseline. RFC-002 type-specific capability rights allow ChannelEndpoint nonduplication as a candidate without changing D1–D8. Kernel/SDK code unchanged; RFC-003 remains Proposed Specification.
 
 ## 21. Official primary sources (checked 2026-10-24)
 
@@ -460,9 +500,11 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 - **[S10] FIDL wire format:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/wire-format
 - **[S11] Zircon zx_channel_write_etc:** https://fuchsia.dev/reference/syscalls/channel_write_etc
 - **[S12] Zircon zx_object_wait_one:** https://fuchsia.dev/reference/syscalls/object_wait_one
+- **[S13] Fuchsia Zircon IPC Limits:** https://fuchsia.dev/fuchsia-src/concepts/kernel/ipc_limits
+- **[S14] Zircon zx_channel_read:** https://fuchsia.dev/reference/syscalls/channel_read
 
 **Research quality note:** External source documentation is evidence about external platforms only. UniOS-specific protocols, error states, budgets and security invariants are novel design proposals and have no runtime/formal/benchmark validation. No third-party kernel source was imported.
 
 ---
 
-**Document history:** 2026-10-24 — RFC-003 v0.1 research draft registered on main for versioned review. No OS code or implementation status changes.
+**Document history:** 2026-10-24 v0.1 initial study (Git history retained). 2026-10-24 v0.2 corrections of ownership, confidentiality, WaitSet/reply scopes, pressure and lifecycle; documentation only.
