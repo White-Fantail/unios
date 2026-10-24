@@ -1,6 +1,6 @@
 # UniOS RFC-018 — Versioned IDL, ABI Evolution & Compatibility Contracts
 
-> **Status:** Proposed — Specification v0.1 (design research only; NOT Accepted, implemented, stable ABI, wire-format frozen, compiler-generated, benchmarked or formally verified)
+> **Status:** Proposed — Specification v0.2 (independent adversarial re-review; NOT Accepted, implemented, stable ABI, wire-format frozen, compiler-generated, benchmarked or formally verified)
 > **Date:** 2026-10-25 NZDT
 > **Architecture direction:** [UniOS v0.2](../architecture/unios-architecture-v0.2.md); accepted D1–D8 direction is NOT detailed acceptance of this protocol.
 > **Required RFC coordination:** [RFC-002 Capabilities](rfc-002-object-capability-lifetime-delegation-revocation.md), [RFC-003 IPC](rfc-003-ipc-wire-protocol-and-synchronization.md), [RFC-004 Pager](rfc-004-virtual-memory-pager-cache-and-oom.md), [RFC-005 Scheduling](rfc-005-scheduling-preemption-and-cpu-budget.md), [RFC-006 Boot](rfc-006-boot-trust-chain-service-startup-and-recovery.md), [RFC-008 Storage](rfc-008-storage-filesystems-and-crash-durability.md), [RFC-009 KABI/SABI v0.2](rfc-009-native-abi-and-system-call-contract.md), [RFC-010 Linux Personality v0.2](rfc-010-linux-personality-and-binary-compatibility.md), [RFC-017 Verified Boot v0.2](rfc-017-verified-boot-updates-and-rollback-protection.md).
@@ -21,6 +21,8 @@ Core recommendation consists of seven separations:
 7. **Storage DataVolume metadata**: persistent crash-durable schema/version and migration graph under RFC-008, not an ephemeral RPC wire version.
 
 **No selection of exact encoding, wire word endian, field-number space, 64-bit IDs, status numeric values, C structure offsets, generated compiler or TUF/canonical manifest signature bytes in v0.1.** The prose includes candidate logical fields, **not** implementation signatures.
+
+**v0.2 corrections:** (a) a completed kernel MOVE cannot be undone by a later userspace decode failure; unknown transferred resources must be accounted for and settled; (b) a delegable Endpoint bearer cap doesn't authenticate the original human or actual caller, so identity-sensitive services need kernel/issuer-attested provenance or must treat every holder as equivalent; (c) negotiations are bound to Endpoint, service incarnation, server authorization policy epoch and agreed resource schema, not a mutable service name; (d) a flexible unknown value differs from an unknown resource and binary-to-JSON Protobuf conversion can lose unknown fields; (e) signed boot bytes must have consistent schema/parser/domain semantics; (f) unknown effects are not automatically safe Linux errno or success.
 
 **Decisive safety rule:** Ability to parse a new message does NOT imply permission to act on a new grant; an unknown field may carry a capability, an authorization restriction, a durability requirement or a new result state. Ignoring it can leak authority or falsify success. Flexible evolution must be opt-in, bounded and only where semantics remain safe for older clients.
 
@@ -64,18 +66,18 @@ Power loss/service death may happen after a message COMMITTED or a file rename a
 
 | Official reference | Technical evidence | Proposed UniOS lesson |
 |---|---|---|
-| Fuchsia FIDL language [S1] | protocols distinguish open/ajar/closed unknown interactions and strict/flexible methods | choose unknown method policy explicitly; security-sensitive changes must not be silently accepted |
-| Fuchsia FIDL wire [S2] | envelopes include byte and handle counts allowing unknown-field skipping; handle payload not just integer bytes | unknown handle roles need precise consumption/rejection and lossless resource accounting |
+| Fuchsia FIDL language [S1,S17] | closed/ajar/open protocol and strict/flexible interactions differ; flexible unknown value types cannot safely admit unknown handles | unknown method/resource policy must distinguish data-only from resource and one-way from two-way |
+| Fuchsia FIDL wire [S2,S18] | envelopes provide byte and handle counts; unknown content can be skipped only with handling of transferred resource handles | post-MOVE decoder rejection cannot restore a sender's already moved handles |
 | Fuchsia FIDL API rubric [S3] | resources affect flexible unions/evolution, strict to flexible takes coordinated API windows | resource-bearing schema extension is harder than plain optional value fields |
 | Fuchsia Zircon Channels [S4] | kernel transfers actual handles independently from message bytes | maintain UniOS E1 NOT_COMMITTED and ReceiveClaim; DO NOT import Zircon failure-ownership contract |
-| Protobuf proto3 language [S5] | field numbers and enum values should be reserved and not reused; unknown field preservation differs by conversion | reserve tombstones; unknown byte preservation does NOT equal semantic authorization |
+| Protobuf proto3 language [S5,S19] | unknown binary fields may survive binary decoding, but ProtoJSON does not preserve unknown fields; reserved numbers/names differ | no safe opaque critical-field forwarding through arbitrary JSON/field-copy bridge |
 | Protobuf non-canonical serialization [S6] | deterministic serialization is not generally canonical, schema/runtime versions can alter bytes | no blind signing/hash over generic proto output for BootPolicyManifest |
 | Cap'n Proto schema evolution [S7] | ordinals and additive evolution rules; some compatible changes alter canonical encoding | separate parse compatibility from byte-for-byte signed identity |
 | Cap'n Proto canonical encoding [S8] | canonical form exists but default encoder need not output it | canonical input validation and exact signed bytes are separate |
 | Apache Thrift IDL [S9] | required fields hinder soft evolution; absent/default values change semantics | use explicit requiredness/field presence, avoid security defaults |
 | gRPC statuses [S10] | DEADLINE_EXCEEDED can occur after state change completed | deadline not remote rollback; effect phase belongs to service semantics |
 | gRPC cancellation [S11] | cancellation doesn't automatically interrupt all server handler computations | no blanket cancellation/undo or automatic replay |
-| CBOR RFC 8949 [S12] | deterministic encoding possible with specific map ordering/duplicate validation rules | consider restricted signed policy subset, not generic "CBOR is canonical" |
+| CBOR RFC 8949 [S12] | core deterministic key order differs from legacy length-first ordering; duplicate keys and key equivalence need strict decoder policy | a signed profile must mandate duplicate rejection, ordering, allowed tag/float forms and parser equivalence |
 | Linux ABI stability docs [S13] | several stability tiers and explicit userspace compatibility promises | UniOS Experimental/Supported/Stable must name scope and maintenance rules |
 | Fuchsia FIDL language strict/flexible evolution [S14] | unknown union/member and method reaction differ from unknown data field | strict security envelope, flexible only safe cases |
 | UniOS RFC-002/003/009/010/017 [local] | live cap transfer and lifetime, IPC receipt, separate ABI and boot chain | SABI cannot change kernel authority, guest semantics or signed boot floor |
@@ -132,9 +134,13 @@ Changing a SABI method ordinal does not change a Linux syscall number. Raising t
 
 An app discovers a protocol name and receives an Endpoint capability only from an authorized launcher/portal/registry carrying kernel-issued scoped authority. Strings, publisher signatures, service badges in user bytes and guessed endpoint numeric IDs cannot create rights. A compromised registry might serve malicious metadata; the client must hold an authenticated Endpoint origin (or rely explicitly on the trusted issuer/portal provenance) when deciding whether to submit secrets or transferable handles.
 
+**Delegation/confused deputy correction:** a bearer Endpoint proves a granted operation ceiling but does NOT automatically reveal original user identity, request origin or provenance through forwarding. If service policy needs identity, require independently trusted kernel/issuer per-call metadata or design bearer-only policy that treats all valid holders equivalently. Reject sender-authored caller ID, PID or purported issuer as authentication. Holder, sponsor, original grant creator, actual caller and issuer can differ.
+
 A service incarnation/identity binds endpoint generation and optional request namespace to a concrete running process. A restart may preserve a *logical service name* but MUST NOT automatically accept old one-shot ReplyToken, cap escrow, stale WaitSet registration or unverified prior effect receipt as new; durable reconciliation requires separate evidence.
 
 ### 4.2 Negotiation: capability is a ceiling, protocol is a filter
+
+**Session-binding correction:** negotiate with the concrete Endpoint grant and service incarnation plus server authorization-policy epoch, resource-role schema and required feature floor. Previously negotiated metadata cannot survive revocation, service restart or policy/issuer change automatically; verify current live grants and policy at each effectful method. Do not trust a cached handshake flag as lasting authorization.
 
 Candidate negotiation happens on an already-issued authorized Endpoint. Each side expresses supported versions/features (major/minor/required feature set), selected method family and resource schema generation within finite bounds. Actual effective authority = kernel grant's rights and scope **intersected with** the trusted service's method policy and caller-specific authorization. **Never union grants from independently reported features.**
 
