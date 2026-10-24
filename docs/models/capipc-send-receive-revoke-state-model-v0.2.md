@@ -89,3 +89,129 @@ An untrusted B cannot supply a boolean, hash, guessed SessionID or replayed veri
 If B is permitted to read plaintext payload during validation, then B may leak that payload even while the associated grant is inert. If a verifier fails after payload visibility, no automatic foreign requeue remains the proposed confidentiality rule. If a verifier stalls while an escrow holds scarce caps, liveness/resource accounting becomes more complex; M0 recovery cannot depend on that verifier. T2 doesn't make an earlier external file write reversible.
 
 **Interim judgment:** compare T1 and T2 against *specific* privileged service threats, not general performance marketing. No measured CPU/memory/latency exists and no implementation is authorized.
+
+
+## 4. Revised receive cuts: Metadata, Payload, TokenPublication, Install, Activation
+
+### 4.1 Proposed temporal relation, NOT a kernel execution recipe
+
+~~~text
+Issuer grants scoped Endpoint half and eligible audience
+    |
+K-S: sender bytes and moved caps committed to kernel queue
+    |
+K-C: exclusive receive claim for eligible TaskGeneration/EndpointGeneration
+    | (kernel can still reject undersized buffers or unauthorized claims)
+    +-- K-Vm: optional metadata release (if issuer allows it)
+    |
+Private receiver staging / cap-slot reservation / current B/policy recheck
+    |
+K-Vp: conservatively mark payload POSSIBLY EXPOSED before first store/map
+    |
+User-visible payload copy may fault or reveal only a prefix
+    |
+    +-- separate token publication / cap install order MUST be specified:
+    |      token written but grant not yet installed?
+    |      grant installed but token not completely written?
+    |      caller loses receive result after either of those?
+    |
+K-I: all or none receiver cap grants installed + queue retired (T1)
+    |
+T2 only: inert escrow -- trusted role check -- K-U with LIVE revalidation
+    |
+S-A: service independently authorizes any external method effect
+
+At any cut: Revoke B, Endpoint MOVE, Task death, Service restart,
+             user page fault, caller timeout, device DMA fence failure.
+~~~
+
+**No hard-coded B1/B2 order yet.** A single “atomic handle installation” operation says nothing about atomically copying N public handle numbers into a concurrently readable, pageable user array. A kernel must reserve recipient slots and clearly define the point when previously returned or visible token bytes begin to authorize operations. That can require additional indirection/tombstones or an escrow-like state even in otherwise T1 receive. Merely reserving memory and not holding a global lock across faults is necessary, not sufficient.
+
+### 4.2 Token publication counterexamples
+
+| Candidate order | Failure cut | Safety/liveness issue still to settle |
+|---|---|---|
+| **Token-first:** write public handle number array, then K-I installs active caps | first 1 of 2 tokens visible, later usercopy faults | token bytes were disclosed but installation failed; **never** recycle reserved bits to a different grant while stale B copies can exist |
+| Token-first then installation succeeds before result observed | B's other Thread already copied token bytes | rights can become usable while primary receiver thinks call failed; generation/issuer policy must define exposure as grant |
+| **Install-first:** K-I installs all active grants, then token array copyout | array copy faults after installing caps | B has orphaned active rights with no reliable returned handles; cleanup must account for any concurrent use |
+| Install-first then close on copyout error | B may already have discovered/invoked a token through concurrently visible bytes | handle close cannot undo previously admitted operations or external effects |
+| **Inert install:** kernel reserves noninvokable token slots, copies outputs, then activates | activation changes all-or-none, copyout/report might still be lost | safe activation and result discoverability need explicit Task generation and protected preidentified claim |
+| T2 trusted release after inert install | policy revokes between verifier checks and K-U | K-U must validate actual live lineage/current policy and not accept stale validation |
+| Shared user-memory aliases for bytes, handles and counts | VA ranges appear separate but same backing pages | can corrupt earlier output; physical backing alias and concurrency analysis required |
+
+**New audit finding:** CAPIPC v0.1/v0.2 and RFC-003 emphasize whole-vector K-I but have not yet selected a credible **public-token publication + invocation activation** contract. The prior v0.1 model's B1 K-V→copyout→K-I was a *good research simplification*, not a proven safe ABI recipe. A separate finite model of TokenPublication/CapInvokability is mandatory before choosing B1 or B2.
+
+### 4.3 Metadata observation can be a distinct privacy leak
+
+Fuchsia zx_channel_read with a too-small buffer may return required byte and handle counts [S2]; zx_channel_read_etc may reveal live object types and rights [S3]. That is a documented behavior in Fuchsia; UniOS must decide its *own* policy.
+
+- **K-Vm:** disclose only a fixed, issuer-authorized metadata projection (for example, exact byte length and cap count, or merely within-quota indicator), after current RECEIVE and eligible audience authorization. If counts/types are confidential, metadata counts as an exposure to the recipient and must be included in its irreversibility and requeue policy.
+- **K-Vp:** mark potential sensitive payload visibility before any payload byte, mapped page or equivalent receiver-accessible data is published. A kernel flag tied only to memcpy is insufficient for explicit shared-buffer transfer or alias publication.
+- **Size error before claim:** possible only when authorized size projection is allowed. BUFFER_TOO_SMALL must not allow a non-holder, stale Endpoint owner or foreign Task to probe the unread queue's confidential structure.
+- **After a public metadata result:** whether the queued message can be requeued to a *different eligible Task* depends on whether that metadata was classified private and which audience obtained it. This requires an explicitly named policy, rather than falsely claiming no disclosure merely because K-Vp=false.
+- Timing and presence side channels may remain outside the defined guarantee. Do not claim “no information leakage” merely from blocking byte copyout.
+
+**Default research recommendation:** if sensitive service packets could disclose secret structure, treat unauthorized metadata disclosure as a K-V barrier for the chosen confidentiality scope, or expose only a coarse/constant preclaim status. Separating K-Vm and K-Vp is necessary for honest proof; whether both are needed in the final KABI is a later decision.
+
+### 4.4 Binding an audience through Endpoint MOVE and policy changes
+
+Suppose B acquires K-C, then transfers its receiving Endpoint to C before K-Vp. If kernel checks only "current Endpoint exists" and then writes bytes into B, the original claim may no longer have an authorized holder. If it instead writes into C without new issuer authorization, it changes the disclosed audience during an earlier claim. If B has already K-Vp, simply reassigning its claim to C duplicates potential disclosure.
+
+**Proposed rule:** claim pins ReceiverTaskGeneration, EndpointGeneration and an **issuer-policy audience**; before first metadata/payload publication validate that claim remains authorized under current Endpoint owner and revocation B/policy cut. If ownership or audience changes, unexposed claim may abort/revalidate under a newly authorized claim; exposed claim terminalizes rather than silently migrates. A claim must not be transferred just by copying an SABI token. An approved same-Task Thread may process claim only if Thread-to-Task semantics, session ownership and sponsor are defined.
+
+After an exposed claim is terminalized, a *new independent* authorized application request may legitimately send equivalent data, but this is not an IPC rollback/requeue. It requires new issuer approval, new SEND record and explicit remote effect/dedupe analysis. A literal “no one else may ever see same bytes” policy would be stronger than possible kernel guarantees and is **not** claimed.
+
+## 5. Adversarial re-review matrix (AR-01…AR-20)
+
+| ID | Precise interleaving | Unsafe claim / correction |
+|---|---|---|
+| AR-01 | B owns RECEIVE, queries exact cap count; C newly owns Endpoint | old B's size query did not disclose any confidential metadata |
+| AR-02 | C lacks RECEIVE but can query unread payload length before K-C | size probe harmless / metadata necessarily public |
+| AR-03 | B K-C then Endpoint MOVEs to C before K-Vp | claim silently follows owner or publishes to stale B without policy |
+| AR-04 | B K-Vp and sees prefix, Endpoint MOVEs to C, claim canceled | same message requeued to new C without disclosure record |
+| AR-05 | B buffers have nonoverlapping VAs but writable aliases of same page | pointer nonoverlap proves safe contents |
+| AR-06 | B copies one of two raw destination handle numbers, then second copy faults before K-I | reserved token may be recycled as unrelated live authority |
+| AR-07 | B cap vector installed but token report faults | installed orphan rights assumed never usable/charged |
+| AR-08 | B's second Thread invokes published token after K-I but before first caller hears SUCCESS | receiver result loss means grant was never activated |
+| AR-09 | B self-declares SABI verification successful to T2 kernel gate | independent trusted verifier existed |
+| AR-10 | trusted verifier signs old grant set; Controller publishes B; B later asks K-U | old permit activates revoked grant |
+| AR-11 | trusted verifier authorizes message X, B uses result for queued message Y | release token not bound to exact cap/message generation |
+| AR-12 | K-Vp before first byte attempt, first store faults with zero bytes copied | allow message drop for conservative safety rather than guarantee availability |
+| AR-13 | user copyout publishes handle metadata before marking exposure | K-Vp protecting payload automatically covers all sensitive metadata |
+| AR-14 | Receiver B crashes after partial publication, Supervisor restarts B2 under same ServiceID | name equality authorizes same confidential claim replay |
+| AR-15 | actor reuses old SEND ticket after Task generation recycled | stale status query may reveal new Task's cap/Endpoint metadata |
+| AR-16 | B reads buffer and triggers external write before final K-I; later claim fails | no remote effect because receive returned error |
+| AR-17 | a terminal Message holds unknown DeviceCap and unresolved DMA write | terminal-drop means R2-F and sponsor refund finished |
+| AR-18 | T2 verifier blocks on the very full Channel whose receive claim it is checking | no deadlock because cap escrow is inert |
+| AR-19 | client cancels after SEND_COMMITTED, service effect already happened, reply lost | cancellation proves no-effect / safe non-idempotent retry |
+| AR-20 | multiple sender-derived grants refer to same backing Object; family revoke affects only one root | same Object implies all roots/children revoked, safe frame reuse |
+
+## 6. New review invariants (AR-I01…AR-I24) — unproved
+
+| ID | Proposed safety obligation |
+|---|---|
+| AR-I01 | Queue ownership/atomic K-S retains precisely the moved grant set or none; return loss never rewinds it. |
+| AR-I02 | Claim eligibility and ServiceIncarnation audience are kernel/issuer-authorized and bound to actual receiving Endpoint half. |
+| AR-I03 | One E1 Endpoint half has at most one effective public Task owner; SendHalf and ReceiveHalf are distinct. |
+| AR-I04 | Source cap revocation B and Endpoint ownership MOVE have defined linearization before any new use. |
+| AR-I05 | K-Vm metadata publication has an issuer-authorized confidentiality scope separate from payload K-Vp. |
+| AR-I06 | No metadata probe by unprivileged or stale endpoint owners can leak protected unread message structure. |
+| AR-I07 | K-Vp is set before the earliest possibly receiver-visible payload event on every allowed transport path. |
+| AR-I08 | Potential exposure history is monotonic; copyout failure never resets it to hidden. |
+| AR-I09 | Same message cannot be automatically redelivered to a different audience after relevant sensitive metadata/payload disclosure. |
+| AR-I10 | A claim pinned to Task/Endpoint generation cannot silently survive an owner or issuer audience change. |
+| AR-I11 | Atomic whole-vector K-I and user-visible token publication/activation are independently specified, not implied equivalent. |
+| AR-I12 | Reserved/public token bits visible on failed installation are never reassigned to unrelated grants while stale copies can be used. |
+| AR-I13 | Installed but unreported capabilities remain charged and have defined bounded cleanup or protected reconciliation. |
+| AR-I14 | Exposing handle numbers doesn't itself mint or multiply cap grants; only a kernel-owned slot maps tokens to authority. |
+| AR-I15 | T1 receivers have at most the native bearer cap authority intentionally granted before SABI parse. |
+| AR-I16 | T2 release requires independent verifier/issuer authority and exact kernel-authenticated grant/message/destination binding. |
+| AR-I17 | K-U rechecks actual revoke B/current authorization policy and one-shot release validity at activation. |
+| AR-I18 | Unknown cap roles or protocol variants do not silently install active rights in security profiles requiring pre-use validation. |
+| AR-I19 | Metadata, bytes, cap publication, cap invokability, method effect and result observation never collapse to a single success signal. |
+| AR-I20 | Receive terminalization blocks unauthorized redelivery but doesn't claim prior user disclosure or backend effects have vanished. |
+| AR-I21 | Queue/claim/escrow/terminal/handle/ticket/DMA debt remain sponsor-accounted until separately settled. |
+| AR-I22 | M0 protected reserve does not depend on pageable T2 verifier or malicious claim progress. |
+| AR-I23 | Reconciliation result access is scoped to an authenticated Task generation and cannot reveal unrelated messages after token reuse. |
+| AR-I24 | All invariants are Proposed hypotheses without execution, proof, wire, ABI or implementation authorization. |
+
