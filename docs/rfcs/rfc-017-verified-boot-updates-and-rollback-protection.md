@@ -190,3 +190,106 @@ HealthReceipt binds the exact B SystemImage digest, boot epoch, verified manifes
 
 If trial/reboot attempt record is stored only in RAM, it resets each boot. A persistent retry ledger must have well-defined failure modes if EFI variables full/unsupported, TPM NV exhausted or disk unavailable. If decrement/mark-failed cannot be committed, fail boundedly or enter RecoveryOnly; **never** interpret failed record persistence as unlimited attempts. A legitimate production endpoint may fail closed without boot if every eligible alternative is unavailable.
 
+
+## 6. Anti-rollback floor storage and transactions
+
+**The floor protects against a correctly signed but vulnerable old image** whose bytes and signature are otherwise valid. Product version, signed metadata version, key epoch, hardware policy and per-component security index are distinct. A root manifest cannot unilaterally choose its own validation floor; the floor must derive from a previously trusted independent store/policy.
+
+A normal GPT/ESP/DataVolume file, including a signed old file, is replayable by a disk attacker. Candidate storage includes a specifically authorized TPM 2.0 NV counter/record, platform-protected signed EFI variable, RPMB or independently trusted external anchor. **TPM existence is not proof of an available usable monotonic index; firmware authenticated variables are not necessarily a trusted nondecreasing counter.** The UEFI spec [S2] specifies per-variable old/new persistence under failure, limited NV space, and runtime Unsupported/OutOfResources; it does not promise one atomic transaction across separate slot/floor/data stores.
+
+### 6.1 Safe floor promotion predicate
+
+For a candidate new floor F', require all of the following: actual stored F <= F'; appropriate independently authenticated policy grants FloorWriter; B's exact signed image/manifest/hardware profile is verified and a separate authorized health witness generated a durable Good receipt; at least one image other than revoked old A remains *physically present, readable, signer/floor-eligible and bootable*, including available device drivers and DataVolume schema/key path; firmware dbx or key rotation will not invalidate that image; rollback-index domains can be updated with recoverable intermediate states; read-back validates actual stored floor. If these cannot be established, deny irreversible floor promotion, enter explicit rescue/degraded mode or fail-stop as appropriate. Health checks cannot promise indefinite future physical availability.
+
+### 6.2 Alternative trusted stores and failure modes
+
+| Candidate | Possible benefit | Limit |
+|---|---|---|
+| TPM 2.0 NV protected index | may resist disk rollback when correct auth and anti-replay semantics verified | NV availability, platform firmware, wear/locking, ownership loss, TPM replacement |
+| Authenticated UEFI variable | firmware policy and per-variable durable write semantics | not generalized monotonic floor, tiny storage, firmware/runtime failure |
+| RPMB/secure flash | device-backed anti-replay on selected hardware | not universal x86_64 PC capability |
+| Independent online verifier | remote latest-state/freshness anchor | no offline liveness guarantee |
+| Plain GPT/file journal | crash consistency for honest storage | attacker can restore previous signed data/floor |
+| No suitable protected medium | development or explicitly reduced-security signed boot possible | **no production strong anti-rollback claim** |
+
+The floor counter, authenticated Good state, slot retry record, bootable rescue and mutable user-data schema may inhabit **independent nontransactional devices**. Individual atomic writes do not make cross-device transactions atomic. An irreversible-last stage and explicit recovery from every interrupted phase are proof obligations, not implementation details.
+
+## 7. Key lifecycle, compromise and revoked loaders
+
+Offline Root role controls signing thresholds and release-role keys; Targets signs exact image bytes/hardware constraints, Snapshot signs metadata consistency, online Timestamp signs frequently refreshed freshness. Root rotation needs authorization by previously trusted Root and new Root per chosen standard, not just a signed manifest telling clients to accept a new untrusted key. Role threshold is effective only if signing custodians and private keys are truly independent.
+
+If CDN or Timestamp private key is compromised, valid independent Targets/Root policy should continue to reject malicious new code (not necessarily denial/freeze). If Targets signing key is compromised, attacker may legitimately sign malicious code within the role scope; rebuild, independent Root revocation and physical rescue may be needed. If Root quorum is compromised, purely in-band software update may be unable to re-establish trust. Correct signatures do not prove the signed binary's safety or uncompromised build.
+
+UEFI OEM PK, KEK, db and dbx are **not the same** as UniOS Root/Targets roles. Updating firmware dbx or replacing firmware PK/KEK can also disable an installed Windows/Linux loader or the only rescue USB. No automatic firmware enrollment/revocation in this RFC. Emergency key revocation can make an older rescue unacceptable; do not silently enable revoked image to improve availability. Owner physical override must have visibly weaker/unlocked trust mode and assess data-encryption consequences.
+
+Trusted keys may need algorithm migration, new Root dual authorization, removal of obsolete keys and compatible old/new loader verifiers in a carefully planned stage sequence. No algorithm, threshold value, private-key HSM, team custody or release ceremony selected yet.
+
+## 8. TPM measurements, attestation and user-data encryption
+
+**Verified Boot** enforces that code meets signer/content/floor rules; **Measured Boot** extends available measurements into TPM PCRs and provides an event log; **remote attestation** requires a fresh verifier nonce, trusted quote identity, reference data and consistency of event/PCR log. PCR hash values by themselves do not prove that a component never loaded or that a component was safe; measurement gaps and untrusted event-log interpretation remain threats. TCG PC Client firmware profile/RIM describes evidence and reference matching [S8], not a substitute for launch prevention.
+
+PCR-bound sealed encryption keys may stop unsealing after legitimate firmware/bootloader/dbx changes and new OS releases [S10]. A physically valid old slot may therefore be unable to decrypt user files even if the DataVolume format is compatible. Design explicit recovery secrets, user consent, PCR policy migration and key rotation. Do not claim TPM implies automatic disk encryption, nor disk encryption prevents hostile apps while volume is unlocked.
+
+Attestation can reveal persistent device/firmware state and enable tracking; keep opt-in for consumer research baseline with clear data minimization. Offline M0 failure/recovery cannot depend on remote attestation/network or exact UTC availability. TPM replacement/motherboard repairs create a separate user-data recovery and hardware floor migration process that may not be automatable.
+
+## 9. Recovery modes and physical availability
+
+| Class | Failure | Contractual possible outcome |
+|---|---|---|
+| Local service restart | Supervisor, Pager or driver process crash | resident M0 with valid cap/CPU/IRQ/IPC and device fence path; no durability guarantee |
+| A/B trial fail | B does not pass Good | select physically available allowed A/rescue only if floor and data permit |
+| Read-only data recovery | user volume corrupted or unsupported | verified immutable rescue can attempt limited data access without false write safety |
+| Storage lost | only SSD/controller failed | **same-disk rescue not independently available**; another tested physical medium needed |
+| Firmware/TPM update mismatch | signer keys/dbx/PCR policy changed | physical owner repair/recovery keys; never silent signature bypass |
+| Broken hardware isolation | malicious DMA before effective IOMMU | isolation may not be possible; fail-stop/platform unsupported |
+
+An image's digest in a manifest is not a verified physical alternate. Actual fallback must be signer/key-eligible under post-update floor, present/readable, bootable with the needed storage/IRQ/CPU devices, and capable of reading current DataVolume keys/schema or clearly labeled nondestructive offline rescue. Boot attempt counters need genuine persistence between reboots; a per-BootEpoch counter is not a reboot-loop guard.
+
+If no authorized physically usable slot exists, ProductionVerified may have to refuse boot. Without an independent working display/keyboard, even "repair screen available" is not guaranteed. A production-level fallback promise must specify physical media independence or disclose single-drive failure risk.
+
+## 10. Storage/DMA/schema coupling with RFC-006/007/008
+
+Staged B image hash verification before writing doesn't prove B persists. Installer must re-read/reverify stored exact bytes, flush image and metadata with RFC-008's validated controller/Flush/FUA semantics, then mark image trial-eligible. Neither successfully staged image, kernel boot, independent Good receipt nor TPM floor proves the SSD will survive future physical failure.
+
+Update from A DataSchema V1 to B V2 may make A unreadable after B's Trial even without floor promotion. A signed previous SystemImage and valid rollback key do not undo B's user-file migration, external application effects, encryption key wrapping or snapshot garbage collection. Validate safe migration/older reader compatibility or a durable retained recoverable V1 snapshot with enough storage and actual rescue drivers/keys.
+
+RFC-007 R2-F fence allows safe DMA buffer reuse if hardware actually stopped; it does not undo already persisted storage commands, journal effects or corrupt files. A timed-out write request may have reached disk; IPC COMMITTED, StorageHost ACK and FileSync DurableReceipt have distinct result semantics (RFC-003/008).
+
+## 11. Failure and adversarial matrix
+
+| Attack/failure | Forbidden simplification | Candidate response |
+|---|---|---|
+| UEFI Secure Boot disabled/SetupMode | signed path = production verified | declare Dev/Unlocked/Unsupported state |
+| EFI loader UEFI authorized but kernel altered | firmware accepted all later code | independent manifest/kernel/M0 hashing |
+| Manifest names its own trust root/floor | self-referential policy accepted | anchored verifier, bounded parser |
+| Verified bytes changed via DMA/writable alias | load-time check still valid | protect immutable extents/reverify at use time |
+| Guest administrator requests boot signer rights | UID0 equals native authority | deny typed cap escalation |
+| Timestamp expired and RTC wrong offline | new update freshness still certain | FreshnessUnknown/reject update; offline allowed boot separate |
+| Replay old snapshot/targets | old signed image may run | metadata version consistency + local floor |
+| Compromised Timestamp online key | new malware automatically signed | distinct Targets/Root trust |
+| Compromised Targets signer | cryptography guarantees safe code | signed-code compromise response and independent Root |
+| Root signer threshold compromised | purely remote auto-recovery assured | require independent physical/out-of-band recovery |
+| Staged B without media Flush | trial boot after power cut safe | do not mark ImageVerified until durable |
+| B Trial fails but floor already F' | A forbidden, B broken | floor-last policy and eligible rescue gate |
+| Normal Supervisor forges READY | mark B Good automatically | independent scoped HealthReceipt writer |
+| NVRAM Good write succeeds but TPM floor interrupted | one atomic transaction assumed | cross-store crash graph/recovery statuses |
+| TPM NV full/missing | disk slot file is trusted floor | deny strong anti-rollback claim |
+| Driver reports successful DMA stop but writes persist | boot image remained immutable | RFC-007 trusted fence or fail-stop |
+| New B migrates user data V2 | old A is usable fallback | schema/key compatibility gate |
+| Floor rejects old rescue | automatic revoked boot anyway | alternate verified rescue or explicit recovery unavailable |
+| Key rotation invalidates only EFI rescue signer | signed image digest implies bootable | signer/dbx compatibility before rotation |
+| B infinite reboots, BootEpoch resets | retry limit still enforced | persistent attempt budget or recovery mode |
+| TPM PCR policy changes after firmware update | user data auto-unsealed | recovery key and policy migration |
+| Disk removed after rescue scan | rescue still present | runtime physical availability recheck |
+| Attestation stale nonce/log | trusted current verified boot | freshness and reference log validation |
+| Physical firmware compromised | signed OS repairs prior RAM corruption | explicit platform assumption limitation |
+| Offline old verified OS never gets security updates | timestamp prevents compromise without time | detect/update-liveness policy, no impossible freshness |
+
+## 12. Research-only model and evidence plan
+
+A finite model should include two slots, a rescue image present/corrupt/missing, two old/new signer generations, independent TUF Root/Targets/Timestamp metadata, per-location floor F/F', broken TPM NV or UEFI variable, one dishonest Flush, slot Good/Trial/attempt counters, an independent health witness vs forged normal service, DataVolume V1/V2 and PCR-wrapped key, plus the boot/root-capability state. Enumerate staged writes, power cuts, health forging, signer revocation, floor promotion, recovery boot and hardware replacement interleavings.
+
+Counterexamples: authorized production boot of revoked image; self-signed manifest root; rollback bypass by restoring old signed disk; floor promotion before a usable rescue; boot retry loop after failed persistent decrement; false Good from compromised Supervisor; Good true but immutable image unreadable; user schema/key incompatible with all rescued images; a stolen online role can authorize offline Root; hardware firmware trust false positive.
+
+Test tools *if future implementation is authorized*: bounded TLA+/PlusCal model, fuzz manifest parsing and canonical encoding, simulate interrupted device/TPM/NVRAM slot writes in QEMU/OVMF only with explicit virtual hardware, then inspect a sacrificial Reference PC for actual EFI, TPM NV and SSD features. Real key enrollment, firmware updates, power interruption or destructive disk tests require separate authorization and precautions. **None were executed here.**
+
