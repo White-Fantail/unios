@@ -344,7 +344,7 @@ Windows and Darwin guest runtime method/property interfaces are separate compati
 
 A guest or native app holds an authorized Endpoint tied to protocol family, service generation and allowed feature set. An upgrade can replace service instance and schema but old pending handle cap transit/replies must settle under previous generation. Reconnection to newly discovered service requires new issuer-granted Endpoint, repeated secure feature negotiation and explicit reconciliation of previous effects. No old address/port name or nominal string is a shared globally trusted identity.
 
-## 11. Critical adversarial cases (C18-01…C18-32)
+## 11. Critical adversarial cases (C18-01…C18-44)
 
 | ID | Adversarial input or transition | What must be proved or refused |
 |---|---|---|
@@ -380,8 +380,20 @@ A guest or native app holds an authorized Endpoint tied to protocol family, serv
 | C18-30 | SABI byte message holds expired transferred IRQ cap after R2-F unresolved | no reuse/claim hardware quiescence without actual fence |
 | C18-31 | old/new server overlap, old client reconnects and gets old stale Endpoint | issuance, service generation and rights revalidated |
 | C18-32 | mixed SDK languages interpret endian/field presence/default differently | golden vectors, cross-language schema conformance gates |
+| C18-33 | sender MOVE committed, receiver rejects unknown handle-bearing union, asks sender to resend original source handle | cap no longer at sender; must settle transit/receiver resources, no fake NOT_COMMITTED |
+| C18-34 | delegated Endpoint and original user identity conflated by an identity-sensitive server | trusted per-call provenance or bearer-only policy, no confused-deputy escalation |
+| C18-35 | service restarts under same name and old negotiated session claims more rights | bind handshake to exact Endpoint+service instance+policy epoch; reissue/revalidate |
+| C18-36 | revoked grant is accepted due to cached feature agreement | per-effect live cap scope/lineage check and policy-epoch invalidation |
+| C18-37 | Protobuf binary payload traverses ProtoJSON relay and loses future security-required field | refuse unsafe data-format hop or enforce constraint at final service |
+| C18-38 | closed or ajar protocol receives unknown two-way method and never replies | explicit strict/closed refusal; flexible only where protocol and method openness allow |
+| C18-39 | FIDL-like flexible value union contains unknown live resource | value/resource distinction enforces rejection/settlement, not scalar skip |
+| C18-40 | version negotiation message itself sent with unknown DeviceCap role | no grants or rights from handshake; reject/close in bounded escrow |
+| C18-41 | stored signed BootPolicy bytes accepted by two parser versions with different grants | strict grammar/parser equivalence and critical-field rejection, role/domain binding |
+| C18-42 | CBOR decoder accepts duplicate root keys under first-wins, other decoder last-wins | fail signing/boot validation, strict duplicate rejection and canonical profile |
+| C18-43 | signer uses one domain for BootPolicy and user RPC payload, cross-type signature replay | domain/role/schema separation of signature input |
+| C18-44 | older Linux shim sees EFFECT_UNKNOWN and maps it to errno indicating no side effect | explicit unsupported/abort/reconciliation; never invent binary compatibility |
 
-## 12. Proposed invariants (IDL-01…IDL-42) — NOT proved
+## 12. Proposed invariants (IDL-01…IDL-54) — NOT proved
 
 | ID | Safety/compatibility obligation (proposed, not verified) |
 |---|---|
@@ -427,9 +439,21 @@ A guest or native app holds an authorized Endpoint tied to protocol family, serv
 | IDL-40 | Optional shared-memory/zero-copy serialization preserves validated immutable snapshot/ownership despite user pointer races. |
 | IDL-41 | Security key rotation, update floor and user-data format transitions require independent recovery predicates even if RPC encoding stable. |
 | IDL-42 | All IDL choices remain Proposed; neither numeric values nor executable codec/SDK compiler or stable v1 ABI is authorized. |
+| IDL-43 | Completed E1 capability MOVE is not retroactively canceled by userspace IDL decode failure; receiver/escrow settles the committed grants. |
+| IDL-44 | Rejecting an unknown live resource cannot be reported as sender retaining the pre-MOVE source handle. |
+| IDL-45 | Endpoint bearer possession cannot by itself authenticate the original user or delegation chain; services requiring identity use trusted caller provenance or explicit bearer-only authority. |
+| IDL-46 | Negotiated feature/resource roles are bound to an issued Endpoint, service incarnation, current issuer policy epoch and actual current grant. |
+| IDL-47 | Old cached handshake results cease to authorize work after revocation, policy floor change or service reincarnation. |
+| IDL-48 | Flexible unknown **value** and flexible unknown **resource** have different decoder and ownership requirements; unknown resource may not be silently skipped. |
+| IDL-49 | Binary Protobuf unknown-field retention does not imply ProtoJSON/proxy/generator preservation or security-safe forwarding. |
+| IDL-50 | Unknown strict/flexible calls follow chosen protocol openness and direction; no unsupported two-way request may hang as if a success reply were guaranteed. |
+| IDL-51 | Signed policy verification binds exact bytes to unambiguous parser semantics, signer role/domain, required critical fields, hardware scope and bootstrap grant ceiling. |
+| IDL-52 | Restricted CBOR deterministic profile and map key equivalence/duplicate rejection are separate from generic CBOR decoding, where differing parsers may disagree. |
+| IDL-53 | SDK/guest outcome mapping cannot turn EFFECT_UNKNOWN into plain success or a false proven no-effect result solely to preserve legacy binary behavior. |
+| IDL-54 | DeviceCap close, receiver resource rejection and generic cap destruction are not proof of R2-F hardware DMA quiescence or rollback of previously committed work. |
 
 
-## 13. Open issues (O18-01…O18-38) — no automatic resolution
+## 13. Open issues (O18-01…O18-49) — no automatic resolution
 
 | ID | Priority | Required research or proof | Co-review |
 |---|---|---|---|
@@ -471,8 +495,19 @@ A guest or native app holds an authorized Endpoint tied to protocol family, serv
 | O18-36 | P1 | Privacy/provenance of diagnostic trace, request IDs and transferred cap metadata across sandbox boundaries? | 016/018 |
 | O18-37 | P2 | Measured IPC/codec/binding memory/latency p50/p95/p99, bounded in worst-case decoder paths? | 005/015/018 |
 | O18-38 | P2 | Later architecture/compatibility targets and remote RPC transports require separate threat model/licensing? | 009/012/014/018 |
+| O18-39 | P0 | Post-MOVE unknown-resource decoder rejection ownership: kernel transit vs ReceiveClaim vs installed receiver; no fake sender rollback? | 002/003/009/018 |
+| O18-40 | P0 | Actual principal when Endpoint is delegated: trusted per-call Task/issuer metadata or bearer-only policy, proxy confused-deputy boundary? | 001/002/016/018 |
+| O18-41 | P0 | Handshake session binding to Endpoint issuance generation, revocation B, ServiceInstance and server policy epoch? | 002/003/006/018 |
+| O18-42 | P0 | Security-feature floor/rights recheck between negotiation and committed method with concurrent revocation/policy update? | 002/009/018 |
+| O18-43 | P0 | Unknown strict/flexible method and resource fields in closed/ajar/open protocol across one-way, two-way and event directions? | 003/009/018 |
+| O18-44 | P0 | Binary-to-JSON/forwarding serialization drops unknown extension; how detect or refuse security-critical field loss? | 015/018 |
+| O18-45 | P0 | Signed exact bytes but old/new decoder disagreement on duplicate, key equivalent, required extension, numbers and signer role? | 006/017/018 |
+| O18-46 | P0 | CBOR core deterministic vs legacy length-first ordering, equivalence of map keys, tag/float and duplicate restrictions? | 017/018 |
+| O18-47 | P0 | Native/guest EFFECT_UNKNOWN support gaps and lack of matching errno/NTSTATUS: safe refusal/reconciliation instead of false no-effect? | 009/010/018 |
+| O18-48 | P0 | DeviceGroup cap close after unknown resource rejection while R2-F unresolved: quarantine and sponsorship? | 002/007/018 |
+| O18-49 | P1 | Per-message source identity/rights proof in generated proxies and service policy epoch audit without privacy leakage? | 015/016/018 |
 
-## 14. Proposed decision register (IDL-D01…IDL-D24) — NONE Accepted
+## 14. Proposed decision register (IDL-D01…IDL-D32) — NONE Accepted
 
 - **IDL-D01:** IDL-A (bounded user-space versioned schema, kernel opaque bytes+real cap vector, Native SDK separate) is conditional first design target.
 - **IDL-D02:** Keep complex SABI/IDL schema parsing outside Ring 0; trusted kernel only validates E1 transport and live cap authority.
@@ -498,6 +533,14 @@ A guest or native app holds an authorized Endpoint tied to protocol family, serv
 - **IDL-D22:** Keep M0 bootstrap/recovery functional with wired minimal parser/runtime, independent of ordinary full IDL service reflection/discovery.
 - **IDL-D23:** Run bidirectional client/server schema corpus plus cap/error and crash-state model proof before declaring Stable ABI; performance comes after safety.
 - **IDL-D24:** No wire format, public numeric KABI/IDL status, ABI v1 freeze, codegen, kernel/app implementation or compatibility certification permitted by this research draft.
+- **IDL-D25 [new]:** Unknown resources after committed kernel MOVE are the recipient/escrow's settlement obligation; decode failure never rewinds sender handle ownership.
+- **IDL-D26 [new]:** Protect services against delegated Endpoint confused-deputy: bearer-authorized access only where explicitly intended; identity-dependent methods require issuer/kernel-authoritative per-call provenance.
+- **IDL-D27 [new]:** Bind a negotiated contract to concrete Endpoint issuance, ResourceRole schema, current service incarnation, active issuer policy epoch and mandatory feature floor; revalidate before effects.
+- **IDL-D28 [new]:** Version negotiation or optional-field flexibility cannot override concurrent revocation B or updated server minimum authorization.
+- **IDL-D29 [new]:** Unknown resource-bearing union and unknown value-only union have distinct strictness/close/proxy behavior; FIDL current rules are research precedent, not imported transport semantics.
+- **IDL-D30 [new]:** A Protobuf binary-to-ProtoJSON/proxy step is not assumed to retain unknown critical fields; require end-to-end evidence or refuse that bridge.
+- **IDL-D31 [new]:** Boot signing format must bind exact bytes, signer purpose/domain, parser-equivalent meaning and independent root/floor/critical extension; generic deterministic Protobuf/CBOR are not accepted by name.
+- **IDL-D32 [new]:** Old SDK/guest compatibility must explicitly refuse an unrepresentable EFFECT_UNKNOWN rather than report false success or false rollback; no implementation/Stable ABI authorization.
 
 ## 15. Cross-RFC consistency register
 
@@ -598,9 +641,14 @@ No experiment, test, compiler generation, formal verification, disk write, softw
 - **[S14] Fuchsia FIDL unknown interactions/strictness:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
 - **[S15] Protocol Buffers Editions compatibility guidance:** https://protobuf.dev/programming-guides/editions/
 - **[S16] Protobuf proto3 unknown enum values and presence:** https://protobuf.dev/programming-guides/proto3/
+- **[S17] Fuchsia FIDL current strict/flexible and value vs resource union definitions:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
+- **[S18] Fuchsia RFC-0113 efficient envelopes unknown handle storage/closure (wire evolution caveat):** https://fuchsia.dev/fuchsia-src/contribute/governance/rfcs/0113_efficient_envelopes
+- **[S19] Protobuf proto3 unknown binary fields lost in JSON and field-copy transforms:** https://protobuf.dev/programming-guides/proto3/
+- **[S20] Protobuf ProtoJSON weaker schema evolution support:** https://protobuf.dev/programming-guides/json/
+- **[S21] gRPC deadlines propagation and cancellation without server handler guarantee:** https://grpc.io/docs/guides/deadlines/
 
 All references describe the *other project's documented interface*, not a UniOS code import, implementation, transfer of formal proof or automatic legal permission. The cited codec formats have different failure/unknown-resource assumptions; a promising source does not prove selected UniOS fit.
 
 ---
 
-**Document history:** 2026-10-25 — RFC-018 Proposed Specification v0.1 initial deep research: seven ABI/version boundaries, IDL-A compared to FIDL/Protobuf/Thrift/Cap'n Proto/CBOR, capability-aware SABI, safe unknown resource/mandatory feature evolution, phase-accurate results and offline boot/data trust separation. 42 unproved invariants; 38 open research issues; 24 Proposed decision candidates. Git documentation only. No binary wire layout selection, kernel/IDL code, prototype, compiler target, formal proof, compatibility test or ABI freeze.
+**Document history:** 2026-10-25 v0.1 created and preserved in Git history. 2026-10-25 v0.2 independent adversarial review: committed cap MOVE vs decode rejection; delegable bearer Endpoint and trusted per-call identity/confused deputy; session/issuer policy epoch; unknown resource vs value; Protobuf JSON extension loss; exact signed bytes vs parser/domain equivalence; CBOR duplicate key handling; guest UNKNOWN status limits and hardware cap R2-F cleanup. 54 unproved invariants; 49 open design issues; 32 Proposed decisions. Documentation only, no compiler/prototype/kernel/codec/ABI implementation, test or formal proof.
