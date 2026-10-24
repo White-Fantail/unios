@@ -624,3 +624,23 @@ This change **revises design advice**, not an E1/RCV method acceptance. §24 acc
 The detailed KABI call/handle bit format, receipt query namespace, queue budget, issuer provenance and actual memory-order/lock proof all remain P0 OPEN. A two-phase scheme may be worth its complexity only if it establishes a distinct required security or sequencing property under bounded CPU/IPC/M0 costs; no performance measurement establishes a universal winner. SOURCE RFC-002/003/009/018 Proposed specs require joint review before any acceptance.
 
 **No implementation:** this addendum is written contract research only. No kernel/SDK/compiler/protocol/header work or executable formal model was authorized by this change.
+
+## 26. 2026-10-25 Kernel IPC status receipts and Task Handle identity — Proposed cross-reference
+
+**Source:** [CAPIPC Task Handle Namespace & Kernel Receive Receipts v0.1](../models/capipc-task-handle-namespace-and-receipt-v0.1.md), alongside HPA v0.2 and this RFC §§5–7,9–10,23–25. This is **a Proposed research addendum**, not an accepted receipt syscall, numerical ABI, tested formal model or implemented IPC.
+
+**The critical status rule:** actual kernel K-S SEND and K-I RECEIVE commits each need **one protected, pre-reserved and coherent result record** if status reconciliation is promised. A later query can report actual phase, but result-copyout failure does not change ownership. A ticket minted only in the lost return is not a recoverable ticket. Candidate KR-A uses an already known Task-generation-scoped receipt slot or caller-supplied request nonce **as correlation**, with *separate* protected query rights; no SABI RequestId or ServiceID string becomes native authority.
+
+| State | Truthful meaning |
+|---|---|
+| PENDING | irrevocable cut may still occur; **NOT** final NOT_COMMITTED and NOT a replay permission |
+| FINAL_NOT_COMMITTED | that exact kernel operation has terminated before the cut and cannot later commit |
+| COMMITTED_KS | whole SEND bytes/cap-vector moved to kernel queue; source tokens invalidated |
+| COMMITTED_KI | whole RECEIVE vector installed+message retired; public token array/caller knowledge may still be uncertain |
+| TERMINAL | message/claim settled without K-I; prior payload exposure or remote effect not necessarily absent |
+| EXPIRED_EVIDENCE | original protected proof unavailable after bounded GC; cannot infer clean NOT_COMMITTED |
+| OBSERVER_UNKNOWN | client lacks a trustworthy actual-state result, independent of kernel cap custody |
+
+**Anti-ABA / privacy:** receipt identities cannot rebind old published slot+generation/nonce to another operation as if it were the original, including after ACK/GC. Query access must not require the already MOVEd source handle or leak another Task's Endpoint/cap/count/rights by guessing a nonce. Historical COMMITTED_KI never duplicates or resurrects CapGrants another Thread already closed or revoker invalidated. Every receipt record/tombstone and pending message has bounded sponsor and M0-safe cleanup.
+
+**P0 open:** bootstrap lost-slot ID, operation fingerprint and duplicate nonce race, K-S/K-I versus protected record coherent SMP linearization, revocation B and Endpoint MOVE, final receipt GC, metadata privacy and Linux guest status mapping. One E1 Endpoint owner and no DERIVE/DUPLICATE remain unchanged and Proposed; no type-rights table alteration follows from this addendum.
