@@ -99,3 +99,99 @@ With one E1 owner, concurrency must choose an ordering, not rely on a mutable po
 
 **Re-review preference:** study S-END-C or bounded S-END-A first to minimize confusing owner transitions. But forced cancellation after an actual K-S cannot pretend to undo the committed message. Compare against Fuchsia's explicit before/after transfer ordering [S1]; do not silently assume its implementation proof.
 
+
+## 4. ReceiveClaim, FIRST VISIBILITY and terminalization — primary v0.2 P0
+
+### 4.1 Failure of naive requeue
+
+~~~text
+Q owns Message M=(secret bytes P, moved grant vector G)
+B exclusively claims M                                           [K-C]
+kernel starts copying P into writable B user buffer               [V]
+another Thread in B copies first 32 bytes                          [visible]
+the next user page faults, before kernel cap install               [no K-I]
+naive kernel aborts B claim and requeues M
+C becomes owner or next authorized receiver and obtains M again
+=> B and C have seen P despite "only one successful dequeue."
+~~~
+
+**Core insight:** a ReceiveClaim is exclusive but cannot erase earlier observations from another Thread, shared mapping alias or already submitted external I/O. The definition of confidentiality needs an information-flow boundary: which recipient Task/ServiceIncarnation was authorized to observe the payload, and can that payload be seen by a second distinct recipient after abort? **Successful ownership transfer and one logical queue dequeue are not the same thing as at-most-one-recipient disclosure.**
+
+**Candidate RCV-T:** mark a conservative, irreversible Exposed(M) flag **before attempting the first user-visible payload write**, not only after the byte copy completes. A failed write may never actually expose a byte, but conservative terminalization is safe. If Exposed(M), the queue record MUST NOT return to an unrelated Task, new Endpoint owner or new ServiceIncarnation via normal claim rollback. It can only continue with the same explicitly authorized receiver context where meaningful, or become TerminalSettlement (drop/close/quarantine, sponsor accounted, no foreign requeue). Terminal settlement doesn't erase any already exfiltrated bytes or already applied remote effects.
+
+### 4.2 Competing receive approaches — NONE chosen
+
+| Family | Mechanism | Benefit | Undischarged obligation |
+|---|---|---|---|
+| **RCV-T1** | exclusive claim + kernel byte staging + Exposed before copyout + terminal after failure | consistent no-foreign-requeue safety; keeps E1 small | user copyout can partially modify memory; message may be lost after disclosure |
+| **RCV-T2** | separate inert kernel cap escrow; user-space decoder sees data then explicitly admits actual cap role vector | prevents unintended grants becoming immediately usable before method validation | extra state/TCB, authenticated release, malicious stalled claimant, recovery |
+| **RCV-T3** | sealed transferred MemoryObject and one-shot cap escrow | may simplify bounded staging | shared aliases, pin, TLB/revoke, Pager and performance proof |
+| **RCV-T4** | register-only tiny receiver path | avoids bulk usercopy on fast path | not an arbitrary SABI payload+cap atomic delivery |
+| **RCV-R** | requeue after first possible user-visible write as if no receive occurred | simplifies retry only | **rejected default**: duplicates secret disclosure to new recipient |
+
+**Research priority:** compare RCV-T1 with RCV-T2 in a small formal state space. RCV-T2 has stronger separation between data decode and cap usability but greater kernel/reserve complexity. Neither can claim true rollback of arbitrary user-visible byte writes.
+
+### 4.3 Explicit receive state table
+
+| Phase | Current custody | Exposure | Allowed next step |
+|---|---|---|---|
+| Queued_Unclaimed | Channel kernel queue owns cap vector | no | only authorized B Claim or close |
+| Claimed_Private | bounded exclusive claim, B identity/generation pinned | no | abort and requeue if truly unexposed, or prepare |
+| Prepared | staged bytes, reserved output slots/budget, Task/Endpoint revalidated | no | mark Exposed BEFORE write |
+| Exposed_BoundToB | claim/escrow remains, same B context | possible/irreversible | same B continuation or terminal settlement, **not unrelated C** |
+| Installed_B | B cap table owns all actual caps; queue retired | may have happened | service authorization/close unknown cap, no A ownership restore |
+| Terminal_Settlement | bounded cleanup/charge/quarantine record | may have happened | no foreign requeue, honest failure/disclosure state |
+| Requeued_Unexposed | kernel queue owns same caps | proven none | only if claimant/rights/version/revocation still eligible |
+| Failed_HardwareFence | unresolved DeviceGroup DMA/quarantine | possibly | no R2-F or pin-refund claim |
+
+**Different cuts:** K-C exclusively claims, V first possibly writes to user-owned memory, K-I atomically transfers whole cap vector to B. They are **not** assumed one transaction. Same-Task Threads may read while a syscall is copying; failed K-I doesn't make earlier V nonexistent. After B death, the kernel cannot prove that visible bytes were not already forwarded elsewhere.
+
+### 4.4 Copyout buffer overlap and hostile remapping
+
+Fuchsia channel read documents that it writes bytes before handles, and overlapping output buffers can overwrite prior bytes [S3]; this is precedent for **why separate pointer checks are not enough**, not UniOS's desired semantics. Default proposal: reject overlapping byte/handle/count/status output ranges, invalid/unmapped pointers, checked integer arithmetic overflow and clearly unsupported aliases before K-C. Virtual nonoverlap is insufficient where writable shared backing aliases the same pages; avoid relying on buffer contents not changing concurrently.
+
+BUFFER_TOO_SMALL should be decidable under an authorized count/size query or preflight without exposing message bytes, unless an explicit read-discard option and custody contract is separately accepted. After a partial user copyout fault, status cannot truthfully assert that no data was delivered. Snapshot user parameters/handle descriptors in kernel-owned bounded memory before validation; avoid global locks while usercopy may page fault.
+
+### 4.5 Cancellation, claimant death and queue timeouts
+
+An exclusive claim binds actual kernel ReceiverTask+EndpointGeneration, charge and owner, not merely an untrusted SABI request_id. A malicious receiver may stall; enforce bounded claim age, cap escrow/bytes budget and protected M0 cleanup. Aborting a claim before V can requeue only if policy and active rights still allow it. **Aborting after V cannot requeue to a new Task/ServiceIncarnation**, even when receiver has died. A terminally dropped message might have been observed by B and led to an external effect: do not report it as certainly no-effect.
+
+## 5. Cap install, schema validation and revocation
+
+### 5.1 Handle usability can precede method admission
+
+Kernel can validate actual transferred cap type/rights/lineage, but cannot decode arbitrary evolving user-space SABI resource role schemas without violating RFC-001/009 small TCB. If caps become immediately invokable in B's cap table at K-I, a malicious B can use a granted authority **before it validates the higher-level method**. Whether that is a security violation depends on whether receiving a cap is itself authorized by Endpoint ownership, or product policy promises that only method admission unlocks a resource.
+
+Two explicit security models:
+- **CAP-BEARER:** successful receiving grants the actual kernel authority to trusted B, followed by userspace method validation; B's granted rights are the policy ceiling. A malformed method can still expose live caps to an already authorized B. Never claim method-level permission gates those caps.
+- **CAP-ESCROW:** actual transferred grants remain non-invokable in kernel custody until trusted role-check and authenticated release; malformed/unknown resource claims close/settle without becoming arbitrary B rights. Needs separate kernel escrow object, release authorization, quota, claimant death policy and no reliance on raw IDL string. **Not selected**.
+
+A third alternative uses a narrow, separately trusted router/broker to receive and attenuate caps before less-trusted service workers. That broker's own TCB and provenance require validation, and its user-space parser is only as secure as the caps it holds.
+
+### 5.2 Cap vector, revoke B and admission cut
+
+A single K-I may install the whole vector or none. Byte copyout V is separately observable. If V preceded K-I, an all-or-none cap install cannot imply "no data leaked". If K-I preceded V, a service might use native authority before a subsequent failed payload copy. CAP-ESCROW might prevent immediate use while still leaving already visible bytes irreversible.
+
+If revocation barrier B publishes during queued transit or ReceiveClaim, newly admitted cap operations under that revoked lineage must fail regardless of whether the source had transfer rights at earlier SEND preflight. A cap that was legitimately moved before B can remain in transit but not be newly usable after B. An in-flight operation admitted before B needs separate continuation, CPU R1 and DMA R2-F rules, not blanket rollback.
+
+### 5.3 Proposed logical outcome vocabulary (not numeric ABI)
+
+| Receive status class | Truthful statement |
+|---|---|
+| RECV_NOT_CLAIMED | no successful claim, no user-visible publication |
+| RECV_CLAIMED_UNEXPOSED | exclusive kernel claim active, no V yet |
+| RECV_PARTIAL_VISIBLE | any user-visible write could have occurred; new-recipient requeue prohibited |
+| RECV_CAPS_INSTALLED | actual live cap vector installed for receiver in one kernel cut |
+| RECV_TERMINAL_SETTLED | queue record no longer claimable by foreign receiver; caps may be closed/quarantined |
+| RECV_UNKNOWN | observer lacks trustworthy evidence of current phase; no speculative retry |
+
+These names are proposed design categories, not C types/syscall numbers. A dead Task may never observe RECV_PARTIAL_VISIBLE; kernel must nonetheless preserve custody and cleanup truth.
+
+## 6. Endpoint ownership, message cycles and hardware cleanup
+
+E1 MOVE of endpoint ownership races with old Task's in-flight SEND/RECEIVE. A consistent design must order admitted old operations before transfer or cancel/fence them before new owner becomes active, without undoing a committed SEND. A kernel invocation reference may outlive a Task's public handle but it is not a second effective owner; its permitted work and budget are bounded. Fuchsia Channel explicitly specifies before/after Endpoint transfer ordering [S1]; UniOS does not inherit this proof.
+
+Queue-cap containment can form cycles and recursive destruction. Fuchsia Channel docs warn about messages owning handles and recursive close effects [S1]; its ChannelWrite rejects including writing Endpoint as a moved handle [S2]. **Research initial rule:** reject direct self-send of actual sending Endpoint; examine sending peer Endpoint and indirect cycles under explicit reject/iterative bounded GC/quarantine policies. Never rely on recursive unbounded kernel stack or unlimited cleanup under a global lock.
+
+Channel peer-closed or queue-full **before SEND cut** returns true NOT_COMMITTED with original source grants still owned by A (UniOS's candidate E1, unlike Fuchsia's consume-on-error write). After SEND cut, peer death can cause queue cleanup and close of transit caps but **does not restore original sender handle**, stop DMA or undo a remote VFS effect. When R2-F cannot be proved, keep device/pinned frames charged/quarantined, not reclaimed simply because final receiver cap is gone.
+
