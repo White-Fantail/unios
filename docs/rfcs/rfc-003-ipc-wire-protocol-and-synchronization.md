@@ -554,3 +554,37 @@ Errno/NTSTATUS/Mach 오류는 사용자 공간 personality가 번역한다. Nati
 **Unresolved P0 exit:** exact guarded receive ordering, token publication/activation, claim/audience and policy epoch during Endpoint MOVE, revocation vs K-U, metadata leak bounds, terminal debt cleanup and Pager/M0 liveness. The Proposed E1 right-table DERIVE textual inconsistency fixed previously remains fixed; none of the new P0 items is proved by that editorial correction.
 
 **Roadmap:** review these scoped semantics jointly with RFC-002/009/018 and the CAPIPC model, choose one mathematically precise receive ordering only after a counterexample-free proposed state specification, and seek **separate** authorization if any future executable model or code is desired. Until then RFC-003 remains **Proposed v0.2**.
+
+## 24. 2026-10-25 Handle Publication and Activation joint design study (Proposed, not approved)
+
+**Handoff:** [Handle Publication, Receive Commit & Capability Activation v0.1](../models/capipc-handle-publication-activation-v0.1.md). This is an additional **non-normative Proposed** deep-research cross-reference to RFC-003 §§5–6,9–10,13–14,23. No original IPC-Dxx decision is elevated to Accepted, no kernel executable, syscall number, type width, stable SABI, test or formal model is authorized.
+
+### 24.1 Critical semantics and why K-I needs a narrower promise
+
+One whole-vector K-I receiving commit may guarantee **kernel cap-table installation + queue/claim retirement** atomically. It does **not** guarantee one atomic userspace publication of the corresponding numeric handle array, full data-buffer copyout, result observation by the initiating Thread, or future method/durability success. Accordingly:
+
+- **K-HR:** a scoped, generation-bound pre-reservation of Task-public Handle tokens; inactive IDs may be safely copied before grant installation only if they can NEVER be reassigned to unrelated grants after a partially visible failure.
+- **K-HP:** numeric user handle publication may be partial and Task-shared. No native cap rights arise from token bytes alone.
+- **K-I:** ordinary bearer-cap receive completion still requires *one* all-or-none native cap vector installation and message/claim retirement, **not a second hidden completion**. Competing revoke B, Endpoint MOVE, Task death, terminalization, and two simultaneous commit attempts must have unambiguous linearization.
+- **K-Q:** a trusted preidentified claim/receipt query may establish actual kernel K-I status despite lost return, but cannot prove a userspace Thread read the numbers or a remote FileService completed work. A newly minted claim ID supplied only in the lost return is NOT safely recoverable.
+- **K-U optional T2:** a genuinely independent verifier/issuer rechecks current exact kernel grant set, scope, Task/Endpoint generation, PolicyEpoch and revocation at a separate cap activation cut. A server's own unchecked “IDL validated” claim is not security proof.
+
+**HPA-C candidate**, with kernel-private ReceiveClaim escrow, token reservation, staged output and a distinct explicit receiver AcceptCommit, is a *formal proof leader*, not already selected universal kernel API. **HPA-A (install first)** and **HPA-B (single-call token-first)** are legitimate competing research designs, potentially lower overhead; no performance or TCB measurements exist. In T1, explicit AcceptCommit expresses an authorized receiver **Task's bearer-cap acceptance**, not proof of method schema check, user knowledge or human consent.
+
+### 24.2 Failure/race cases to preserve as P0
+
+| Scenario | Safety requirement (not yet proved) |
+|---|---|
+| First of two numeric public Handle tokens copied, second faults | no active partial vector; exposed token ID not reused into new unrelated authority |
+| Kernel K-I succeeds but token/status return is lost | charged live cap rights remain exactly in B Task; unknown to initiating Thread until authenticated query |
+| Two Threads race to AcceptCommit same claim | one winning K-I; no doubled vector or queue removal |
+| K-V metadata/payload exposed then claimant abandoned | no automatic redelivery to distinct C/B2 audience; terminal cleanup charged |
+| Revoke B or Endpoint MOVE during staged claim | K-I revalidates actual rights/Task/Endpoint generation; no post-B new authority |
+| Trusted T2 verifier result stale after issuer policy update | K-U requires fresh actual grant and policy validation; fail closed |
+| Claim/result ID lost or guessed across Task reincarnation | preidentified or safely enumerable claim status, privacy/anti-ABA boundaries |
+| Repeated staged faults use every Task token value or queue credit | bounded admission and fail-closed exhaustion, not insecure reuse or M0 starvation |
+| Terminalized DeviceCap references unfenced DMA | R2-F and R2-O remain distinct; sponsor/quarantine cannot be refunded early |
+
+**RFC-003 invariants IPC-06, IPC-09 and IPC-28 remain Proposed** and must be read with §23's clarified possibility of partial user-data exposure. IPC-06 is about native cap-vector installation, not all-or-none usercopy; IPC-09/28 prohibit unsafe new-recipient replay after possible exposure rather than claiming failure erased earlier observations.
+
+**Exit OPEN:** exact public token reservation and permanent nonreuse, initial claim-ID recovery, bounded queue/claim/CPU budget, Task-wide concurrent observation, chosen commit order, honest guest/remote effect mapping and independent T2 verification must be addressed by a future, separately reviewed contract before any ABI approval.
