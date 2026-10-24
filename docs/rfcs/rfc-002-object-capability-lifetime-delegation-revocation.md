@@ -291,7 +291,7 @@ Restricted Linux supervisor (RFC-001 G-R) is trusted only for its selected guest
 | CAP-02 | Every operation validates type, rights, scope and live/revoked state at a documented commit point. |
 | CAP-03 | Existing-object derivation never increases authority; typed new-object creation requires independent authorized create + budget. |
 | CAP-04 | Moving caps never duplicates ownership, strips ancestry or silently changes sponsor. |
-| CAP-05 | Failed operations publish no partial objects/handles and restore reserved charges. |
+| CAP-05 | Pre-commit failures publish no partial objects/handles and restore reservations; post-commit errors preserve authoritative committed ownership and settle charges explicitly. |
 | CAP-06 | After a grant-root deny barrier, no descendant can begin a newly authorized operation. |
 | CAP-07 | R1 completion cannot occur while a forbidden descendant still has a grant-derived accessible CPU mapping. |
 | CAP-08 | R2-F requires documented lineage-scoped in-flight/MMU/IOMMU/DMA/IRQ quiescence; unresolved hardware remains pending/quarantined. |
@@ -329,7 +329,7 @@ Future measurements *after separate implementation authorization* should include
 ## 16. Planned design verification (not implementation)
 
 1. Finite-state model with multiple Tasks, grants, ancestor roots, sponsors, transit queues, CPU mappings, DMA pins and revoke barriers. Explore close-vs-invoke, derive-vs-revoke, transfer-vs-death, sponsor-death, quota rollback, independent grants to same object and queue cycles.
-2. Prove or find counterexamples for CAP-01/03/04/05/06/07/08/10/11: no amplification, no partial transfer, no resurrection, bounded accounting, deny barrier and safe reuse.
+2. Prove or find counterexamples for CAP-01/03/04/05/06/07/08/10/11/19/20/21/22: no amplification, no partial transfer, no resurrection, bounded accounting, deny barrier, revocation-anchor survival, lost-reply recovery and family-vs-object reclaim safety.
 3. Model-check with TLA+/PlusCal, Alloy or equivalent. Choice of modeling tool alone is not proof. Keep machine-readable test traces and reviewer notes as future research artifacts.
 4. Specify typed rights matrix, each syscall candidate's pre/postcondition and linearization, Task handle table lifecycle, ref-count vs grant-tree interaction, and error categories before ABI v1.
 5. Cross-review with RFC-003 (IPC transfer/reply), 004 (mapping/pager/OOM), 005 (CPU budget), 006 (boot/restart), 007 (IOMMU/DMA), 009/010 (native + restricted guest), 015 (threat testing), 016 (permissions) and 018 (versioning).
