@@ -309,3 +309,124 @@ RFC-009 native KABI logical statuses and RFC-018 user-space SABI result families
 
 No numeric syscall, status enum, versioned wire byte layout, C struct shape, or specific Linux compatibility claim is fixed by this paper.
 
+
+## 9. Joint integration adversarial matrix (JC-01…JC-24)
+
+These are **unexecuted paper interleavings**, not tests that passed. For each case, a future model must explicitly name ownership, charges, byte disclosure, authorization and phase evidence before/after the cut.
+
+| ID | Interleaving | Forbidden assumption | Required proof or denial |
+|---|---|---|---|
+| JC-01 | E1 endpoint moved while same Task's Thread still in SEND | both old and new Task may freely send after MOVE | invocation pin/commit ordering and one effective public owner |
+| JC-02 | Generic DERIVE routine targets E1 ChannelEndpoint | all caps can be derived even with smaller rights | E1 typed reject; never accidentally enable E2 |
+| JC-03 | Two apps ask ServiceID S for connections | one globally duplicable Endpoint used by both Tasks | separate Channel pairs and grant provenance |
+| JC-04 | Broker transfers client half, server-half MOVE fails | distributed pair delivery is automatically atomic | detect stranded peer, close/charge/PEER_CLOSED; avoid fake Ready |
+| JC-05 | A SEND MOVEs two CapGrants, second is revoked at commit | partial moved vector or source/destination duplicated | all-or-none at exact preflight/commit with revoke barrier |
+| JC-06 | Queue append COMMITTED, sender status copyout faults | error means all sender caps retained | UNKNOWN and recoverable ticket or fail-closed ambiguity |
+| JC-07 | Source handle bits reused in still-running Task | new grant valid with same token after close | public nonreuse and exhaustion contract |
+| JC-08 | B Read/ReceiveClaim exposes bytes, cap slot allocation fails, C claims | B never saw secret because receive commit failed | no unauthorized precommit byte disclosure/requeue |
+| JC-09 | B has exclusive claim then hangs or dies | kernel will reclaim without resource/CPU cost | bounded expiry/charge/cleanup and no second claimant leak |
+| JC-10 | Unknown resource in decoded SABI union, SEND already COMMITTED | source caps return on BAD_SCHEMA | escrow/receiver close or authorized proxy; no rollback |
+| JC-11 | Unknown DeviceCap closed after parser reject, old DMA writes memory | handle close implies physical fence | R2-F, quarantine, sponsor pin survives |
+| JC-12 | Revoker publishes B while grant in Channel queue | receiver may invoke cap because it was valid when enqueued | lineage-scoped new action rejection; admitted references distinguished |
+| JC-13 | Sibling independent root to same MemoryObject remains after family R2-F | one-family fence makes frame reusable | R2-O all roots/refs/pins and sanitize |
+| JC-14 | A sponsors queue then dies while B holds ReceiveClaim | charged resources automatically refunded to dead sponsor | retained ledger, authorized ADOPT or bounded cleanup |
+| JC-15 | Client endpoint moved to proxy which asserts original human ID | exclusive owner equals same authenticated original person | verified per-call principal or bearer-only method |
+| JC-16 | C1 session valid P10; issuer changes to P11 before method admission | cached handshake permanently authorizes P10 scope | current cap/policy epoch check; admitted-effect race policy |
+| JC-17 | Service S1 restarts S2 under same name with old ReplyToken pending | name maps reply to new server | kernel generation and new issued Endpoint + new session |
+| JC-18 | Versioned IDL adds unknown resource role, old proxy ignores bytes | unknown resource can be skipped as scalar without charge | close/settle and safe strict role count |
+| JC-19 | New required consent field dropped by ProtoJSON proxy | binary unknown-field handling proves policy survival | enforce at server independently or refuse bridge |
+| JC-20 | Stored volume write accepted, StorageHost dies before result | call timeout proves no file write | EFFECT_UNKNOWN/durable journal reconciliation |
+| JC-21 | ReplyToken consumed twice by unrelated workers | same result valid in two Task generations | one-shot, scoped transfer, no stale reply to new caller |
+| JC-22 | SABI client requests DeviceGroup after guest UID0/setuid | textual admin claim authenticates native root | native issuer-cap/portal authorization only |
+| JC-23 | Parser page fault while holding global kernel cap lock | service parser never blocks/Pager recursion | no large IDL parser in Ring 0; bounded native usercopy |
+| JC-24 | Client keeps sole service Channel busy until wired M0 has no IPC credit | fairness from finite queue automatically reserves recovery progress | dedicated bounded M0 budget and deadlock graph/fail-stop |
+
+## 10. Proposed joint invariants (CI-01…CI-36), NONE PROVED
+
+| ID | Candidate predicate |
+|---|---|
+| CI-01 | One E1 Endpoint has at most one effective owning public Task handle at any instant; concurrent invocation refs do not create extra owners. |
+| CI-02 | E1 ChannelEndpoint DERIVE and DUPLICATE are refused; E2 multiowner has no implicit acceptance from RFC-002 type-generic rules. |
+| CI-03 | One logical ServiceID can serve many clients using separately authorized E1 Channel pairs without shared Endpoint ownership across Tasks. |
+| CI-04 | No arbitrary ServiceID lookup, badge, guest PID/UID0 or sender-written principal field can mint or widen a native capability. |
+| CI-05 | Actual cap type/rights/scope/lineage, invoking Task and sponsor are kernel validated for every native privileged action. |
+| CI-06 | Public stale Handle bits never reauthorize a different object during same Task lifetime, with fail-closed namespace exhaustion. |
+| CI-07 | A successful E1 SEND commits all complete moved cap references+bytes as one kernel queue unit or none; no half-transfers. |
+| CI-08 | Real precommit NOT_COMMITTED retains all sender source grants and reverses only provisional reservations. |
+| CI-09 | After SEND_COMMITTED sender cannot invoke original moved Handles and receiver decoder error cannot restore them retroactively. |
+| CI-10 | Lost commit/result report yields UNKNOWN unless an independently trusted reconciliation predicate establishes exact state. |
+| CI-11 | One ReceiveClaim is exclusive, bounded, sponsor-charged and cannot expose arbitrary secret bytes to losing claimants. |
+| CI-12 | Receiver cap table installs all actual transferred grants and queue dequeue atomically, or neither; separate user byte disclosure remains explicit. |
+| CI-13 | Partial user-memory copyout is not falsely rolled back or claimed secret/confidential after exposure. |
+| CI-14 | Unknown SABI resource role cannot leak a moved cap; actual cap ownership is settled through declared close/reject/authorized proxy. |
+| CI-15 | A live DeviceGroup cap close or SABI rejection does not imply hardware DMA R2-F or overwrite rollback. |
+| CI-16 | Cap lineage B denies new actions across in-table and in-transit descendants without revoking separate independent roots by accident. |
+| CI-17 | CPU R1 and DMA/IRQ R2-F remain distinct; R2-O requires all independent roots/refs/fences and safe sanitized reuse. |
+| CI-18 | Every queued cap, active Handle, ReceiveClaim, ReplyToken, Pager/DirtyPage and DmaPin retains one accounted sponsor or authorized adoption/cleanup state. |
+| CI-19 | A Task death never unconditionally refunds resources still retained by transit, in-flight hardware or dirty storage state. |
+| CI-20 | Kernel ReplyToken is minted for one exact Call+Task/Endpoint generation; no SABI request_id can forge/reuse it. |
+| CI-21 | ServiceInstance identity and SABI PolicyEpoch belong to trusted issuer/service layers; kernel does not trust/parse arbitrary user ServiceID to assert its own generation. |
+| CI-22 | An authorized Endpoint bearer right does not automatically authenticate original user/consent across transfer/forwarding. |
+| CI-23 | Identity-sensitive methods require independently trusted current caller/principal/delegation evidence, otherwise refuse or explicitly use bearer-only semantics. |
+| CI-24 | Session negotiation binds exact issued Endpoint, current ServiceIncarnation, policy epoch, required feature floor and accepted resource-role schema. |
+| CI-25 | A valid earlier handshake does not override a later revoke B, scoped cap attenuation or stronger service security policy at new-effect admission. |
+| CI-26 | Unknown required security/consent/durability change cannot be silently ignored or interpreted as authorized default by a legacy method. |
+| CI-27 | Unknown value-only fields may be safely skipped only under method-specific neutral semantics and each approved serialization/forwarding path. |
+| CI-28 | E1 SEND_COMMITTED, RECEIVE_CAP_INSTALLED, METHOD_ADMITTED, EFFECT_APPLIED, SYNC_SCOPED and RESULT_OBSERVED never collapse to a generic success. |
+| CI-29 | Deadline, CancelLocal, late Reply and ServiceDied do not prove an external effect was not applied or persisted. |
+| CI-30 | Idempotency/durable reconciliation requires authenticated backend ledger+ordering tied to precise request/effect identity, not just a request_id in SABI. |
+| CI-31 | Native status and guest Linux errno/FD/OFD/futex/signal/exec states are distinct; no false compatibility claim by integer status cast. |
+| CI-32 | Protocol methods cannot consume a transferred grant exceeding server policy or actually issued kernel scope, regardless of IDL type label. |
+| CI-33 | M0 boot/recovery requires finite resident memory+CPU+timer/IRQ+IPC and is not dependent on a general pageable SABI parser. |
+| CI-34 | No public ABI field widths, syscall number, wire header or C ABI layout is frozen by this research document. |
+| CI-35 | Every future implementation claim must be backed by a named formal/concurrency test, reference CPU/hardware and explicit security/media assumptions. |
+| CI-36 | All joint decision candidates stay Proposed until owning RFCs reconcile semantics and a separate ADR review accepts the complete contract. |
+
+## 11. Open joint blockers (J-01…J-24)
+
+| ID | Priority | Blocking research question | Owning RFCs |
+|---|---|---|---|
+| J-01 | P0 | Resolve RFC-003 conflicting E1 DERIVE table with type policy; ensure no hidden SDK derive and no E2 leak | 002/003/009 |
+| J-02 | P0 | Per-client connection broker/factory grant issuance, bootstrap root, orphan half-close and cleanup | 003/006/009/018 |
+| J-03 | P0 | Concurrent E1 endpoint MOVE with old Task's in-flight SEND/RECEIVE and FIFO ordering | 002/003 |
+| J-04 | P0 | Public Handle nonreuse/ABA under exhaustion and Task relaunch; generation and raw integer validation | 002/009 |
+| J-05 | P0 | Multi-Cap MOVE precommit, revoked source race, source-slot invalidation and owned queue record | 002/003/009 |
+| J-06 | P0 | Recover SEND status when result AND fresh ticket ID are lost after queue commit | 003/009/018 |
+| J-07 | P0 | Exclusive ReceiveClaim, usercopy partial disclosure, final cap install atomicity and abort/death | 003/004/009/018 |
+| J-08 | P0 | Unknown resource-bearing IDL decoding after cap COMMITTED, rights/proxy/close and charge | 002/003/018 |
+| J-09 | P0 | Prevent claimed message starvation, queue cycles, orphaned transit and unbounded cleanup | 002/003/005/006 |
+| J-10 | P0 | Distinguish actual kernel caller/issuer from original user/consent and arbitrary proxy delegation | 002/003/009/016/018 |
+| J-11 | P0 | Protocol session binding to Endpoint/ServiceIncarnation/PolicyEpoch and concurrent revoke/admission | 002/003/006/018 |
+| J-12 | P0 | Exact ReplyToken generation/single use and worker transfer versus service restart and deadline | 003/005/006/009 |
+| J-13 | P0 | Cap revocation B, CPU R1, DMA R2-F and R2-O including independent roots and unsafe frame reuse | 002/004/007 |
+| J-14 | P0 | Sponsored resources after sender/receiver death, fork/Task cycle, DMA quarantine and ADOPT | 002/003/004/007 |
+| J-15 | P0 | Copyin/copyout Pager-fault graph and M0 wired capacity when claims/locks/resources exhausted | 003/004/005/006/009 |
+| J-16 | P0 | Correct method and side-effect commit/UNKNOWN, Backend ledger/durable receipt, no blind retry | 003/008/009/018 |
+| J-17 | P0 | Native vs guest Linux status, close/epoll/futex/exec mapping through service upgrades | 009/010/018 |
+| J-18 | P0 | SABI critical unknown vs optional data, protobuf JSON relay loss, added cap role/version floor | 009/018 |
+| J-19 | P0 | Trusted service/image binding and Endpoint origin authentication without interpreting names as rights | 002/006/009/018 |
+| J-20 | P0 | Sender/receiver proof no handle leaks/double install when kernel copyout is interrupted | 002/003/004/009 |
+| J-21 | P1 | Choose exact minimum logical Kernel transport record fields and hard resource limits on x86_64 | 003/009 |
+| J-22 | P1 | Decide bounded identity proof/proxy mechanism independent of PII disclosure and badge forgery | 002/009/016/018 |
+| J-23 | P1 | Compare E1 per-client latency/connection memory and E2/seL4 shared-Endpoint after evidence | 003/005/009/018 |
+| J-24 | P1 | Stable C-compatible SDK source/ABI ownership and language codegen after wire/schema proof | 009/018 |
+
+## 12. Proposed decision register (JC-D01…JC-D16) — NONE Accepted
+
+- **JC-D01:** CAPIPC-A is the conditional joint direction: Kernel handles typed cap/IPC transfer; SABI handles versioned semantic policy outside Ring 0.
+- **JC-D02:** Fix RFC-003 E1-only ChannelEndpoint rights table to remove DERIVE and mark DUPLICATE denied; E2 needs independent authorization.
+- **JC-D03:** Implementability study assumes distinct per-client E1 channel pairs through scoped connection broker, not a common copied Endpoint.
+- **JC-D04:** Treat kernel public token nonreuse, Task-specific generations and fixed-rights validation as separate from Session/ServiceID identity.
+- **JC-D05:** Require one atomic SEND cut for complete bytes/cap MOVE, preserve sender all-or-none only precommit; lost result is UNKNOWN.
+- **JC-D06:** Require exclusive receiver claim and independent cap-vector install with no silent promise of atomic user byte copyout.
+- **JC-D07:** After committed MOVE, decoder failure closes/settles recipient/kernel resources; never recreates sender original Handle.
+- **JC-D08:** T1 preadmitted recoverable operation ticket preferred to study, not chosen; register-only and fail-closed remain alternatives.
+- **JC-D09:** Bearer-only and human-identity-sensitive methods must be separate, with trusted per-call proof for identity-sensitive ones.
+- **JC-D10:** Bind Session to Endpoint issuance, ServiceIncarnation, PolicyEpoch, mandatory features and current cap rights; revalidate at method effect admission.
+- **JC-D11:** Kernel ReplyToken generation and SABI logical ServiceIncarnation are separate; no kernel method-specific full IDL parser.
+- **JC-D12:** Enforce sponsored queue/claim/grant/pin budgets across Task death, revoke and hardware quarantine; no false refund.
+- **JC-D13:** Preserve R0/B/R1/R2-F/R2-O, with no conflation of handle close and physical DMA stop or object-wide reuse.
+- **JC-D14:** Unknown security/resource fields fail closed; optional value-only fields require explicit neutral semantics and conversion-proof.
+- **JC-D15:** Separate kernel COMMITTED/UNKNOWN, service effect, FileSync/DurableReceipt and user-observed status; no exactly-once claim from message ID alone.
+- **JC-D16:** No Stable KABI/SABI version, public numeric opcode, ABI fields, implementation or compatibility result authorized by this draft.
+
