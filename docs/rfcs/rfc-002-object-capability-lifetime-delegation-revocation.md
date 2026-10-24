@@ -1,6 +1,6 @@
 # UniOS RFC-002 — Object, Capability, Lifetime, Delegation & Revocation
 
-> **Status:** Proposed — Specification v0.1 (research draft, not accepted or validated)
+> **Status:** Proposed — Specification v0.2 (critical review revision; not accepted or validated)
 > **Date:** 2026-10-24 (NZDT)
 > **Baseline:** [Architecture v0.2](../architecture/unios-architecture-v0.2.md) and [RFC-001 v0.2](rfc-001-kernel-boundary-and-tcb.md).
 > **Scope:** Kernel objects, handles, rights, creation authority, quotas, derivation, transfer, revocation, destruction, safety and verification.
@@ -8,17 +8,19 @@
 
 ## 핵심 결정 요약 (한국어)
 
-**RFC 상태는 Proposed v0.1이다.** 기존 D1~D8과 RFC-001의 커널 경계를 상세화하는 *설계 가설*이며, 커널이나 서비스의 구현·검증·ABI 동결을 뜻하지 않는다. 세부 계약이 명확해졌다는 이유만으로 아키텍처의 안전성이 입증되지는 않는다.
+**RFC 상태는 Proposed v0.2이다.** 기존 D1~D8과 RFC-001의 커널 경계를 상세화하는 *설계 가설*이며, 커널이나 서비스의 구현·검증·ABI 동결을 뜻하지 않는다. 세부 계약이 명확해졌다는 이유만으로 아키텍처의 안전성이 입증되지는 않는다.
 
 **1차 연구 권고: H1 — 실용적 혼합형 Capability 객체 모델.** 독립 커널에는 Task별 opaque handle table, type-specific 권한, 객체 생성 허가, 리소스 쿼터, 권한 파생 기록을 두고, VFS·권한 UI·네트워크·호환성 정책은 사용자 공간에 둔다. 다만 H1은 *유일한 최선*으로 확정하지 않는다. 자원 재사용과 회수의 일관성을 명시적으로 보장하는 seL4형(H0), 단순하고 성숙한 핸들/Job 모델의 Zircon형(H2), 서비스 RPC 프록시(H3)를 함께 비교한다.
 
 **객체의 5가지 지위를 혼동하지 않는다:** (1) 생성한 Task, (2) 현재 핸들 보유자, (3) 실제 권한을 부여한 Grant, (4) 커널 메모리·IPC·페이지·DMA 비용을 부담하는 Sponsor, (5) 객체를 살아 있게 하는 모든 참조. 예를 들어 A가 MemoryObject를 만들고 B에 읽기 권한을 주더라도, B가 핸들을 받았다는 이유만으로 A의 리소스 비용이 사라지거나 B에게 권한 재위임권이 생겨서는 안 된다.
 
-**권한을 끊는 것과 안전하게 자원을 회수하는 것은 다르다.** R0는 로컬 핸들 닫기, R1은 파생 권한에 대한 *향후 접근 차단과 필요한 CPU 매핑 무효화 완료*, R2는 이미 승인된 작업·TLB·DMA/IRQ까지 안전하게 종료된 *자원 재사용 가능 상태*이다. 이미 읽은 데이터나 완료한 파일 저장은 회수할 수 없다. 장치 DMA를 안전하게 멈췄다고 확인할 수 없다면 해당 자원은 Quarantined로 두어야 한다.
+**권한 회수와 객체 전체 재사용은 구분한다.** R0=핸들 종료, B=신규 권한 행사 차단, R1=권한 계보 및 의존 CPU 매핑 접근 차단, R2-F=해당 계보의 기존 작업·DMA 안전 중단, R2-O=모든 독립 권한·참조까지 해제되어 객체 전체를 재사용할 수 있는 상태. **R2-F가 성립해도 다른 독립 권한이 남으면 R2-O는 불가능하다.** 이미 읽은 비밀과 완료한 I/O는 되돌릴 수 없다.
 
 **권고 변경 가능 조건:** R1 강제 경로가 IPC 성능·커널 TCB를 과도하게 증가시키거나, 권한 파생 그래프의 대량 정리를 안전하게 수행할 수 없거나, 자원 쿼터 회계가 유실되는 반례가 발견되면 H1을 고수하지 않는다. H0/H2로 전환하거나, 일부 서비스에서는 커널 레벨 회수를 포기하고 서비스 수준 접근 중지만 제공할 수 있다. 그 경우 보안 목표·지원 범위 차이를 공개해야 한다.
 
-**검증 순서:** CAP-01~18의 모델·반례 설계 → RFC-003 IPC 원자성 + RFC-004 매핑/페이지 + RFC-006 부팅/종료 공동 검토 → RFC-007 DMA 그룹 신뢰 조건 → RFC-009/010 Linux 제한 실행 → RFC-015 보안 게이트. 미해결 P0 8건이 남아 있으며 R1 설계 종료를 선언하지 않는다.
+**v0.2 주요 수정:** 원본 핸들 종료 후 파생 권한의 계보를 유지하는 Anchor/RevocationController, IPC prepare/commit/report와 결과 불명확성, R2-F vs R2-O, 공유 메모리 회계와 범위 축소까지 재정의했다.
+
+**검증 순서:** CAP-01~22의 모델·반례 설계 → RFC-003 IPC 원자성 + RFC-004 매핑/페이지 + RFC-006 부팅/종료 공동 검토 → RFC-007 DMA 그룹 신뢰 조건 → RFC-009/010 Linux 제한 실행 → RFC-015 보안 게이트. 미해결 P0 11건이 남아 있으며 R1 설계 종료를 선언하지 않는다.
 
 ---
 
@@ -26,7 +28,7 @@
 
 **Proposed comparative baseline H1:** task-local opaque handles to typed kernel objects, kernel-enforced fine-grained rights, explicit creation authority and hierarchical resource budgets, provenance-aware delegated grants, and a distinct revocation/physical-reclamation lifecycle.
 
-This combines useful aspects of seL4's explicit authority and derivation discipline with Zircon's practical per-process handles and resource groups; **neither combination nor its performance is validated**. It must be measured and model-checked against:
+This compares seL4's explicit authority/derivation with Zircon's process-local handle and job-policy design. **Zircon's jobs are not evidence of a universal UniOS per-object quota ledger; no proposed combination or performance outcome is validated**. It must be measured and model-checked against:
 - **H0: seL4-like explicit untyped/retype** and CSpace/derivation capabilities.
 - **H2: Zircon-like typed handles + Job/Quota** with no generic strong transitive kernel revoke.
 - **H3: service-controlled RPC proxy/lease** for resources whose revocation needs no kernel mappings or hardware control.
@@ -71,14 +73,14 @@ References are research evidence for **external designs**, not assurance or impl
 
 **Reference:** handles, queued in-transit capabilities, kernel invocation references, mappings, waits, reply tokens, pinned pages, interrupt bindings and DMA that keep objects or effects alive.
 
-**Provenance lineage:** parent–child derivation relationship for grants. Two independent authority roots may legitimately reference the same object. Revoking one does not inherently cancel the other.
+**Provenance lineage:** parent–child relationship for grants. Independently authorized roots can reference the same object; revoking one does not cancel the other. **RevocationAnchor:** kernel-held ancestry/control metadata that must survive ordinary parent-handle close while descendants or effects remain. **RevocationController:** separate, explicitly scoped authority over that lineage, not a global object-destruction right.
 
 Maintain three separately auditable graphs:
 1. **Authority/derivation graph** — whose grant is derived from which other authorized grant?
 2. **Sponsor/charge graph** — which ResourceBudget pays for each live object, handle slot, metadata allocation, pinned page and queued transfer?
 3. **Lifetime/dependency graph** — which references, mappings, operations and hardware state prevent safe free/reuse?
 
-No security property may be based on a single mutable owner pointer when these graphs disagree.
+No security property may depend on a single owner pointer when these graphs disagree. Track a fourth relation: controller-to-lineage scope. Controller transfer and parent close must not silently expand or erase revoke authority.
 
 ## 4. Initial object taxonomy (candidate only)
 
@@ -103,7 +105,7 @@ Timer, scheduling context, graphics and hypervisor objects remain RFC-005/013/01
 
 Common candidate rights: QUERY_BASIC, WAIT, SIGNAL, READ, WRITE, MAP, EXECUTE_MAP, DUPLICATE, TRANSFER, DERIVE, CONTROL, CONFIGURE, BIND, REVOKE_DESCENDANTS, CREATE_SUBOBJECT. Their applicability and implied operations are **type-specific**; READ on a MemoryObject is not equivalent to ChannelEndpoint RECEIVE; CONTROL must not imply a global ADMIN privilege. Specialized rights (MMIO, DMA_MAP, IRQ_BIND, DEBUG_OTHER, TASK_START/STOP, BUDGET_DELEGATE) need separate typed authority.
 
-For an **existing object's grant**, effective_rights(child) is a subset of effective_rights(parent) intersected with allowed_rights(type). A holder can remove DUPLICATE/TRANSFER/DERIVE to prevent onward spreading of that grant; it cannot restore a dropped power. A new object is different: explicit Create authority + budget legitimately permits the kernel to issue an initial cap to **a new object**, rather than copying rights from an unrelated cap. This does not mint arbitrary capability access to existing objects.
+For an **existing object's grant**, effective_rights(child) is a subset of effective_rights(parent) intersected with allowed_rights(type), AND effective_scope(child) is within effective_scope(parent) (Task, page range, device group and duration where applicable). Rights bits alone are insufficient. A holder can remove DUPLICATE/TRANSFER/DERIVE to prevent onward spreading of that grant; it cannot restore a dropped power. A new object is different: explicit Create authority + budget legitimately permits the kernel to issue an initial cap to **a new object**, rather than copying rights from an unrelated cap. This does not mint arbitrary capability access to existing objects.
 
 **Proposed DERIVE vs TRANSFER:** DUPLICATE/DERIVE authorizes the creation of a distinct same-object grant under an attenuated rights set. TRANSFER authorizes moving possession without gaining new powers. Moving with attenuation may drop rights, but it must not erase ancestry. Combining these bits as one generic privilege needs explicit review.
 
@@ -121,9 +123,9 @@ H0 approach: explicit untyped memory authority and retype to typed objects [S2].
 
 Proposal: charge for object instances, handle slots, derivation/family metadata, IPC queued bytes/messages/transit handles, page-table/mapping metadata, resident/pinned pages, wait registration and critical reserved operations. CPU budget and DMA throughput policies go to RFC-005/007. Subbudgets must not exceed ancestors' aggregate reservations and commitments.
 
-- Exactly one **primary sponsor** is accountable for each object and each kernel-internal metadata charge, with parent aggregate charging or an equivalent provably conservative accounting scheme.
+- Each object/metadata allocation has an accountable primary sponsor and, as needed, **additional reference/holder/queue/mapping charges**. One shared/COW page sponsor does not mean all additional consumers are unmetered; conservative aggregate accounting is a P0 research requirement.
 - A handle's holder can change without silently moving its sponsoring debt. An explicit, authorized and atomic **sponsorship adoption** is required for charge transfer.
-- When moving a handle to another Task, recipient handle-slot budget must be available; queued IPC is charged while queued.
+- Moving a handle between Tasks requires an available receiver handle-slot charge on **atomic receive/install** or a separately documented earlier reservation. While the message is queued, its credits/bytes/grants remain charged to an explicit queue/sender sponsor; successful enqueue is not receiver installation.
 - Creator Task death does **not** magically discharge still-live shared objects. Sponsor-budget nodes survive until their objects are reclaimed/adopted, or remain frozen with explicit accounting.
 - An untrusted app cannot consume the wired boot/Pager recovery reserve by endless derive/create/queue operations.
 - An allocation that exhausts a noncritical quota must fail with a bounded, non-panicking error; partial created objects and charges must roll back.
@@ -174,53 +176,71 @@ Each queued moved handle **retains ancestry**. Revoking an ancestor blocks both 
 
 Kernel must track grant-derived effects such as a memory mapping, queued reply, wait registration, DMA pin and IOMMU map **even when the invoking handle is closed**. The owner of each effect, dependency to lineage and conditions for cancel are part of later RFC-003/004/007 contracts.
 
-## 9. Operation matrix — preconditions and linearization
+## 9. Operation matrix and commit ambiguity
 
-| Candidate operation | Required authority | Atomic / rollback contract |
+| Operation | Preconditions | Commit boundary and failure rule |
 |---|---|---|
-| create(type, budget, scope) | typed Create + BudgetAllocate | initial object, grant and charges appear together; failed request publishes none |
-| duplicate/derive(h, rights_subset) | DERIVE or DUPLICATE | new child grant under parent lineage; deny if revoked, insufficient rights or quota |
-| attenuate_in_place(h, rights_subset) | current owner and allowed rights reduction | replaces rights atomically; never exposes temporary expanded rights |
-| cap_move / ipc_send | source TRANSFER + endpoint SEND | all attached grants & bytes become in-transit, and sender loses rights, **or nothing changes** |
-| ipc_receive | endpoint RECEIVE + receiver slots/charge | all grants installed and message removed atomically, or message remains queued |
-| close(h) | local handle holder | removes this table entry only; no guarantee all external descendants disappear |
-| revoke_descendants(root) | specifically scoped REVOKE_DESCENDANTS | deny-new-use barrier linearizes before incremental cleanup |
-| revoke_wait(ticket) | scoped wait/observe on revoke | success only when claimed revoke phase actually completed |
-| destroy_object | specific object-admin + absence of unsafe refs | no premature reuse; may return quarantined/pending |
-| budget_adopt(sponsor, new_sponsor) | both appropriate sponsorship authorities | reserve new charge before releasing old charge, or fail atomically |
+| create(type,budget,scope) | typed Create + sponsor reserve | initial object + grant + charge published atomically; failed precommit reservation rolled back |
+| duplicate/derive | permission, rights/scope attenuation, available destination slot | new child grant and lineage published atomically, or none |
+| attenuate | current holder, narrowed rights and scope | atomic replacement; prior admitted effects tracked |
+| ipc_send(MOVE) | endpoint SEND, each source TRANSFER, bounded bytes/queue charge | all bytes/grants enqueued and source handles removed **at one commit point**, or no change before commit |
+| ipc_receive | RECEIVE and receiving handle-slot budget | all transferred handles installed and message removed, or none |
+| close | valid Task-local handle | local entry invalidated; descendants and independently held references can survive |
+| revoke_descendants | exact lineage-scoped controller | B deny barrier committed; R1/R2-F results observed separately |
+| revoke_wait | observe ticket for a specified phase | only report completed when phase is true; timeout/UNKNOWN is not success |
+| budget_adopt | source and new sponsor authority | reserve new charge, atomically switch sponsor, release old charge |
+| object_release | all independent roots, refs and fences drained | only after R2-O can the allocator reclaim and sanitize |
 
-**UniOS choice for IPC send failure:** preserve source handles if the complete transactional send fails; reject duplicate source entries atomically. This deliberately **differs** from Zircon basic zx_channel_write, whose documented API consumes supplied handles even when an error occurs [S7]. Never describe the UniOS policy as existing Zircon semantics.
+### 9.1 Three separate notions of IPC success
 
-The exact syscall and service protocol vocabulary is **not** frozen; RFC-003 will specify IPC, backpressure, cancellation, reply-token and transaction semantics.
+**NOT_COMMITTED:** a pre-commit error means sender retains ALL handles of the transaction.
 
-## 10. Revocation levels and concurrency contracts
+**COMMITTED:** sender handles were atomically moved to a bounded kernel queue; later recipient crash/discard cannot retroactively undo the send. Successful enqueue is not successful receive, processing or durable external side effect.
 
-### 10.1 Precise guarantee classes
+**UNKNOWN:** syscall result could be lost after commit (thread termination, result-copyout fault, signal or interrupted completion). A generic error must not be described as guaranteed rollback. The eventual ABI must either ensure an unambiguous result boundary or provide bounded, authenticated transaction identifiers and status reconciliation. The caller must not blindly retry a MOVE or non-idempotent operation after UNKNOWN.
 
-- **R0 (Close):** invalidate one handle. Does not automatically invalidate derived copies, memory mappings, outstanding operations or committed I/O.
-- **R1 (Revoke authority family):** invalidate descendants of a specified grant lineage and block **future** use, derivation, transfer and related kernel-enforced memory access. Already completed or independent access cannot be undone. R1 completion is not just 'scheduled for cleanup'.
-- **R2 (Strong quiescent reclaim):** only after relevant admitted invocations, TLB invalidations, waiter/IPC dependencies, DMA/IRQ and hardware state reach safe boundaries may the resource be reused. R2 is conditional on a reliable device fence/reset. An unfenced device remains Quarantined/Offline; a timeout is **not** successful reclamation.
+The kernel must snapshot/copy user buffer contents safely before the commit as needed, define what happens when copyout fails after commit, and ensure transferred source handles cannot be reattached by a race. This is a P0 RFC-003/009 obligation. Service processing still needs an independent receiver acknowledgement/idempotency scheme; kernel enqueue cannot guarantee exactly-once service effects.
 
-A user's previously copied plaintext, already sent network packet or durable file write is beyond a generic kernel revocation guarantee.
+### 9.2 Difference from Zircon
 
-### 10.2 Bounded, two-phase revoke proposal
+Basic Zircon zx_channel_write consumes attached handles on success or failure [S7]. Zircon zx_channel_write_etc distinguishes MOVE (source closed) and DUPLICATE (source kept) [S12]. UniOS's NOT_COMMITTED preserve-all proposal is separate from both. Do not conflate transactional atomicity with rollback after a committed send.
 
-1. Check REVOKE_DESCENDANTS authority and exact scope; identify the grant-family root. Publish a kernel-enforced, irreversible **deny-new-use barrier** (revocation epoch/root marker) at a defined linearization point.
-2. Any concurrent lookup/derive/IPC transfer must either have legally committed **before** that barrier and be tracked for quiescence, or fail **after** the barrier. In-transit grants cannot escape by moving to another Task.
-3. In bounded, preemptible batches retire descendants, cancel dependent waits/tokens, remove descendant grants from queues and task tables, and walk provenance for dependent CPU mappings and IOMMU bindings.
-4. Make memory mappings inaccessible with correct MMU permission updates and inter-core TLB shootdown **before declaring R1 mapping completion**. An ancestor marker alone does not revoke already executing loads from an unchanged page table.
-5. Resolve admitted-invocation completion/cancel. For a physical device, quiesce/reset and obtain DMA/IOTLB/interrupt-fence evidence before R2 completion. Unreliable device cleanup leaves the resource quarantined.
-6. Retire metadata only after epoch readers/in-transit entries and unsafe dependencies have drained; never reuse a family token while old nodes remain.
+## 10. Scoped revocation and safe reclamation
 
-A wide derivation graph cannot be traversed in one unbounded non-preemptible kernel critical section. **Open P0:** exact fast-path revocation check and ancestor traversal costs, incremental reclamation fairness, and how denial remains correct when a grant's CPU mapping exists. Full lineage revoke in H1 is a design obligation, **not** a validated feature.
+### 10.1 Distinct promises — R0, B, R1, R2-F and R2-O
 
-### 10.3 Independent grants and privileged kill
+| Stage | Meaning | May independent roots still exist? |
+|---|---|---|
+| R0 local close | delete one Task handle | Yes |
+| B barrier | deny all *new* actions or derivations using the selected lineage | Yes; some previously mapped CPU accesses may still be effective |
+| R1 access cutoff | descendant handles unusable **and all grant-dependent CPU mappings blocked**, with required TLB synchronization | Yes; previously admitted actions/DMA may still be pending |
+| R2-F family quiesced | all specified lineage's admitted operations and relevant IRQ/DMA safely drained, or pending/quarantined | Yes |
+| R2-O object reclaimable | all independent roots, references and mappings retired, IOMMU/TLB/device fences complete and memory safe for allocator reuse | **No**, not with a remaining legitimate independent root |
 
-Revoke(root A) invalidates descendants of A; it need not invalidate root B's independently issued grant to the same MemoryObject. A separate TaskKill/DeviceAdmin/ObjectWideRevoke authority may authorize wider shutdown. Arbitrary Linux UID0/Windows Administrator/Darwin entitlement has no such authority on its own.
+Revocation of family A does not revoke independent family B merely because both reference the same MemoryObject. **R2-F never grants object-wide reuse by itself.** Completed file/network effects and previously copied secret bytes cannot be undone.
 
-### 10.4 Service proxies versus kernel enforced memory/device effects
+### 10.2 Original issuer handle closes — lineage cannot vanish
 
-A File Portal may issue a service endpoint whose **future RPC calls** can be rejected on revoke. This does not retract bytes the app already read or magically unmap pages previously granted through an independent MemoryObject cap. Conversely, a driver DMA grant requires true IOMMU/IRQ lifecycle enforcement [S11], not only service-level denial.
+Example: A derives g1 to B from g0, then closes g0. Unless a distinct cascading revoke policy was explicitly authorized, B still holds g1. The kernel must retain a **revocation anchor**/equivalent ancestry metadata until the descendants, mapped effects and relevant controllers are retired. If A retains a separate scoped RevocationController, A may revoke descendants of g0 but not g0's ancestors, siblings, or independent root B2. Moving a descendant must preserve ancestry. Deleting an issuer's only data handle neither erases the anchor nor invents a new globally privileged controller.
+
+Possible policy options: controller capability distinct from data capability; explicit sandbox-shutdown cascade; or explicitly irrevocable delegated rights with a separately approved trust guarantee. The final choice, including sponsor charges for orphaned anchors, is unresolved P0.
+
+### 10.3 Proposed phased algorithm; not validated
+
+1. Confirm exact lineage/controller scope and publish B atomically. Operations committed earlier retain in-flight references and quiescence obligations; later invocations/derivations/transfers fail.
+2. Iteratively drain descendant grants, in-transit queue entries and issued effects in bounded preemptible work units. No unlimited recursive destructor or giant unpreemptible lock.
+3. Before R1, invalidate all dependent CPU page mappings, synchronize inter-core TLBs and deny remapping via concurrent pager faults. A revoked-root marker alone does not stop existing mapped memory access.
+4. Before R2-F, also settle all admitted operations and lineage-dependent DMA/IRQ bindings. If device quiesce/reset or IOTLB/interrupt fence cannot be proven, mark Quarantined; no false completion.
+5. Before R2-O, additionally require **every independent object's root/reference** and unsafe hardware access to disappear; sanitize before allocator reuse. Never equate family cleanup with this object-wide check.
+6. Retain ancestry/controller metadata (and its charges) until no epoch reader, queued descendant or effect can resurrect rights. Deep-tree lookup complexity, fairness and SMP races are P0 blockers.
+
+### 10.4 Honest per-object revocation scope
+
+Strong kernel-level R1/R2-F for all ordinary file-like service endpoints may impose unjustified TCB cost. User-space VFS/Portal leases can instead promise *future RPC denial* where no CPU mapping/device authority has escaped. When a MemoryObject or DMA capability has already been granted, server-only denial cannot enforce page mapping or device teardown. Initial research must compare per-object revocation classes instead of claiming a universal strong-revoke operation.
+
+### 10.5 Broader emergency authority
+
+TaskKill, DeviceAdmin or ObjectWideRevoke require separate, strictly scoped high-risk grants. Guest root/Administrator/Darwin entitlement never confers them. Even a legitimate object-wide kill cannot safely reuse physical memory while hardware DMA remains unfenced.
 
 ## 11. Transfer, transit, IPC cycles, death/restart
 
@@ -228,9 +248,9 @@ A File Portal may issue a service endpoint whose **future RPC calls** can be rej
 - **Message transit:** kernel owns cap records while queued; it retains lineage, bounds and sponsor accounting. A failed delivery must not create half-installed receiver handles. Receiver slot exhaustion leaves the complete message queued or rejects with an explicit no-side-effect policy.
 - **Endpoint close:** drop unread queued grants under an explicit accounting/cancellation contract. Outstanding operations already committed are not undone.
 - **Service crash:** a restarted service gets a **new incarnation**. Old reply/fault tokens and capability paths cannot be implicitly retargeted to the new service. Reconnection requires a fresh approved grant.
-- **Queue reference cycles:** channels that carry their own or each other's endpoints can form unreachable reference graphs. Refcounting alone may leak. **P0:** determine a bounded, safe reclamation scheme (e.g. explicitly revocable domain teardown with root liveness checks), or prohibit cyclic endpoint delegation in the earliest profile. The model must not assume Task death automatically breaks all cycles.
+- **Queue reference cycles:** channels that contain endpoints may form unreachable cycles. Reference counts alone can leak, while recursive destructor chains may overflow the kernel stack. **P0:** model bounded iterative queue drain and roots/reachability, or prohibit cyclic endpoint transfer in the first profile. The model must not assume Task death automatically breaks all cycles.
 - **Grant sponsor after move:** new holder may not be resource sponsor. Sponsor budget remains charged even if its original Task is dead; quota reclamation requires authorized adoption or true resource teardown.
-- **Exactly-once caution:** cancellation/retry of a service request does not prove a file write or external side effect happened exactly once. Tie server idempotence to RFC-003 and storage RFC-008.
+- **Completion caution:** sender ownership is preserved ONLY before IPC commit; COMMITTED followed by peer crash remains committed; UNKNOWN requires reconciliation. **Exactly-once caution:** cancellation/retry of a service request does not prove a file write or external side effect happened exactly once. Tie server idempotence to RFC-003 and storage RFC-008.
 
 ## 12. Boot, process isolation and guest compatibility
 
@@ -252,7 +272,7 @@ Restricted Linux supervisor (RFC-001 G-R) is trusted only for its selected guest
 | close vs invoke on another core | dangling object pointer | linearize or reject; maintain invocation reference |
 | derive vs ancestor revoke | post-barrier valid child | child included before barrier or derive fails |
 | moved grant vs receiver crash | duplicated/stranded privileged handle | explicit in-transit ownership and drain |
-| invalid batched IPC handles | partial transfer | all-or-none; sender unchanged on failure |
+| invalid batched IPC handles | partial transfer | all-or-none; sender unchanged on NOT_COMMITTED pre-commit failure |
 | quota/OOM during receive | half-installed handles | message remains queued or defined atomic cancellation |
 | revoke of mapped page | stale valid CPU mapping | MMU invalidate/shootdown before mapping R1 complete |
 | revoke during DMA | frame reused under active DMA | quarantine until hardware fence/reset |
@@ -274,7 +294,7 @@ Restricted Linux supervisor (RFC-001 G-R) is trusted only for its selected guest
 | CAP-05 | Failed operations publish no partial objects/handles and restore reserved charges. |
 | CAP-06 | After a grant-root deny barrier, no descendant can begin a newly authorized operation. |
 | CAP-07 | R1 completion cannot occur while a forbidden descendant still has a grant-derived accessible CPU mapping. |
-| CAP-08 | R2 completion requires defined in-flight, MMU/IOMMU, DMA/IRQ quiescence or returns quarantined/pending. |
+| CAP-08 | R2-F requires documented lineage-scoped in-flight/MMU/IOMMU/DMA/IRQ quiescence; unresolved hardware remains pending/quarantined. |
 | CAP-09 | Local close, Task exit, object destruction and revoke are separate operations with correct lifetime references. |
 | CAP-10 | A stale handle token never reauthorizes unrelated capability within the same Task lifetime; exhaustion fails closed. |
 | CAP-11 | Resource charges remain conserved across allocation, IPC transit, lineage creation, sponsor death and adoption. |
@@ -284,9 +304,13 @@ Restricted Linux supervisor (RFC-001 G-R) is trusted only for its selected guest
 | CAP-15 | Service incarnation change invalidates stale continuation/reply/authorization references. |
 | CAP-16 | Revocation never falsely promises erasure of copied secrets or rollback of committed I/O. |
 | CAP-17 | Unisolatable IOMMU groups and unfenced DMA cannot be passed off as safe untrusted driver objects. |
-| CAP-18 | Cyclic IPC/resource dependency cannot consume unbounded resources outside sponsor quota, with explicit cleanup semantics. |
+| CAP-18 | Cyclic IPC/resource dependency cannot consume unbounded resources outside sponsor quota, with bounded iterative cleanup semantics. |
+| CAP-19 | Parent-handle close and issuer death must not erase ancestry required to enforce living descendants' revocation scope. |
+| CAP-20 | Sender handles are preserved only for NOT_COMMITTED IPC failure; COMMITTED and UNKNOWN results cannot be mislabeled as rollback. |
+| CAP-21 | Family quiescence R2-F must not release an object while independent roots/references or unsafe device access survive. |
+| CAP-22 | Revocation controller authority must not grow via handle transfer, ancestry change, sponsorship adoption or namespace reuse. |
 
-These are **design proof obligations**, not claims of formal verification. CAP-06 through CAP-08 intentionally exceed basic Zircon close semantics and may disqualify H1 if safe implementations are too complex.
+These are **design proof obligations**, not claims of formal verification. CAP-19 to CAP-22 address newly identified IPC/lineage/object lifetime gaps. CAP-06 through CAP-08 intentionally exceed basic Zircon close semantics and may disqualify H1 if safe implementations are too complex.
 
 ## 15. Comparison, feasibility and performance gates
 
@@ -332,6 +356,11 @@ Future measurements *after separate implementation authorization* should include
 | O2-14 | P1 | User-approved lease/sandbox grants and expiry | 016 |
 | O2-15 | P1 | IPC receive credit reservation and atomic sponsor balancing | 002/003 |
 | O2-16 | P2 | Public stable ABI values and multi-ISA representation | 009/018 |
+| O2-17 | P0 | Lost post-commit syscall result: transactional status/ticket or provable unambiguous return semantics? | 002/003/009 |
+| O2-18 | P0 | Issuer last-handle close: anchor/control lifetime, scoped revoker and sponsor charging? | 002/003/006 |
+| O2-19 | P0 | R1/R2-F/R2-O separation across independent roots, TLB/DMA and page faults? | 002/004/007 |
+| O2-20 | P1 | Per-object kernel strong revoke vs user-service RPC lease, honest claims and mixed memory effects? | 002/016 |
+| O2-21 | P1 | Shared/COW frames, queued handles and SMP reservations: conservative fair charge ledger? | 002/003/004 |
 
 ## 18. Proposed decision register
 
@@ -341,12 +370,14 @@ None of the following CAP-D entries are accepted architectural decisions.
 - **CAP-D02**: Keep holder, authority, sponsor and lifetime graphs distinct.
 - **CAP-D03**: Attenuate existing-object powers; use typed Create+Budget for new objects.
 - **CAP-D04**: Per-Task opaque, non-resurrecting handle semantics; 64-bit is a candidate, not a frozen ABI.
-- **CAP-D05**: Transactional move/IPC and persistent revocation ancestry; sender retains handles on failed send.
-- **CAP-D06**: Clearly distinguish R0 local close, R1 revoked-grant access denial and R2 strong quiescence.
+- **CAP-D05 [revised]**: IPC send has a single commit point; only pre-commit failure preserves source handles. Postcommit and UNKNOWN need separate status handling.
+- **CAP-D06 [revised]**: Differentiate R0, B, R1 mapped access cutoff, R2-F family quiescence, R2-O object-wide safe reclamation.
 - **CAP-D07**: Mapping provenance and physical DMA/IRQ fence must precede safe reclaim; quarantine on failure.
 - **CAP-D08**: Audit all kernel memory/queued/handle/pinned charges independently of handle holder.
 - **CAP-D09**: No ambient privilege on process start or Linux/Windows/Darwin guest identities.
 - **CAP-D10**: Do not call the design secure, performant or R1-passed until cross-RFC tests and independent review.
+- **CAP-D11 [new]**: Parent handle close must not discard ancestry of living descendants; revocation-controller scope requires explicit limits.
+- **CAP-D12 [new]**: H1 acceptance depends on proving IPC result/commit, R2-F/O and resource accounting correctness or reducing its promised guarantees.
 
 ADR-002 stays **Accepted — Direction**, without silently upgrading RFC-002 details. Any eventual detailed acceptance requires its own explicit review/ADR and later implementation Go/No-Go.
 
@@ -363,9 +394,28 @@ ADR-002 stays **Accepted — Direction**, without silently upgrading RFC-002 det
 - **[S9] CHERI Alliance capability limits:** https://cheri-alliance.github.io/build/technology/cheri-capabilities/capabilities/
 - **[S10] seL4 MCS CPU budget contexts:** https://docs.sel4.systems/Tutorials/mcs.html
 - **[S11] Linux VFIO IOMMU group boundary:** https://docs.kernel.org/driver-api/vfio.html
+- **[S12] Zircon zx_channel_write_etc:** https://fuchsia.dev/reference/syscalls/channel_write_etc
+- **[S13] Zircon zx_vmar_unmap:** https://fuchsia.dev/reference/syscalls/vmar_unmap
 
 **Research limitation:** External documentation supports the comparison, not any claim of UniOS code, formal verification, measured performance or safe hardware behavior. Code adoption requires separate source/license review; no external kernel code was imported.
 
 ---
 
-**History:** 2026-10-24 — RFC-002 v0.1 research draft prepared from Architecture v0.2 and RFC-001 v0.2. No implementation, build or testing; pending independent RFC acceptance.
+## 20. Critical review and corrections (2026-10-24)
+
+This is a specification/counterexample review of cited official resources, not a completed formal proof, implementation, independent external audit or measured performance result.
+
+| Defect in v0.1 | Correction in v0.2 | Unproved obligation |
+|---|---|---|
+| R2 family cleanup could be mistaken for object-wide free | R2-F and R2-O separate | multi-root lifetime safety |
+| IPC failures assumed full rollback even after commit | NOT_COMMITTED/COMMITTED/UNKNOWN | syscall output-fault and lost-reply handling |
+| Issuer closing its parent could destroy provenance | ancestry anchor and scoped controller | revoker/controller longevity and charges |
+| Revocation call confused with CPU memory cutoff | B then R1 TLB/mapping fence | SMP/page fault/remap races |
+| Shared COW/IPC accounting under-specified | primary plus queued/holder/mapping charges | conserved quota/fairness |
+| Rights-bit attenuation ignored physical/Task scope | rights + scope monotonicity | typed scope semantics |
+| Zircon Job policies treated as complete quota precedent | source distinctions | UniOS accounting model |
+| Recursive channel cleanup hazard | bounded iterative drain or feature gate | queue cycles and roots |
+
+**Still proposed:** H1 is only a comparative research baseline, not the proven optimal design. H0 and H2 remain alternatives; universal kernel lineage revocation may be too costly for a desktop. Pending P0s must be addressed before RFC acceptance.
+
+**History:** v0.1 was registered 2026-10-24 and is retained in Git history. v0.2 updates only research documentation; D1–D8 and ADR-002 remain Accepted at direction level. No implementation or stable ABI is authorized.
