@@ -215,3 +215,89 @@ After an exposed claim is terminalized, a *new independent* authorized applicati
 | AR-I23 | Reconciliation result access is scoped to an authenticated Task generation and cannot reveal unrelated messages after token reuse. |
 | AR-I24 | All invariants are Proposed hypotheses without execution, proof, wire, ABI or implementation authorization. |
 
+
+
+## 7. Outstanding research decisions (AR-O01…AR-O16)
+
+| ID | Priority | Decision not settled by this audit | Owner |
+|---|---|---|---|
+| AR-O01 | P0 | Does RCV-T1 use token-first, install-first, or explicitly inert publication+activation, with true post-fault cleanup? | RFC-002/003/009 |
+| AR-O02 | P0 | How are partially published public token bits tombstoned under Task lifetime and cap slot exhaustion? | RFC-002/009 |
+| AR-O03 | P0 | How can installed but unreported usable caps be enumerated/revoked without exposing other Task's rights or undoing admitted use? | RFC-002/003/009 |
+| AR-O04 | P0 | Does an exact type/rights/count size query reveal sensitive metadata before K-Vp, and which caller audience is permitted? | RFC-003/009/018 |
+| AR-O05 | P0 | What qualifies as first possible payload exposure for shared VM, remap, DMA/aliases or data-only fastpath? | RFC-003/004/007 |
+| AR-O06 | P0 | How is K-C audience pinned and rechecked on receive Endpoint MOVE, policy change, B revoke and service restart? | RFC-002/003/006/018 |
+| AR-O07 | P0 | May a post-K-V exposed message continue with same Task but different Thread/session, and under which bounded policy? | RFC-003/006/018 |
+| AR-O08 | P0 | How do we guarantee K-Vm/K-Vp exposure history and terminal debt are recorded before risky publication without holding pageable locks? | RFC-003/004/005 |
+| AR-O09 | P0 | Does T2 trusted verifier have sufficient independent authority to reject malicious B, without requiring full IDL parser in kernel? | RFC-001/003/018 |
+| AR-O10 | P0 | Is K-U release single-use and atomic with live revoke/Task generation/policy epoch and exact actual cap set? | RFC-002/003/018 |
+| AR-O11 | P0 | How are post-T1/T2 grant invocation, premature use and remote external effects reconciled on abort or restart? | RFC-003/008/009/018 |
+| AR-O12 | P0 | Can finite M0 recovery and critical IPC remain live when terminal records, unclaimed handles, T2 verifier and DMA quarantine accumulate? | RFC-003/005/006/007 |
+| AR-O13 | P0 | Does T1's at-most-one *automatic recipient generation* security objective meet app-level reliability/consent needs, or require a different documented tier? | RFC-003/016/018 |
+| AR-O14 | P1 | What bounded abstract formal state/fairness covers Task reuse, full cap-vector, mapping alias and scheduler without assuming perfect timing? | RFC-002/003/009/015 |
+| AR-O15 | P1 | How will Linux guest broker map receive partial publication/orphan native rights to errno without invented semantics? | RFC-009/010 |
+| AR-O16 | P1 | Choose C ABI, KABI numeric/status representation, bounded handle vector format only after proof; no accidental freeze via documentation. | RFC-003/009/018 |
+
+## 8. Proposed findings and decision register (AR-D01…AR-D12) — NONE Accepted
+
+- **AR-D01:** Maintain RCV-T1 as first general receive proof target, not a verified feature.
+- **AR-D02:** Treat T2 as T1 plus independently authorized inert-cap release for selected sensitive services, not a universal replacement.
+- **AR-D03:** Receiver byte payload and sensitive metadata require separate prospective-visibility accounting or an equally conservative unified barrier.
+- **AR-D04:** Whole-vector K-I cannot be equated with all-or-none user handle-array writes or the exact instant native rights become usable.
+- **AR-D05:** Preserve public token nonreuse for failed/partially published token values, including unused reserved slots in same Task namespace.
+- **AR-D06:** Do not approve B1 token-first/copy-before-K-I as a guaranteed secure fast path until invocation and usercopy race proof.
+- **AR-D07:** Do not approve B2 install-first without an orphan-handle/recovery proof and sponsor accounting.
+- **AR-D08:** Claims bind actual receiver Task+Endpoint generation and issuer confidentiality audience; invalidate/revalidate before publication on owner or policy change.
+- **AR-D09:** After sensitive disclosure may have happened, do not automatically requeue the same committed message to another receiver generation; application retries require new authorization/identity.
+- **AR-D10:** A T2 release proof comes from independently authorized verifier/issuer plus live kernel revocation/policy check at K-U, never a client asserted digest/flag.
+- **AR-D11:** Terminal settlement, K-S result reconciliation, guest error and device fence are independent state/evidence ledgers; never combine as generic successful receive.
+- **AR-D12:** All decisions stay Proposed. No runtime OS/IDL, executable formal model, tests, performance claim or stable ABI is authorized.
+
+## 9. RFC-003 alignment register — exact semantic delta (no implicit acceptance)
+
+| Current RFC-003 statement | v0.2 review finding | Proposed clarification |
+|---|---|---|
+| §5 one effective E1 Endpoint handle, opposite halves distinct | correct directional scope but concurrent receive claim across MOVE unclear | state SendHalf/ReceiveHalf owners and claim-generation revalidation |
+| §6.1 preflight counts, reserve slots, atomic cap install/dequeue | good cap-vector goal, **not** complete user-visible token result contract | separate cap install, public handle-token copyout and invocation activation |
+| §6.2 RCV-A exclusive ReceiveEscrow | promising, but exclusive claim doesn't prevent old B from reading partial bytes | conservative K-Vp and audience bound before ANY payload publication |
+| §6.2 RCV-B copy-before-commit default rejected | still directionally correct | bounded T1 claim may copy before K-I only if exposure/terminal and token issues resolved |
+| §13 BUFFER_INVALID and SIZE/COUNT errors | no metadata visibility classification | size/type/rights/count projection requires issuer-authorized K-Vm, confidentiality scope |
+| §14 IPC-09/28 copyout/cross-task secrecy wording | can overstate complete lack of disclosure after failed receive | prohibit **automatic redelivery to different recipient** after potential exposure; don't claim B never saw bytes |
+| §10 revoke B and in-transit cap | compatible P0 requirement | K-U must also recheck current lineage and issuer policy at activation |
+| §9/10 queue/cleanup sponsor | compatible P0 requirement | terminal message, orphan installed cap and published token tombstone have different charges/expiry |
+| §5.2 status ticket | currently unresolved, correctly Proposed | preserve ticket ID loss and privacy-safe Task-scoped reconciliation as P0 |
+
+**Review posture:** This is a scope-tightening correction, not evidence RFC-003's architecture is intrinsically contradictory. The older table DERIVE inconsistency was corrected separately, and this new review doesn't reintroduce it.
+
+## 10. Exit gates / order of further design work
+
+**AR-R1: OPEN / NOT PASSED.** Do NOT accept RCV-T1, RCV-T2, kernel E1 RECEIVE ABI or security claim until:
+
+1. A single proposed exact receive order covers *all four*: private bytes snapshot, metadata/payload publication, cap-vector table installation and public token activation, with fault/death/signal interleavings.
+2. Token reuse/ABA after partial publication cannot grant unrelated objects; installed-but-unreported caps either remain safely gated or have authorized bounded cleanup/reconciliation.
+3. Metadata probes are classified by secrecy, controlled by RECEIVE rights/audience and barred from stale owner/unauthorized Task.
+4. Every possible data-bearing publication path includes a conservative irreversible K-V barrier, including shared alias/mapped buffers as applicable.
+5. Task/Endpoint generation, ServiceIncarnation and issuer audience are revalidated across K-C, Endpoint MOVE and K-V; no user-named identity.
+6. T2 verifier's own TCB and issuer authority are defined, and K-U revalidates live cap and policy/revoke under one documented cut.
+7. Resource budgets/tombstones/terminal states/quarantine remain bounded even when recipients repeatedly fault, abandon claims or withhold verifier replies.
+8. Future abstract model reviews safety and conditional liveness without silently assuming an infinitely reliable Pager, scheduler, storage or hardware fence.
+9. Partial receive, unknown external effect and guest result mappings do not fabricate safe rollback/success semantics.
+10. Re-read revised RFC-003/002/009/018 text and obtain independent approval of eventual ADRs; this v0.2 document is not that approval.
+
+**Recommended next research step:** refine the **public Handle publication vs K-I/K-U invocation activation** finite countermodel to select a precise, minimal receive ABI. Compare token reservation/activation with fully protected receiver-side result records, then independently audit security/performance/TCB implications. Further executable state modeling or kernel code still requires an explicit future authorization separate from design research.
+
+## 11. Technical references, provenance and limits
+
+- **[S1] Fuchsia Channel reference (unique Endpoint owner and transfer ordering):** https://fuchsia.dev/fuchsia-src/reference/kernel_objects/channel
+- **[S2] Fuchsia zx_channel_read (buffer ordering, overlap, size results):** https://fuchsia.dev/reference/syscalls/channel_read
+- **[S3] Fuchsia zx_channel_read_etc (types, rights, counts):** https://fuchsia.dev/reference/syscalls/channel_read_etc
+- **[S4] Fuchsia Channel older official source and handle transfer cuts:** https://fuchsia.googlesource.com/fuchsia/+/cc19d17b05c18cbc940da8ef6fa5bcc0d6464c1f/docs/reference/kernel_objects/channel.md
+- **[S5] Fuchsia handle custody and Task-local meaning:** https://fuchsia.dev/fuchsia-src/concepts/kernel/handles
+- **[S6] seL4 IPC tutorial (different shared badged endpoint family):** https://docs.sel4.systems/Tutorials/ipc
+- **[S7] Fuchsia zx_channel_write (different failure handle semantics):** https://fuchsia.dev/reference/syscalls/channel_write
+
+All references characterize other systems. They **do not** transfer a working algorithm or formal proof to UniOS, whose E1 precommit-failure cap retention is intentionally different from basic Zircon channel-write failure handling. Neither v0.1 nor v0.2 implemented, executed, simulated or formally verified a finite state model.
+
+---
+
+**History:** 2026-10-25 v0.2 independent adversarial re-review of [v0.1](capipc-send-receive-revoke-state-model-v0.1.md). Added capability install vs public token exposure/activation, confidentiality of preclaim metadata, receiver-audience and Endpoint MOVE races, exact trusted T2 verifier/PolicyEpoch release and terminal sponsor debt. 20 unexecuted cases, 24 additional unproved invariants, 16 open research issues, 12 Proposed decisions. All parent RFCs remain Proposed; design documentation only.
