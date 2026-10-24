@@ -719,6 +719,89 @@ These remain **Proposed — Specification**, not ADR Accepted. They do not modif
 - **[S15] UEFI 2.10 PCI Bus Support, DMA Map/Unmap and posted-write Flush:** https://uefi.org/specs/UEFI/2.10/14_Protocols_PCI_Bus_Support.html
 - **[S16] Linux PCI Error Recovery / bridge reset and collateral effects:** https://docs.kernel.org/PCI/pci-error-recovery.html
 
+## 25. v0.2 Adversarial review — hardware counterexamples, evidence limits and revised exit criteria (2026-10-24)
+
+**Review method:** Critically examined v0.1 through the capability→MemoryObject→CPU/IRQ→UEFI bootstrap→PCI/IOMMU physical device boundaries established by RFC-001/002/003/004/005/006. Compared with official Linux VFIO/IOMMUFD, PCI P2P, x86 IOMMU RMRR, reset/error recovery, DMA API, seL4 DMA proof boundaries and UEFI PCI DMA/ExitBootServices documentation [S1–S16]. This is **design reasoning**, not a kernel proof, hardware audit, a full standards-conformance analysis, code or physical testing.
+
+### 25.1 Findings and critical counterexamples
+
+| Finding | Counterexample against incomplete v0.1 reading | v0.2 policy response | Proof/dependency gate |
+|---|---|---|---|
+| **FW-1 RMRR/IVRS firmware-required DMA** | Firmware uses USB/PS2 emulation and RMRR identity-mapped reserved RAM. Blanket default-deny breaks firmware device behavior; blindly allowing all identity-map bytes exposes privileged physical pages to later untrusted DriverHost. | Distinguish **strict default-deny untrusted group** vs **narrowly authorized trusted firmware device exception**; reject/disable device if overlap/isolation cannot be proven. [S8] | map reserved pages, device requester identity, firmware/boot owner, security floor/handoff; memory exclusion |
+| **FW-2 boot device DMA in flight** | EFI storage/network driver issues DMA and leaves accepted transactions before UniOS handoff; ExitBootServices succeeds, but hardware DMA does not necessarily stop when Boot Services cease. | Firmware PCI Map/Unmap/Flush/actual completion and hardware ownership are independent. Do not infer physical fence from EFI control transfer. [S14,S15] | verified boot handoff and trusted pre-first-domain assumptions RFC-006/017 |
+| **GRP-1 group vs reset coupling** | Function A and boot storage controller B are in different IOMMU isolation groups but both under a bridge reset. Resetting malicious A also resets B, breaking Pager and storage. | Track ResetCouplingSet independently of IOMMU DeviceGroup. Choose narrower reset if valid, prevent collateral reset, or accept degraded/fail-stop; cannot guarantee transparent recovery. [S5,S16] | real PCI topology and reset side effects for reference PC |
+| **GRP-2 IOMMU group not all hardware trust** | A VFIO-IOMMU group is exclusive but a device has firmware sideband, reset sharing or P2P peer path that bypasses an expected translation path. | Group is necessary minimum assignment granularity **for supported PCI topologies**, not a complete isolation certificate; IRQ/P2P/reset/firmware overlays separately validated. [S1,S4] | bridge/ACS/IRQ routes and group owner verification |
+| **MAP-1 IOMMU unmap while posted writes pending** | Device accepted an outgoing write; kernel invalidates translation and returns success. A previously accepted write or device-cache entry may still be in flight; frame is reassigned to another user. | Treat stopping submissions, draining device+queues, ordering posted writes, cache/device translation invalidation and safely reclaiming frame as **separate predicates**. Invalidation completion is not a bus-quiescence certificate. [S3,S15] | device-family-specific R2-F proof and delayed-write fault injection |
+| **MAP-2 false software/driver fence** | Malicious DriverHost signals that queue is empty or AsyncFence signaled, while actual endpoint still DMA-writes. | Trusted device-specific reset/fence evidence with provenance; do not assume user-space reply, completion counter or a generic dma_fence is malicious-hardware-proof. [S9] | reset/stop contract and device observability |
+| **MAP-3 alias/peripheral access** | Sub-page DMA range is 128 bytes but whole IOMMU granule is mapped, exposing adjacent privileged data; coherent buffer cache doesn't guarantee descriptor ordering. | dedicated safe DMA granules/bounce copy **only within effective hardware IOMMU boundary**, scoped direction and cache/ownership barriers. [S3,S12] | granule, coherency and MemoryObject share proof |
+| **CFG-1 unsafe MMIO backdoor** | PCI config-space writes are filtered but device BAR contains registers that change DMA command base, ATS, interrupts or firmware-level behavior. | A raw BAR cannot be granted solely because BDF/function rights exist. Mediate dangerous register operations or mark trusted-only; the IOMMU must bound allowed physical memory regardless of commands. [S1] | device command/register trust audit |
+| **ERR-1 no-IOMMU malicious DMA** | DMA device without IOMMU can overwrite arbitrary kernel/application RAM; setting a few pinned buffers to Quarantined doesn't physically constrain it. | Hardware power/isolation or safe system fail-stop can be required; unrelated application continuation **may also be unsafe**. Do not claim local quarantine confines unrestricted bus mastering. [S1,S6] | explicit HW-0/HW-T threat and platform-denial decision |
+| **ERR-2 FLR unavailable / fatal AER** | Host asks for FLR, but device cannot reset; bus/bridge reset affects entire hierarchy, or PCI config cannot respond. | Test physical reset availability and ResetCouplingSet; no success assumed from an attempted reset. Fail to Quarantined/Offline/FailStop when hardware evidence insufficient. [S5,S16] | actual per-device reset method/timeout/failure |
+| **IRQ-1 MSI vs IOMMU DMA** | IOMMU DMA remap configured but interrupt remap not protected; malicious endpoint can inject/spoof IRQs against privileged vector. | IRQ/interrupt-remapping must be a separate trusted gate; unsupported MSI path cannot be treated as isolated. [S1,S7,S8] | selected physical chipset and interrupt source route |
+| **REC-1 safe R2-F yet unrecoverable data** | Device stopped and DMA frames are safe, but earlier rogue DMA already corrupted kernel or file data, or lost dirty cache writes. | Hardware containment is forward-looking. It cannot prove existing memory contents/data durable or filesystem state correct. [S3] | RFC-004 memory integrity and RFC-008 persistent crash semantics |
+| **REC-2 restart with stale group and unexpected reset collateral** | Driver B boots using new IPC Endpoint but old IRQ/DMA generation still live; bus reset takes down an unrelated controller. | Separate new DriverHost incarnation, group epoch, IOVA/IRQ generations, reset collateral and trusted hardware fence. Recover software only when dependencies truly independent. | RFC-002/003/006/007 state model |
+
+### 25.2 Why "quarantine" has two fundamentally different meanings
+
+**Q1 — hardware-contained quarantine:** an effective, enabled and trusted IOMMU/interrupt boundary limits the rogue group's possible physical accesses to an explicitly known restricted set. Holding affected pinned frames and refusing to reuse the DeviceGroup protects *other memory* under those assumptions; liveness for dependent services may still be lost. Actual in-flight effects and memory corruption inside the allowed buffers remain possible.
+
+**Q2 — uncontained rogue DMA:** if the device can reach arbitrary physical addresses without effective translation/blocked bus routing, merely tagging a few frames/IOVA handles as quarantined has no confinement effect. Safe continued kernel execution and other apps may be impossible. A supported trusted-only hardware assumption, physically effective device disable/power isolation, full fail-stop or platform refusal is required. **v0.1's "unrelated desktop can continue" applies only to Q1 with proven independent hardware resources**, not Q2.
+
+### 25.3 Separate physical graphs (must not collapse)
+
+- **G1 Isolation/ownership graph:** requesters, ACS/bridge, peer routes, IOMMU groups and domains. Governs which devices can be granted to competing distrustful owners.
+- **G2 DMA memory graph:** DeviceGroup→IOVA/domain mapping→physical frame/pin/MemoryObject and cache/invalidation state. Governs memory reclamation and DMA scope.
+- **G3 Interrupt graph:** requester/MSI/interrupt remap/vector/IRQBinding→CPU/driver generation and current ack/mask, distinct from DMA translation.
+- **G4 Reset-coupling graph:** function/slot/bridge/bus/power/fabric reset collateral, including devices in *other* isolation groups that may lose state. Governs availability and safe recovery.
+- **G5 Firmware/reserved graph:** EFI/SMM/ACPI RMRR/IVRS ownership, identity-mapped reserved RAM, preboot firmware DMA and post-handoff device restrictions.
+- **G6 Authority/lifetime graph:** capability lineage/sponsor, DriverHost service generation, quiescence record, old queue and in-transit IPC effects.
+
+Only a joint graph can support claims such as "Restart driver X while storage Y and all unrelated users stay secure." A verified G1 alone is not sufficient for G2–G6.
+
+### 25.4 R2-F evidence decomposition (not a guaranteed API)
+
+~~~text
+B:       deny NEW grants/software submissions
+R1:      revoke old CPU MMIO mapping/access and execute necessary CPU shootdowns
+H0:      device/source-specific freeze or disable (if implementable)
+H1:      identify/stop in-flight work and order prior accepted or posted DMA effects
+H2:      invalidate all applicable IOMMU/IOTLB/device translation and peer paths
+H3:      assess PCI/IRQ/reset collateral; prove no old hardware writes/interrupts hit new owners
+R2-F:    authorize family-level DMA fence only if H0/H1/H2/H3 covered by verified hardware contract
+R2-O:    authorize object-wide physical reuse only if ALL independent grant/owner refs also settled
+FAIL:    quarantine group/frame; if no effective confinement, HW-T or FailStop/Unsupported
+~~~
+
+**No universal hardware ordering theorem is asserted here.** Real proof needs the selected Intel VT-d/AMD IOMMU platform specification, PCIe routing, device-specific reset/FLR behavior and outstanding-transaction guarantees. A command completion/FLR return value alone must not be elevated to stronger physical guarantees than the hardware defines. On failure a bounded attempt count/time is for **stop trying**, not evidence that the bus stopped.
+
+### 25.5 RMRR policy test and trust mode distinction
+
+The Linux x86 IOMMU documentation [S8] explains firmware RMRR reserved pages, such as legacy USB keyboard/PS2 emulation, where OS translation typically must retain requested identity mappings. UniOS cannot assume "firmware wants a mapping" means "the device must stay enabled for every user" or "the mapping is safe for an untrusted driver." Proposed decision tree:
+
+1. Determine the exact ACPI reserved range, device requester IDs, firmware behavior and whether it remains required after UEFI handoff.
+2. Check overlap with UniOS kernel/M0/data, unrestricted nonreserved memory, page IOMMU granule and group ownership.
+3. If firmware identity mapping remains mandatory, classify the device/platform into a verified **narrow trusted exception** with no untrusted DMA assignment and memory explicitly reserved, OR disable unsupported legacy emulation/device if doing so is safe.
+4. If neither preserves security, the stronger HW-2 profile is **not available**; refuse device/platform.
+5. Never reinterpret RMRR as permission to grant arbitrary full-RAM identity mapping. Report firmware/SMM trust assumption independently.
+
+### 25.6 Reset collateral and recovery decision tree
+
+For each physical DeviceGroup, obtain a ResetCouplingSet of all hardware potentially changed by FLR/PM/bridge/bus/slot/power reset and a capability matrix showing which reset is reliably available. A service death may require physical reset, but issuing a broad bus reset without assessing effect on a live boot NVMe or other independently owned group can make recovery less safe/available than leaving the unsafe device quarantined.
+
+- If **isolated and provable reset** exists, try bounded stop/fence and re-admit with fresh generations.
+- If **only coupled reset** exists, require authority/policy coordination for every affected device, durability/availability consequences and possibly intentional degraded/fail-stop. Not safe to reset solely because one driver owns one group.
+- If **no effective reset** but IOMMU containment is still proven, keep Q1 hardware-contained quarantine and allow unaffected services to continue conditionally.
+- If **no remapping or containment**, Q2: stop making claims of isolation/independent recovery; fail-stop/platform-exclusion if attacker can remain a bus master.
+
+### 25.7 Decision and validation status
+
+**DEV-A remains a conditional research target**; DEV-B trusted-only and DEV-C wider kernel-side hardware handling remain legitimate comparison alternatives. In particular, a user-space BusManager cannot be called an untrusted verifier of its *own* hardware topology: physical group enforcement and critical policy must be protected by TCB-K or a defensible smaller trusted DeviceAuthority.
+
+The revised P0 gates require: real IOMMU/IRQ/ACS/group routing; firmware RMRR/IVRS exception review; reset-collateral inventory; trusted DMA completion/posted-write/invalidation proof; privileged MMIO register mediation; uncontained no-IOMMU failure policy; wired M0 storage path. All are **OPEN**. No formal safety theorem, hardware support list, validated physical device, driver, firmware key or clean-shutdown guarantee is produced by this document.
+
+**Not Accepted, Not Implemented, No go-live.** RFC-007 v0.2 changes only the research specification; existing architecture directions D1–D8 remain unchanged.
+
+
 All links are references to third-party published technical descriptions. External correctness/security claims belong to their owning systems and **do not verify UniOS**. Platform documentation and API details may evolve; future hardware profiling must check relevant device/firmware specifications. No external source code was imported.
 
 ---
