@@ -620,10 +620,44 @@ No experiment, test, compiler generation, formal verification, disk write, softw
 9. Define and review source/binary/semantic/security/persistent format compatibility windows and security exception procedure.
 10. Produce at least a bounded state model and cross-version malformed-input corpus after separate design acceptance/implementation authorization; no pretend current proofs.
 11. Keep D1–D8 Accepted only as broad architecture directions and all IDL-D proposals Proposed.
+12. **v0.2 P0:** show actual capability custodian and final charge from SEND_COMMITTED through unknown-resource decode rejection or receiver death; no sender-MOVE rewind.
+13. **v0.2 P0:** distinguish delegated bearer Endpoint rights from issuer-attested current caller identity and guard privileged proxies against confused-deputy delegation.
+14. **v0.2 P0:** bind protocol negotiation to actual Endpoint, active ServiceInstance, current policy epoch and resource schema, and re-check before an effect after revoke/restart.
+15. **v0.2 P0:** prove unknown value vs resource/closed/ajar/open method compatibility, plus lossy ProtoJSON/field-copy relay behavior, under mandatory security field requirements.
+16. **v0.2 P0:** prove exact signed BootPolicy bytes are interpreted identically by all admitted parsers with domain separation and strict duplicate/unknown-critical extension refusal.
+17. **v0.2 P0:** define a safe refusal/reconciliation for native/guest result variants that cannot represent EFFECT_UNKNOWN without implying false rollback.
 
-**Next suggested design action:** independently attack-review RFC-018 v0.1 into v0.2, including unknown transferred handle and mixed-version mandatory security downgraded field. Then a cross-RFC 002/003/008/009/010/017/018 consistency pass before any fixed syscall/header formats.
+**Next suggested design action:** the v0.1→v0.2 adversarial review is recorded in §19, but its P0 proof gates are still OPEN. Next run a joint RFC-002/003/007/008/009/010/017/018 consistency audit and consider precise IDL-A versus adapted-FIDL trade-offs before assigning any syscall/header formats.
 
 ## 18. Official external references and interpretation scope (2026-10-25)
+
+- **[S1] Fuchsia FIDL language and protocol openness:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
+- **[S2] Fuchsia FIDL wire format and resource envelopes:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/wire-format
+- **[S3] Fuchsia FIDL API rubric and resource evolution:** https://fuchsia.dev/fuchsia-src/development/api/fidl
+- **[S4] Fuchsia Zircon Channel write and handle transfer:** https://fuchsia.dev/reference/syscalls/channel_write
+- **[S5] Protocol Buffers proto3 language/field evolution:** https://protobuf.dev/programming-guides/proto3/
+- **[S6] Protocol Buffers serialization not canonical:** https://protobuf.dev/programming-guides/serialization-not-canonical/
+- **[S7] Cap'n Proto schema evolution:** https://capnproto.org/language.html
+- **[S8] Cap'n Proto canonical encoding and limitations:** https://capnproto.org/encoding.html
+- **[S9] Apache Thrift IDL required/optional/default fields:** https://thrift.apache.org/docs/idl
+- **[S10] gRPC status codes (DEADLINE_EXCEEDED after completed effect):** https://grpc.io/docs/guides/status-codes/
+- **[S11] gRPC cancellation limits:** https://grpc.io/docs/guides/cancellation/
+- **[S12] IETF RFC 8949 CBOR deterministic encoding/duplicates/security:** https://www.rfc-editor.org/rfc/rfc8949.html
+- **[S13] Linux userspace ABI stability classes:** https://docs.kernel.org/admin-guide/abi.html
+- **[S14] Fuchsia FIDL unknown interactions/strictness:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
+- **[S15] Protocol Buffers Editions compatibility guidance:** https://protobuf.dev/programming-guides/editions/
+- **[S16] Protobuf proto3 unknown enum values and presence:** https://protobuf.dev/programming-guides/proto3/
+- **[S17] Fuchsia FIDL current strict/flexible and value vs resource union definitions:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
+- **[S18] Fuchsia RFC-0113 efficient envelopes unknown handle storage/closure (wire evolution caveat):** https://fuchsia.dev/fuchsia-src/contribute/governance/rfcs/0113_efficient_envelopes
+- **[S19] Protobuf proto3 unknown binary fields lost in JSON and field-copy transforms:** https://protobuf.dev/programming-guides/proto3/
+- **[S20] Protobuf ProtoJSON weaker schema evolution support:** https://protobuf.dev/programming-guides/json/
+- **[S21] gRPC deadlines propagation and cancellation without server handler guarantee:** https://grpc.io/docs/guides/deadlines/
+
+All references describe the *other project's documented interface*, not a UniOS code import, implementation, transfer of formal proof or automatic legal permission. The cited codec formats have different failure/unknown-resource assumptions; a promising source does not prove selected UniOS fit.
+
+---
+
+**Document history:** 2026-10-25 v0.1 created and preserved in Git history. 2026-10-25 v0.2 independent adversarial review: committed cap MOVE vs decode rejection; delegable bearer Endpoint and trusted per-call identity/confused deputy; session/issuer policy epoch; unknown resource vs value; Protobuf JSON extension loss; exact signed bytes vs parser/domain equivalence; CBOR duplicate key handling; guest UNKNOWN status limits and hardware cap R2-F cleanup. 54 unproved invariants; 49 open design issues; 32 Proposed decisions. Documentation only, no compiler/prototype/kernel/codec/ABI implementation, test or formal proof.
 
 ## 19. v0.2 independent adversarial review — capability custody, identity, version pinning and signed meaning
 
@@ -702,31 +736,3 @@ If a guest Linux personality cannot express native EFFECT_UNKNOWN while honoring
 9. **Honest status:** IDL-A stays an unapproved research family; no chosen wire encoding, binary ABI freeze, codegen, working codec or formally tested implementation.
 
 **Decision:** Keep IDL-A as provisional comparative architecture, not selected codec. RFC-018 **remains Proposed v0.2**, all P0 obligations OPEN, and no OS feature implementation authorization is implied.
-
-- **[S1] Fuchsia FIDL language and protocol openness:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
-- **[S2] Fuchsia FIDL wire format and resource envelopes:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/wire-format
-- **[S3] Fuchsia FIDL API rubric and resource evolution:** https://fuchsia.dev/fuchsia-src/development/api/fidl
-- **[S4] Fuchsia Zircon Channel write and handle transfer:** https://fuchsia.dev/reference/syscalls/channel_write
-- **[S5] Protocol Buffers proto3 language/field evolution:** https://protobuf.dev/programming-guides/proto3/
-- **[S6] Protocol Buffers serialization not canonical:** https://protobuf.dev/programming-guides/serialization-not-canonical/
-- **[S7] Cap'n Proto schema evolution:** https://capnproto.org/language.html
-- **[S8] Cap'n Proto canonical encoding and limitations:** https://capnproto.org/encoding.html
-- **[S9] Apache Thrift IDL required/optional/default fields:** https://thrift.apache.org/docs/idl
-- **[S10] gRPC status codes (DEADLINE_EXCEEDED after completed effect):** https://grpc.io/docs/guides/status-codes/
-- **[S11] gRPC cancellation limits:** https://grpc.io/docs/guides/cancellation/
-- **[S12] IETF RFC 8949 CBOR deterministic encoding/duplicates/security:** https://www.rfc-editor.org/rfc/rfc8949.html
-- **[S13] Linux userspace ABI stability classes:** https://docs.kernel.org/admin-guide/abi.html
-- **[S14] Fuchsia FIDL unknown interactions/strictness:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
-- **[S15] Protocol Buffers Editions compatibility guidance:** https://protobuf.dev/programming-guides/editions/
-- **[S16] Protobuf proto3 unknown enum values and presence:** https://protobuf.dev/programming-guides/proto3/
-- **[S17] Fuchsia FIDL current strict/flexible and value vs resource union definitions:** https://fuchsia.dev/fuchsia-src/reference/fidl/language/language
-- **[S18] Fuchsia RFC-0113 efficient envelopes unknown handle storage/closure (wire evolution caveat):** https://fuchsia.dev/fuchsia-src/contribute/governance/rfcs/0113_efficient_envelopes
-- **[S19] Protobuf proto3 unknown binary fields lost in JSON and field-copy transforms:** https://protobuf.dev/programming-guides/proto3/
-- **[S20] Protobuf ProtoJSON weaker schema evolution support:** https://protobuf.dev/programming-guides/json/
-- **[S21] gRPC deadlines propagation and cancellation without server handler guarantee:** https://grpc.io/docs/guides/deadlines/
-
-All references describe the *other project's documented interface*, not a UniOS code import, implementation, transfer of formal proof or automatic legal permission. The cited codec formats have different failure/unknown-resource assumptions; a promising source does not prove selected UniOS fit.
-
----
-
-**Document history:** 2026-10-25 v0.1 created and preserved in Git history. 2026-10-25 v0.2 independent adversarial review: committed cap MOVE vs decode rejection; delegable bearer Endpoint and trusted per-call identity/confused deputy; session/issuer policy epoch; unknown resource vs value; Protobuf JSON extension loss; exact signed bytes vs parser/domain equivalence; CBOR duplicate key handling; guest UNKNOWN status limits and hardware cap R2-F cleanup. 54 unproved invariants; 49 open design issues; 32 Proposed decisions. Documentation only, no compiler/prototype/kernel/codec/ABI implementation, test or formal proof.
