@@ -347,3 +347,7 @@ Even with complete bytes/cap snapshot and pre-reserved public Handle IDs, writin
 ---
 
 **Document history:** 2026-10-25 Proposed Unified SEND–RECEIVE v0.1. **13** joint ownership/friction categories, **32** adversarial paper schedules, **30** unproved invariants, **18** open blockers, **12** Proposed joint decisions; consolidated K-S→Queue→Claim→K-I/Terminal, Vm/Vp/Vt, ownerless E1 Endpoint transit, revoked multi-Grant vector and distinct source/receiver receipts. No OS implementation or formally verified design.
+
+## 14. Follow-up P0 conflict triage and draft ADR readiness — 2026-10-25 Proposed
+
+[CAPIPC P0 Conflict Resolution & ADR Readiness Matrix v0.1](../reviews/capipc-p0-conflict-resolution-adr-readiness-v0.1.md) maps all 18 UN-O blockers to eight **draft-only** ADR-CAPIPC-A…H packages, assigns heuristic design-priority scores and lays out explicit D0 study vs D1 semantic review vs later separately authorized verification/refinement/production gates. First coupled risk chain: K-S/B/E-M whole Grant vector, K-I/public Vm/Vp/Vt+revoked-in-transit N-vector, and Pager/M0/queue-cycle bounded cleanup. HPA-B+ remains a **T1 candidate family, not an approved token/K-I micro-order**; optional independently trusted T2 does not silently become mandatory baseline. The original UN-O statuses remain OPEN and the Unified contract remains Proposed; no simulation, runtime, source code, accepted ADR or numerical ABI.
