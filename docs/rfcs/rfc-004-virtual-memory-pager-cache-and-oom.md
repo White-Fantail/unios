@@ -425,3 +425,7 @@ VM-A는 여전히 유력하지만 최선으로 확정되지 않았다. M0~M3는 
 ## 24. 2026-10-25 CAPIPC formal-preparation usercopy/Pager boundary — Proposed
 
 [CAPIPC Formal Model Preparation v0.1](../models/capipc-formal-model-preparation-v0.1.md) lists future guard/action obligations for copyin snapshot, partial usercopy, possibly observable V, ReceiveClaim, Pager FaultWaiter epoch revalidation and M0-safe nonrecursive lock/credit use. Kernel receipt admission/GC cannot imply a faulted copyout was invisible or free pinned/queued/physical debt. The proposed small model only **abstracts** Pager/hardware transitions; no real MMU/IOMMU TLB safety, low-memory feasibility, formal checker execution or implementation is established. RFC-004 remains Proposed.
+
+## 25. 2026-10-25 Receiver exposure, usercopy aliases and K-I ordering — Proposed
+
+[CAPIPC Receive Exposure, K-I & Handle Publication Ordering v0.1](../models/capipc-receive-exposure-ki-handle-publication-v0.1.md) refines RFC-004's untrusted user-memory boundary: a valid virtual output address may fault/unmap/repoint or alias other writable backing under concurrent Threads; potentially observable Vm/Vp/Vt must be marked before any write/map and cannot be rolled back by failed native cap K-I. No faultable Pager copyout may hold incompatible global IPC/MM/cleanup/IRQ lock; reserve protected R[q], cap slots and quota before irreversible exposure, but pre-reservation alone does not prove atomic output. This paper does not validate MMU/TLB behavior, paging performance, M0 feasibility, formal invariants or any kernel source.
