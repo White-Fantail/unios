@@ -314,3 +314,7 @@ A single `SUCCESS/FAILED` status hides distinct dimensions. Proposed result shou
 ---
 
 **History:** 2026-10-25 initial Proposed RP v0.1 research. Separate K-C / Vm / Vp / Vt / K-I / optional K-U, user-copy/Endpoint/Task-gen races, message/audience terminal semantics, historic vs current cap rights, T1 bearer ceiling and T2 verifier trust; no implementation or verified proof.
+
+## 14. Unified sender-to-receiver ownership follow-up — 2026-10-25, Proposed
+
+The integrated [CAPIPC Unified SEND–RECEIVE Semantic Contract v0.1](../contracts/capipc-unified-send-receive-semantic-contract-v0.1.md) relates RP's V/K-I/public-token research to K-S atomic sender MOVE, kernel queue/Claim single custodian, scoped revoke B, Endpoint owner InTransit and distinct Task qS/qR. A revoked mandatory member of a previously committed queue cap vector **cannot** turn full K-I into silent N−1 partial success; a first proof candidate denies whole K-I with truthful possible Vm/Vp/Vt disclosure/terminal sponsor debt and *never* sender rollback. HPA-B+ micro-order/alias/SMP and audience policy remain OPEN, NOT implemented or proven.
