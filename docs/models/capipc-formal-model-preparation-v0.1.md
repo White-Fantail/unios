@@ -281,3 +281,7 @@ Some require **history/ghost state or auxiliary abstract environment variables**
 ---
 
 **History:** 2026-10-25 Proposed v0.1. Four decomposition stages; 21 candidate actions; 28 unproved invariants; 8 conditional liveness properties; 20 paper-only race schedules; 10 Proposed decisions; 14 open contract questions. No executable formal model, OS code, ABI or Accepted ADR.
+
+## 14. Follow-up: COMMIT versus B/E-M semantic-cut research — Proposed
+
+**FM-O01 remains unproved, but its candidate contract is now sharper:** [CAPIPC Commit, Revocation Barrier & E1 Endpoint Ownership Ordering v0.1](capipc-commit-revocation-ordering-v0.1.md) compares strict K-S-before/B-before outcomes and E1 cancel/settle-before-ownership-transfer (CO-S and CO-E-C), distinguishes A(q) identity admission from final K-S authority, and clarifies that `FINAL_NOT_COMMITTED` means *that attempted SEND did not consume the source*, not that independently closed/revoked Handles remain usable. The Endpoint itself may be Task-ownerless while InTransit. These are **Proposed paper transitions only**, not a change to the original 21-action formal preparation count, an executable spec, proof, ABI decision or kernel implementation. FM-O07/08 Receive V/K-I/publication is still separate and OPEN.
