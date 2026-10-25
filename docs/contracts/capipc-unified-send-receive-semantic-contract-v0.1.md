@@ -73,8 +73,8 @@ Source Task S: exact CapGrant vector [g1 ... gN]
                                ├── Queue abort / endpoint death ──> terminal close/quarantine
                                │    (no restoration to original S)
                                │
-                               └── Receiver Task R authentic K-C(m,R,Egen,Audience)
-                                      ├── A(qR) / protected R_R=PENDING
+                               └── Receiver Task R authentic A(qR) / protected R_R=PENDING
+                                      ├── K-C(m,R,Egen,Audience) exclusive
                                       ├── reserve whole slots + inert token IDs
                                       ├── Vm, Vp, Vt (independent possible publication)
                                       │    ├── copyout fault/revoke/Endpoint MOVE
