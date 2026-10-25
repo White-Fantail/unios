@@ -433,3 +433,7 @@ VM-A는 여전히 유력하지만 최선으로 확정되지 않았다. M0~M3는 
 ## 26. 2026-10-25 Unified IPC copyout and Pager liveness handoff — Proposed
 
 **Reference:** [CAPIPC Unified SEND–RECEIVE Semantic Contract v0.1](../contracts/capipc-unified-send-receive-semantic-contract-v0.1.md). K-S and K-I candidate protected cuts do not make Vm/Vp/Vt user memory stores atomic; aliases, concurrent remap and Pager faults can leave partial possible disclosure. K-C holds a kernel-custodied message until whole K-I or terminal; after relevant Vp, failed K-I cannot trigger foreign automatic requeue. Receipt, queue, claim and fault budgets, M0 reserve and lock/wait cycle proof are independent OPEN constraints. No VM code, formal checker or ABI approved.
+
+## 27. 2026-10-25 CAPIPC P0 Pager and M0 feasibility gate — Proposed
+
+[CAPIPC P0 Conflict Resolution & ADR Readiness Matrix v0.1](../reviews/capipc-p0-conflict-resolution-adr-readiness-v0.1.md) identifies faultable usercopy versus protected K-S/K-I cuts, Vm/Vp/Vt exposure, pinned/aliased output memory and Pager wait-for cycles as a coupled P0 feasibility gate (draft ADR-CAPIPC-C/E). No global IPC/VM/Claim/Revocation lock may be held across a faultable path needed by Pager/recovery; Q/W/queue/Claim/Token/lineage/pin debt and M0 CPU/frame/IRQ/cleanup must be independently accounted and bounded. This is a *candidate invariant, not proven resource or lock implementation*; no VM changes, tests, accepted ADR or ABI.
