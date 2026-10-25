@@ -301,3 +301,7 @@ All references characterize other systems. They **do not** transfer a working al
 ---
 
 **History:** 2026-10-25 v0.2 independent adversarial re-review of [v0.1](capipc-send-receive-revoke-state-model-v0.1.md). Added capability install vs public token exposure/activation, confidentiality of preclaim metadata, receiver-audience and Endpoint MOVE races, exact trusted T2 verifier/PolicyEpoch release and terminal sponsor debt. 20 unexecuted cases, 24 additional unproved invariants, 16 open research issues, 12 Proposed decisions. All parent RFCs remain Proposed; design documentation only.
+
+## 12. 2026-10-25 Receive V/K-I/public token ordering — Proposed research continuation
+
+[CAPIPC Receive Exposure, K-I & Handle Publication Ordering v0.1](capipc-receive-exposure-ki-handle-publication-v0.1.md) expands existing §4 K-Vm/K-Vp and the public token vs cap-install issue into explicit candidate K-Vt and history/current-authority separation. The proposed B+T family leaves maybe-published tokens inert until whole-vector K-I; K-I may make them Task-wide before calling Thread observes completion. Claim audience, Endpoint MOVE, revocation, partial usercopy, terminal possible exposure, same-message no-foreign-requeue and token anti-ABA remain unproved. This editorial pointer does not alter the original Proposed state or prove a receive implementation.
