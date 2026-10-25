@@ -339,3 +339,7 @@ The independent [CAPIPC Commit, Revocation Barrier & E1 Endpoint Ownership Order
 ## 15. Unified SEND–RECEIVE safety-case synthesis — 2026-10-25, Proposed
 
 [CAPIPC Unified SEND–RECEIVE Semantic Contract v0.1](../contracts/capipc-unified-send-receive-semantic-contract-v0.1.md) joins SC-C01–18's distinct sender/receiver q/receipts, source/queue/Claim/receiver Grant custody, issuer-scoped Vm/Vp/Vt possible disclosure, whole N-Grant K-I, revoked-in-transit vector no-partial-delivery, loss-of-return and M0/physical/backend effect independence. A message's exclusive Claim isn't an early cap install; an already committed K-S cannot be rolled back because a later receive fails. This is only documentary evidence; the safety-case **OPEN / NO-GO** standing is not changed.
+
+## 16. 2026-10-25 CAPIPC P0 conflict triage and ADR readiness — Proposed
+
+[CAPIPC P0 Conflict Resolution & ADR Readiness Matrix v0.1](capipc-p0-conflict-resolution-adr-readiness-v0.1.md) maps every unresolved UN-O01–18 blocker to eight candidate ADR packages, critical cut/proof chains, bounded resources and conservative terminal/recovery options. The review explicitly states that no new live RFC textual contradiction has been **proved**, but K-S/B/E-M, Vm/Vp/Vt/K-I, and Pager/M0 remain CUT-AMBIGUITY, PROOF-GAP or LIVENESS-GAP with all security gates OPEN. T1 and optional independently trusted T2 stay separate. Documentary D0 readiness must not be confused with checked D2, implementation D3 or production D4. All safety claims remain unproved.
