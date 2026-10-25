@@ -819,3 +819,7 @@ The separate proposed KR-M1 Task receipt identity is a **preknown strictly order
 ## 29. 2026-10-25 KR-M2 cross-RFC safety-case and ABI truth boundary — Proposed
 
 **Design-only:** [CAPIPC Cross-RFC Safety Case v0.1](../reviews/capipc-cross-rfc-safety-case-v0.1.md). Proposed q/A/X/C/B and receipt R[q] remain logical, *not* syscall fields or KABI numbers. A q≤C prevents re-admission, not proof of final COMMITTED/NOT_COMMITTED after result GC; PENDING, historical COMMITTED_KS/KI/KU and EXPIRED_EVIDENCE are distinct from SABI effect, guest Linux errno/FD and hardware durability. Query must use actual Task/scoped rights after source MOVE; no public Handle grant may be reissued from history. Commit/revoke/endpoints, faultable copyout, skip-status loss and M0 quota remain proof blockers. This addendum does not freeze any ABI or authorize code.
+
+## 30. 2026-10-25 Formal-model preparation and truthful native receipt status — Proposed
+
+**Research link:** [CAPIPC Formal Model Preparation v0.1](../models/capipc-formal-model-preparation-v0.1.md). Formal checking is only **planned** for logical preknown q, protected A/X/C/Used/R, distinct K-S/V/K-I/K-U, authenticated query rights after MOVE, postcommit copyout result-loss and accurate Pending/FinalNotCommitted/Committed/Expired semantics. No .tla/.als code, syscall number, C layout, public q or Handle width, user SDK interface, guest Linux errno mapping or ABI freeze has been selected. A Task-local q replay fence is not SABI/FS/durable/backend idempotency.
