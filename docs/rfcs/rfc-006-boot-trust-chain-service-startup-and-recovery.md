@@ -621,3 +621,7 @@ Liveness states (under explicitly stated CPU/IRQ/fair scheduler/working storage 
 ## 28. 2026-10-25 Unified SEND–RECEIVE recovery and M0 ownership — Proposed
 
 [CAPIPC Unified SEND–RECEIVE Semantic Contract v0.1](../contracts/capipc-unified-send-receive-semantic-contract-v0.1.md) keeps sender committed K-S, receiving Task's exclusive Claim/possible exposure, whole K-I, Task death and backend effect distinct. A dead S never regains already MOVEd grants; old R Claim/receipt cannot transfer to new ServiceIncarnation by shared registry name. Queue, lineaged grants, ownerless Endpoint InTransit, sponsor and R2-F quarantine remain independently accountable across receipt GC and restarts. Wired M0 bounds/cleanup are still unproved, no implementation.
+
+## 29. 2026-10-25 CAPIPC P0 M0 budget and Task-death cleanup readiness — Proposed
+
+**Design-only:** [CAPIPC P0 Conflict Resolution & ADR Readiness Matrix v0.1](../reviews/capipc-p0-conflict-resolution-adr-readiness-v0.1.md) prioritizes a bounded M0 recovery reserve and queue/Claim/lineage/Token/receipt/Endpoint cycle cleanup as part of initial IPC proof, not a later optimization. A dead Task or expired receipt cannot refund unfenced DMA, terminal after possible V cannot silently requeue to another ServiceIncarnation, and old Task q/Endpoint rights never reattach to same service name. M0 resource exhaustion requires honest fail-stop/quarantine if safe reclamation cannot be evidenced. All ADR packages remain D0/open, no proof, hardware test or implementation.
