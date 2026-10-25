@@ -282,3 +282,7 @@ No actual latency, lock contention, throughput, memory use or availability has b
 ---
 
 **History:** 2026-10-25 Proposed v0.1 independent FM-O01/SC-O02 handoff. CO-S and CO-E-C are conditional research priorities; exact SEND source retention vs independent close/revoke clarified. **28 paper-only counterexamples, 26 unproved invariants, 12 candidate decisions, 16 open blockers.** No executable model, OS code or ABI approval.
+
+## 14. Unified SEND–RECEIVE handoff — 2026-10-25, Proposed
+
+A follow-on [CAPIPC Unified SEND–RECEIVE Semantic Contract v0.1](../contracts/capipc-unified-send-receive-semantic-contract-v0.1.md) joins CO-S/CO-E-C native sender commit order with receiver audience-bound K-C and potential disclosure Vm/Vp/Vt before all-or-none K-I. Actual K-S committed source→kernel queue custody is historical and cannot be undone if a queued grant is later B-revoked and the recipient K-I must deny whole-vector installation. The sender's qS and receiver's qR receipts are distinct and external effects require SABI/backend reconciliation. CO-S/CO-E-C remain research candidates, not accepted kernel algorithms, stable ABI or formally verified properties.
