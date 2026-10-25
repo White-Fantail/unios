@@ -323,3 +323,7 @@ No step above has been run. Selection of TLA+/PlusCal/Alloy/Ivy/model-checking t
 ---
 
 **History:** 2026-10-25 first cross-RFC Proposed safety case for CAPIPC KR-M2, linking RFC-001/002/003/004/005/006/009 and 007/008/010/018: **18 scoped claims, 24 unexecuted cross-boundary attack schedules, 24 unproved obligations, 18 open blockers, 10 Proposed decisions.** No OS code or stable ABI.
+
+## 12. Follow-up formal-model preparation — 2026-10-25, Proposed only
+
+The follow-on [CAPIPC Formal Model Preparation v0.1](../models/capipc-formal-model-preparation-v0.1.md) maps this review's SC-C/SC-I safety case to future **four-stage small finite models**: KR-M2 protected A/X/C/Used/R, E1 SEND/MOVE and revoke B, receive V/K-I/public token exposure, and resource/Pager/M0/Task restart. It records 21 natural-language action contracts, 28 *unproved* invariants, 8 conditional liveness goals and 20 paper-only counterexample seeds. Proposed tooling is TLA+/TLC first, with independent Apalache/Alloy research. This is a **preparation only** pointer: no checker/spec source, run, proof, ABI freeze, accepted ADR or actual UniOS implementation. The parent safety-case **NO-GO** remains unchanged.
