@@ -292,3 +292,7 @@ The returned error can be truthful about K-I/no-KI but **cannot undo byte disclo
 ---
 
 **History:** 2026-10-26 first Proposed PB v0.1. Two-stage P-DENY/P-DRAIN fence, P1 finite non-faulting slices versus P0 register-only/P2 sealed mailbox/P3 faultable lease; 18 proposed action cuts, 24 paper-only attack schedules, 24 unproved predicates, 12 proposed decisions, 16 open questions. No implementation or checker.
+
+## 12. 2026-10-26 Publication Permit & Destination Memory detailed follow-up — Proposed
+
+[CAPIPC Publication Permit & Destination Memory Contract v0.1](capipc-publication-permit-destination-memory-contract-v0.1.md) refines P1 into **P1-MA physical pinned backing** versus **P1-MB VM mapping lease** and makes a new fundamental split between *physical page lifetime*, *actual VA/MappingGeneration-to-backing delivery*, and *issuer audience publication right*. A pin or postcopy epoch check alone is never proof of all three. Register-only **P0-R** still needs an authenticated ReturnRelease cut under issuer/Endpoint changes; full K-I/native bearer rights and lost-return receipt remain separate. The follow-up is Proposed only with 28 **unexecuted** attacks and 26 **unproved** invariants; PB-R1 and general P1 feasibility remain OPEN. No ABI, model checker or source implementation.
