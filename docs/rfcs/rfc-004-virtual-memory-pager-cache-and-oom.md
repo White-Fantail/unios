@@ -429,3 +429,7 @@ VM-A는 여전히 유력하지만 최선으로 확정되지 않았다. M0~M3는 
 ## 25. 2026-10-25 Receiver exposure, usercopy aliases and K-I ordering — Proposed
 
 [CAPIPC Receive Exposure, K-I & Handle Publication Ordering v0.1](../models/capipc-receive-exposure-ki-handle-publication-v0.1.md) refines RFC-004's untrusted user-memory boundary: a valid virtual output address may fault/unmap/repoint or alias other writable backing under concurrent Threads; potentially observable Vm/Vp/Vt must be marked before any write/map and cannot be rolled back by failed native cap K-I. No faultable Pager copyout may hold incompatible global IPC/MM/cleanup/IRQ lock; reserve protected R[q], cap slots and quota before irreversible exposure, but pre-reservation alone does not prove atomic output. This paper does not validate MMU/TLB behavior, paging performance, M0 feasibility, formal invariants or any kernel source.
+
+## 26. 2026-10-25 Unified IPC copyout and Pager liveness handoff — Proposed
+
+**Reference:** [CAPIPC Unified SEND–RECEIVE Semantic Contract v0.1](../contracts/capipc-unified-send-receive-semantic-contract-v0.1.md). K-S and K-I candidate protected cuts do not make Vm/Vp/Vt user memory stores atomic; aliases, concurrent remap and Pager faults can leave partial possible disclosure. K-C holds a kernel-custodied message until whole K-I or terminal; after relevant Vp, failed K-I cannot trigger foreign automatic requeue. Receipt, queue, claim and fault budgets, M0 reserve and lock/wait cycle proof are independent OPEN constraints. No VM code, formal checker or ABI approved.
