@@ -605,3 +605,7 @@ Liveness states (under explicitly stated CPU/IRQ/fair scheduler/working storage 
 ---
 
 **Document history:** 2026-10-24 v0.1 original proposed design (retained in Git); 2026-10-24 v0.2 counterexample review of EFI handoff, watchdog, manifest TCB, root recovery, A/B floor and safe restarts. No code, key enrollment, actual boots, tests or benchmarks.
+
+## 26. 2026-10-25 CAPIPC Receipt/Task death and M0 safety-case boundary — Proposed
+
+**Joint study:** [CAPIPC Cross-RFC Safety Case v0.1](../reviews/capipc-cross-rfc-safety-case-v0.1.md). Kernel TaskGeneration and protected q/C/B/R[q] are not ServiceID, SABI RequestId, BootEpoch or persistent external-effect ledgers. Task death removes ordinary query authority but cannot roll back committed queue/cap exposure, DMA or durable storage effects. New ServiceIncarnation must not inherit old receipts/ReplyTokens from shared names. PENDING records/ReceiveClaim and outstanding hardware pins require independent custody and bounded M0-safe cleanup rather than expiration-driven refund. Supervisor post-death inspection requires separately narrow grants; no recovery proof or Accepted Boot/ABI changes.
