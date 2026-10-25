@@ -322,3 +322,7 @@ IPC usercopy holds lock L→Pager fault→Pager Task requires Channel Send/Recei
 ---
 
 **History:** 2026-10-26 v0.1 D0 joint A/C/E research narrowing. Proposed a specific paper-only T1 Vp→Vt→K-I ordering, a new explicit publication-in-flight barrier/Pager race and A0+C0+E0 failure truth. **17** candidate transitions, **24** unexecuted adversarial schedules, **24** unproved invariants. No accepted ADR, executable formal model, code or ABI.
+
+## 12. 2026-10-26 Publication barrier and Pager-safe copyout feasibility follow-up — Proposed
+
+[CAPIPC Publication Barrier & Pager-Safe Copyout Feasibility v0.1](capipc-publication-barrier-pager-safe-copyout-feasibility-v0.1.md) deepens the earlier **JC-P0** issue: P-DENY blocks new issuer/Endpoint audience publication permits while P-DRAIN additionally proves older publishers cannot write any more bytes. A postcopy epoch retry cannot unpublish earlier bytes. For general T1 HPA-B+ the new **conditional P1 paper comparator** requires pre-resolved bounded nonfaulting output slices, actual MappingGeneration and writable backing/alias authorization, serialized issuer Epoch/E-M and precharged terminal/M0 resources. **P0 register-only** is a narrower fallback, **P2 controlled mailbox** a separate VM comparator, and indefinitely Pager-faultable P3 cannot claim bounded strong drain. Vp→Vt→K-I remains a logical research order, not an established SMP-safe implementation or Accepted ADR.
