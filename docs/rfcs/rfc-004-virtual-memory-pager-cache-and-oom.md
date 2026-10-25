@@ -417,3 +417,7 @@ VM-A는 여전히 유력하지만 최선으로 확정되지 않았다. M0~M3는 
 ---
 
 **Document history:** 2026-10-24 v0.1 original research draft retained in Git; 2026-10-24 v0.2 critical review of Pager authorization, data-loss limits and staged recovery. No code, builds or benchmarks.
+
+## 23. 2026-10-25 CAPIPC receipt admission, usercopy and Pager boundary — Proposed
+
+**Cross-RFC research reference:** [CAPIPC Cross-RFC Safety Case v0.1](../reviews/capipc-cross-rfc-safety-case-v0.1.md). A(q) may reserve immutable protected record before K-S/K-I but cannot depend on faultable usercopy while holding locks required by Pager/IPC/M0. Page faults, Task/Mapping/PagerBinding generation changes and buffer aliases can intervene before copyout; first possibly visible user byte V is not undone by failed K-I or later receipt GC. A consumed q frontier is not permission to free FaultWaiters, escrow, pinned pages or sponsor debt. Recursion, lock order and bounded M0 fault/cleanup resources remain unproved P0; no virtual-memory algorithm or ABI is accepted.
