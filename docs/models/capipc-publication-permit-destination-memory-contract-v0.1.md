@@ -348,3 +348,7 @@ If target IPC messages exceed R0's eventual fixed ABI return capacity, do **not*
 ---
 
 **History:** 2026-10-26 initial Proposed Destination Memory Contract v0.1. Candidate P1-MA (physical backing) versus P1-MB (mapping lease), P0-R register ReturnRelease, P2 mailbox; three independent rights L/M/P; **20** candidate transitions, **28** paper-only failure schedules, **26** unproved invariants, **12** Proposed decisions and **16** open P0/P1 questions. No implementation or accepted ABI.
+
+## 15. 2026-10-26 Cross-RFC Destination/Publication Decision Table — Proposed
+
+[CAPIPC Destination Memory & Publication Barrier Cross-RFC Decision Table v0.1](../reviews/capipc-destination-memory-publication-cross-rfc-decision-table-v0.1.md) refines DM-O02/03/04/05 into a three-profile research split: R register-only bounded control with an explicit ReturnRelease, V fixed resident/private VA-to-backing mapping lease, and O typed MemoryObject output rather than an implicit current-VA guarantee. It introduces separate VM M-DENY/M-DRAIN and issuer P-DENY/P-DRAIN plus a **paired (M,P) PublishStart** whose protected permission must not outlive either current mapping or issuer audience epoch. Page pin alone isn't an exact VA or private-audience proof. 18 decision rows and 26 paper counterexamples add **no verified property**, accepted ADR, executable model, source code or numeric ABI; this paper and DM-R1 remain Proposed/Open.
