@@ -335,3 +335,7 @@ The independent [CAPIPC Commit, Revocation Barrier & E1 Endpoint Ownership Order
 ## 14. Follow-up FM-O07/08: Receive exposure vs K-I/public token order — Proposed
 
 [CAPIPC Receive Exposure, K-I & Handle Publication Ordering v0.1](../models/capipc-receive-exposure-ki-handle-publication-v0.1.md) deepens SC-C05/06/07 and SC-O03. It separates independently irreversible confidential metadata K-Vm, possible payload K-Vp, public Handle token K-Vt, complete native K-I and optional verified K-U. A reported NO_KI is not NO_DISCLOSURE; an early published token must remain inert until K-I and cannot be rebound to another grant. Historic COMMITTED_KI never reissues current rights; after K-I the Task's other Threads may use legitimate bearer rights. The HPA-B+T candidate remains **unproved**; the Cross-RFC Open/NO-GO finding is unchanged.
+
+## 15. Unified SEND–RECEIVE safety-case synthesis — 2026-10-25, Proposed
+
+[CAPIPC Unified SEND–RECEIVE Semantic Contract v0.1](../contracts/capipc-unified-send-receive-semantic-contract-v0.1.md) joins SC-C01–18's distinct sender/receiver q/receipts, source/queue/Claim/receiver Grant custody, issuer-scoped Vm/Vp/Vt possible disclosure, whole N-Grant K-I, revoked-in-transit vector no-partial-delivery, loss-of-return and M0/physical/backend effect independence. A message's exclusive Claim isn't an early cap install; an already committed K-S cannot be rolled back because a later receive fails. This is only documentary evidence; the safety-case **OPEN / NO-GO** standing is not changed.
