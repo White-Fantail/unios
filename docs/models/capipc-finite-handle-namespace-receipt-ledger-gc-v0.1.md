@@ -210,3 +210,7 @@ A high-water mark stays O(1) per Task and is **not** a replacement for quota Q: 
 ---
 
 **History:** 2026-10-25 initial Proposed finite-namespace and GC follow-up. Novel candidate KR-M1 separates perpetual Task-lifetime duplicate-admission rejection via kernel monotonic HWM from bounded outcome evidence, with explicit admission-order liveness cost. **20 paper-only races, 18 unproved obligations, 8 candidate decisions.**
+
+## 10. 2026-10-25 Follow-up: Ordered vs sliding-window admission — Proposed research pointer
+
+This v0.1 remains historical primary **feasibility arithmetic and KR-M1 proposal**. The independent [Ordered vs Sliding-Window Receipt Admission v0.1](capipc-ordered-vs-sliding-window-receipt-admission-v0.1.md) now prioritizes **KR-M2 as a multi-Thread *research candidate***, while retaining KR-M1 as simplicity/reference. It specifies protected contiguous-consumed frontier C, bounded used bitmap B, separate pending/final result R[q], and an explicit SKIP(q) cut for never-admitted gaps. Advancing C across an unseen q without SKIP is not accepted; bounded W ultimately stalls on permanent holes. No acceptance, ABI freeze or implementation results from this cross-reference.
