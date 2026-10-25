@@ -441,3 +441,11 @@ This is a **design-only** cross-reference to [CAPIPC Finite Handle Namespace, Re
 - **No public token/receipt conflation:** a kernel Receipt high-water mark only fences duplicate operation admission; it does not replace native Handle anti-ABA or ensure persistent outcome evidence after final-record GC.
 
 **P0 OPEN:** finite token budget, concentrated slot churn, retirement fairness, sponsor isolation, public token partial exposure and TaskGeneration closure. RFC-002 remains Proposed v0.2.
+
+## 23. 2026-10-25 KR-M1 versus KR-M2 receipt admission boundary — Proposed research
+
+**New reference:** [CAPIPC Ordered vs Sliding-Window Receipt Admission v0.1](../models/capipc-ordered-vs-sliding-window-receipt-admission-v0.1.md). **Design only; no rights-table, accepted threat model or Handle encoding changes.**
+
+A proposed TaskGeneration-scoped receipt sequence q is **correlation, not a CapGrant**. KR-M2's protected frontier C and used bitmap B prevent a previously consumed (admitted or explicitly SKIPped) q from authorizing a new operation even after final evidence GC; unlike native Handle no-rebind, this only fences operation identity. Result-query/abandonment rights must be independently scoped, survive authorized source MOVE without rights amplification, and not expose another Task's cap metadata. SKIP can discard an unadmitted q, but **cannot undo committed MOVE or revoke existing rights**. Multi-Thread same-Task adversarial SKIP remains an availability risk unless an actual independent compartment/security principal is introduced.
+
+**P0 OPEN:** scoped SKIP/right provenance, Task/receipt namespace privacy, quota/sponsor, exact CapGrant fingerprint and revocation ordering. RFC-002 remains Proposed v0.2.
