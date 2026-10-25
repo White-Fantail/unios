@@ -301,3 +301,7 @@ A C caller may lose the ClaimID return on Stage, the AcceptCommit return, or the
 **What was NOT done:** no program files, no kernel/runtime/SDK changes, no TLA+/Alloy formal transition system, no model checking, no hardware IOMMU/CPU or filesystem simulation, no performance measurements. The open counterexamples are *designed schedules*, not bugs observed in a running UniOS.
 
 **Authority:** Prior v0.1 is preserved for history. The higher-level architecture remains accepted only at broad D1–D8. RFC-002, RFC-003, RFC-009, RFC-018 and both HPA drafts continue as Proposed. This report changes **research advice, not formal architecture acceptance**.
+
+## 13. 2026-10-25 Receive cut and token-publication follow-up — Proposed pointer
+
+This v0.2 independent review remains the general **HPA-B+ research-priority** source. A subsequent [Receive Exposure, K-I & Handle Publication Ordering v0.1](capipc-receive-exposure-ki-handle-publication-v0.1.md) provides a narrower paper review of Claim/audience K-C, metadata Vm, payload Vp, token Vt, all-cap K-I, historical receipt and Task-wide T1 invokability, with optional true T2 trusted K-U. Its conservative no-foreign-requeue after possible confidential exposure and after-commit result-loss rules preserve v0.2 guidance. The exact micro-order and SMP/VM/public token protocol remain **OPEN**, not implemented, proved or promoted into a stable ABI.
