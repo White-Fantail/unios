@@ -421,3 +421,7 @@ VM-A는 여전히 유력하지만 최선으로 확정되지 않았다. M0~M3는 
 ## 23. 2026-10-25 CAPIPC receipt admission, usercopy and Pager boundary — Proposed
 
 **Cross-RFC research reference:** [CAPIPC Cross-RFC Safety Case v0.1](../reviews/capipc-cross-rfc-safety-case-v0.1.md). A(q) may reserve immutable protected record before K-S/K-I but cannot depend on faultable usercopy while holding locks required by Pager/IPC/M0. Page faults, Task/Mapping/PagerBinding generation changes and buffer aliases can intervene before copyout; first possibly visible user byte V is not undone by failed K-I or later receipt GC. A consumed q frontier is not permission to free FaultWaiters, escrow, pinned pages or sponsor debt. Recursion, lock order and bounded M0 fault/cleanup resources remain unproved P0; no virtual-memory algorithm or ABI is accepted.
+
+## 24. 2026-10-25 CAPIPC formal-preparation usercopy/Pager boundary — Proposed
+
+[CAPIPC Formal Model Preparation v0.1](../models/capipc-formal-model-preparation-v0.1.md) lists future guard/action obligations for copyin snapshot, partial usercopy, possibly observable V, ReceiveClaim, Pager FaultWaiter epoch revalidation and M0-safe nonrecursive lock/credit use. Kernel receipt admission/GC cannot imply a faulted copyout was invisible or free pinned/queued/physical debt. The proposed small model only **abstracts** Pager/hardware transitions; no real MMU/IOMMU TLB safety, low-memory feasibility, formal checker execution or implementation is established. RFC-004 remains Proposed.
