@@ -453,3 +453,7 @@ A proposed TaskGeneration-scoped receipt sequence q is **correlation, not a CapG
 ## 24. 2026-10-25 CAPIPC Cross-RFC Safety Case — Proposed review
 
 **Research-only:** [CAPIPC Cross-RFC Safety Case v0.1](../reviews/capipc-cross-rfc-safety-case-v0.1.md) reviews KR-M2 A/X/C/B/R against current GrantLineage, Endpoint ownership, revocation B/R1/R2-F/R2-O and Task identity. A consumed q is not a present CapGrant nor proof of completed SEND/K-I; receipt GC/Task death do not refund queued rights or physical DMA pins. Commit-time authorization after earlier admission, scoped SKIP/query grants, public Handle no-rebind and lineage/sponsor cleanup remain P0 and unproved. No rights-table, Accepted ADR, Handle format or implementation change.
+
+## 25. 2026-10-25 CAPIPC formal-model preparation — Proposed cross-reference
+
+**Design study only:** [CAPIPC Formal Model Preparation v0.1](../models/capipc-formal-model-preparation-v0.1.md) explicitly models TaskGeneration, native CapGrant and public Handle nonrebind, Endpoint E1 owner MOVE, lineaged revocation B, protected receipt query/SkipRight and independently charged queue/claim/physical debts. K-S authorization after earlier A(q) and concurrent revoke/owner MOVE remains an unresolved alternative: no blanket post-B right is granted by A. Raw q is not CapGrant, and historical CommittedKI must not resurrect one. All invariants stay unproved, RFC-002 status Proposed; no rights-table, ABI or kernel code changes.
