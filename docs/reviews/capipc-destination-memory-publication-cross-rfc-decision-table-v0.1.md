@@ -268,3 +268,7 @@ A typed MemoryObject identity may be stable while its user mappings change or be
 ---
 
 **History:** 2026-10-26 initial Proposed Cross-RFC Decision Table v0.1. **18** cross-RFC decision rows, **26** paper-only adversarial schedules, **24** unproved predicates, **12** proposed research decisions, **16** OPEN blockers. No Accepted ADR or runnable implementation.
+
+## 12. Follow-up: paired (M,P) logical Start and implementation readiness — 2026-10-26, Proposed
+
+[CAPIPC Paired Mapping–Publication Cut & Invalidation Ordering v0.1](../models/capipc-paired-mapping-publication-invalidation-ordering-v0.1.md) specifies the **paper-only U-J paired Start** requirement: one coherent permission for both VM M and issuer P, per-scope charged active publisher and separate M-DENY/M-DRAIN and P-DENY/P-DRAIN. Sequential unlocked checks and postcopy retries are not substitutes; U-T two-ticket acquisition may deadlock without nonblocking rollback/ordered admission. The restricted register ReturnRelease U-R avoids dynamic user-buffer output but not issuer/current Task generation or whole-K-I receipt truth. See [UniOS Implementation Entry & Readiness Gate](unios-implementation-entry-readiness-gate-v0.1.md) for a separate **L1 experimental boot** vs **L2 native IPC** implementation-entry assessment, both currently NO-GO. No CRDM blocker marked closed, no code/model/ABI approved.
