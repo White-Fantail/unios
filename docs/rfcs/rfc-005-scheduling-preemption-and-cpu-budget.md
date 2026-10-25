@@ -653,3 +653,7 @@ D1–D8 are accepted at top-level design only. All SCHED-D01…D23 remain **Prop
 ---
 
 **Document history:** 2026-10-24 v0.1 original design retained in Git; 2026-10-24 v0.2 adversarial review corrected CPU cap/reservation overcommit, SMP accounting, M0 progress conditions, server budget inversion and lifecycle modeling. No scheduler, driver, kernel code, benchmarks or formal proofs.
+
+## 2026-10-25 CAPIPC KR-M2 concurrency and M0 progress boundary — Proposed
+
+[CAPIPC Cross-RFC Safety Case v0.1](../reviews/capipc-cross-rfc-safety-case-v0.1.md) adds design-only admission-liveness and bounded-cost dependencies. Task-global C/B can reject future q beyond W when a lower q remains unadmitted; scheduler fairness alone does not fill a missing request or authorize SKIP. Kernel protected A/X/K-S/K-I critical sections, query/GC work and sponsor-charged cleanup need finite non-starving CPU/IRQ/lock bounds and independent M0 capacity. No runtime scheduling measurements, fairness proof, policy selection or implementation has been performed.
