@@ -378,3 +378,7 @@ These are **future refusal gates**; the study has not witnessed any such bug in 
 ---
 
 **History:** 2026-10-25 initial Proposed v0.1. **18** Unified blocker mappings; **8** draft ADR packages; **9** heuristic triage workstreams; **12** cross-RFC owner edge cases; **24** unexecuted adversarial schedules; **20** unproved invariants; **12** Proposed decisions. No kernel source, runnable spec, implementation, tests or Accepted ADR.
+
+## 14. 2026-10-26 A/C/E joint semantic-cut research follow-up — Proposed, D0 remains
+
+[CAPIPC Joint A/C/E Semantic-Cut Resolution v0.1](../models/capipc-joint-semantic-cut-resolution-a-c-e-v0.1.md) narrows, **on paper only**, CO-S/CO-E-C K-S/B/E-M ordering, HPA-B+ T1 candidate **Vp→Vt→K-I** (inert TokenIDs until full K-I) and precharged independent Pager/M0 sponsor/terminal budgets. Its central **NEW explicit blocker** is the audience/Endpoint/PolicyEpoch change while usercopy is faulted or in flight: a later K-I rights check cannot undo confidential bytes written after a visibility barrier. Bounded publication fences versus register-only/restricted outputs must be compared in a follow-on study. These remain D0 research options, not D1-resolved guard semantics, verified models, approved ADRs or source code.
