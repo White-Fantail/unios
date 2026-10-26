@@ -677,3 +677,7 @@ D1–D8 are accepted at top-level design only. All SCHED-D01…D23 remain **Prop
 ## 2026-10-26 L1 single-BSP no-scheduler CPU exception scope — Proposed
 
 [UniOS Minimal Boot, Exception & Memory MVP Contract v0.1](../contracts/unios-minimal-boot-exception-memory-mvp-contract-v0.1.md) scopes first proposed QEMU boot code to one BSP and interrupts masked, no scheduler, Thread preemption, SMP, CPU donation, native Task/IRQ service or user mode. It still requires defined exception CPU state, GDT/IDT/TSS/DF IST, halt/fail-stop and CPU feature detection; NMI/unrecoverable triple fault may not produce a reliable serial trace. Later RFC-005 scheduler/M0 budgets are **not** implied validated by this initial scope. L1 implementation approval is currently **NO-GO**; design-only.
+
+## 2026-10-26 L1 IF-masked CPU/exception entry and ABIs — Proposed
+
+The [L1 UEFI Handoff & Kernel Entry Microcontract v0.1](../contracts/unios-l1-uefi-handoff-kernel-entry-microcontract-v0.1.md) separates UEFI firmware calling convention from bare-metal System V kernel `extern "C"`, with explicit kernel RSP alignment, no red zone, DF cleared, IF masked, valid GDT/IDT/TSS and double-fault IST through an early CR3 switch. Even with IF=0, NMI/synchronous exceptions may invalidate an unsupported interim handler; no universal serial trace is promised. BSP-only, no scheduler/timer/SMT/CPU budget or SMP implemented. H-O03 exact entry/exception context is still an L1 safety design blocker.
