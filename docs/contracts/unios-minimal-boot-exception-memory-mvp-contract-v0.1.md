@@ -1,5 +1,8 @@
 # UniOS — Minimal Boot, Exception & Memory MVP Contract v0.1
 
+**Historical status clarification (2026-10-26):** Later detailed L1 fixed-link/CR3 design and the [scoped user-Go record](../reviews/unios-l1-scoped-user-go-2026-10-26.md) supersede this first proposal's initial `NOT READY` recommendation for the *L1 experiment only*. This document remains design research; there are no implemented artifacts or boot results.
+
+
 > **Status:** Proposed design-only *scoped L1 experimental-kernel entry candidate*, **NOT Accepted, implemented, tested, security-validated or ABI-frozen**.
 > **Date:** 2026-10-26 NZDT. **User authorization:** design/research only. Do not create loader/kernel/source/build scripts/executable formal models or run QEMU tests until a separately explicit implementation Go decision.
 > **Review baseline:** [Architecture v0.2](../architecture/unios-architecture-v0.2.md), [Implementation Entry & Design-Completion Readiness Gate](../reviews/unios-implementation-entry-readiness-gate-v0.1.md), [RFC-001 TCB](../rfcs/rfc-001-kernel-boundary-and-tcb.md), [RFC-004 VM/Pager](../rfcs/rfc-004-virtual-memory-pager-cache-and-oom.md), [RFC-005 Scheduler](../rfcs/rfc-005-scheduling-preemption-and-cpu-budget.md), [RFC-006 Boot/Recovery](../rfcs/rfc-006-boot-trust-chain-service-startup-and-recovery.md), [RFC-017 Verified Boot](../rfcs/rfc-017-verified-boot-updates-and-rollback-protection.md), [L2 IPC publication study](../models/capipc-paired-mapping-publication-invalidation-ordering-v0.1.md).
