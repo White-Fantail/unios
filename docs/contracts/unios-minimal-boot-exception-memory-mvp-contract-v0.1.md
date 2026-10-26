@@ -266,3 +266,7 @@ All target/platform facts above are **published precedents**, not UniOS measurem
 ---
 
 **History:** 2026-10-26 initial **Proposed** L1 MVP contract. 18 paper-only fault/test cases, 20 unproved invariants, 10 OPEN scope/entry decisions; no loader/kernel/model code, ABI or implementation approval.
+
+## 14. 2026-10-26 UEFI/ELF/CR3 entry microcontract follow-up — Proposed
+
+[L1 UEFI Handoff & Kernel Entry Microcontract v0.1](unios-l1-uefi-handoff-kernel-entry-microcontract-v0.1.md) compares and narrows the L1-A boot choice to an EFI PE32+ application **embedding a restricted, separately linked ELF64 freestanding kernel**, preallocating resident payload/page tables/main+IST stacks/BootContext/map buffer, then using last GetMemoryMap Key and bounded spec-conforming ExitBootServices retry. It proposes **new high-half CR3 plus a transition trampoline that must remain mapped across the CR3 switch**, and explicit UEFI-to-SysV no-red-zone stack/CPU/IDT handoff. It does NOT show a working trampoline: exact linked base, initial map layout, early descriptor/exception window and loader subset are still H-O01/02/03 and L1 B02/B03/B07 open. [L1 readiness](../reviews/unios-implementation-entry-readiness-gate-v0.1.md) remains NO-GO and no code/test/ABI approved.
