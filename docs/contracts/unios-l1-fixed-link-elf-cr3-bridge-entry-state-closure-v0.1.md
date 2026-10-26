@@ -1,5 +1,8 @@
 # UniOS — L1 Fixed-Link ELF, CR3 Bridge & Entry-State Closure v0.1
 
+**Subsequent approval status (2026-10-26):** The user explicitly approved only the bounded L1 experimental scope in the [L1 User-Go Record](../reviews/unios-l1-scoped-user-go-2026-10-26.md). This is a historical design contract and not evidence of code or boots. Current repository work remains documentation/design only.
+
+
 > **Status:** Proposed *L1 implementation-entry design closure* for a **disposable Tier 0A QEMU/OVMF experiment** — 2026-10-26 NZDT. Not an Accepted product architecture/ABI, runnable model, booted artifact, formal proof, verified x86 exception handler, measured test, or authorization to implement.
 > **Strict project rule:** Only research and GitHub **documents** are authorized. Do not write even a loader/kernel/trampoline/build script until the user **explicitly approves the bounded L1 implementation** in the associated [Go/No-Go Assessment](../reviews/unios-l1-implementation-go-no-go-assessment-v0.1.md).
 > **Upstream:** [L1 UEFI Handoff & Kernel Entry Microcontract v0.1](unios-l1-uefi-handoff-kernel-entry-microcontract-v0.1.md); [Minimal Boot, Exception & Memory MVP](unios-minimal-boot-exception-memory-mvp-contract-v0.1.md); [Implementation Readiness Gate](../reviews/unios-implementation-entry-readiness-gate-v0.1.md); [Architecture v0.2](../architecture/unios-architecture-v0.2.md); [RFC-001](../rfcs/rfc-001-kernel-boundary-and-tcb.md), [RFC-004](../rfcs/rfc-004-virtual-memory-pager-cache-and-oom.md), [RFC-005](../rfcs/rfc-005-scheduling-preemption-and-cpu-budget.md), [RFC-006](../rfcs/rfc-006-boot-trust-chain-service-startup-and-recovery.md), [RFC-017](../rfcs/rfc-017-verified-boot-updates-and-rollback-protection.md).
