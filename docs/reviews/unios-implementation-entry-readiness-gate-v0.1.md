@@ -100,3 +100,7 @@ At the end of each significant review, record the following in the conversation 
 ---
 
 **History:** 2026-10-26 v0.1 Design-stage entry gate. Distinguishes L1 bounded boot code from L2 native Task/Capability/IPC and L3 Developer Preview; 10 proposed boot-entry criteria and 9 native-MVP criteria, no Go approvals, no source implementation.
+
+## 8. 2026-10-26 L1 Minimal Boot/Exception/Memory MVP contract assessment — Proposed
+
+[UniOS Minimal Boot, Exception & Memory MVP Contract v0.1](../contracts/unios-minimal-boot-exception-memory-mvp-contract-v0.1.md) narrows L1 to one QEMU Q35/OVMF BSP with an EFI loader, distinct Rust `x86_64-unknown-uefi` and freestanding `x86_64-unknown-none` kernel target, no user Tasks/Cap IPC/Pager/driver DMA/writable disks, a fixed privileged mapping envelope, GDT/IDT/TSS/DF-IST diagnostic fail-stop and bounded COM1 serial. 18 unexecuted failure tests and 20 unproved invariants provide a concrete later implementation-oracle plan, **not evidence tests passed**. Updated **paper** B01 REVIEWABLE, B02 PARTIAL, B03 PARTIAL, B04 REVIEWABLE, B05 REVIEWABLE, B06 REVIEWABLE, B07 PARTIAL, B08 REVIEWABLE, B09 REVIEWABLE, B10 PARTIAL. The exact embedded payload and ELF/PE validation, memory/page-table adoption/CR3/trampoline/stack entry, serial failure path and R6 user Go are **OPEN**; **L1 stays NOT READY FOR USER GO / NO-GO**, L2/L3 unchanged. Recommended next paper: L1 UEFI Handoff & Kernel Entry Microcontract; do not implement or modify the Approved-Direction v0.2 by inference.
