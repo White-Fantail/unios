@@ -543,3 +543,7 @@ seL4의 untyped/retype 기반 명시적 자원 소유와 Zircon의 process/job q
 ---
 
 **문서 이력:** v0.1(2026-10-24)은 대화 첨부의 초기 연구 버전으로 보존. v0.2(2026-10-24)는 1차 공식 자료와 반대 설계안을 추가 검증하여 다듬은 **Git 등록용 Proposed Specification**. 승인·구현·실측 없음.
+
+## 19. 2026-10-26 Boot/diagnostic L1 scope before full Native KABI — Proposed
+
+[UniOS Minimal Boot, Exception & Memory MVP Contract v0.1](../contracts/unios-minimal-boot-exception-memory-mvp-contract-v0.1.md) separates *initial experimental Tier0A ring-0 boot/exception diagnostics* from RFC-001's eventual Task/CapGrant/KABI/Linux guest and asset-level TCB. L1 proposes only firmware handoff, private fixed privileged mappings and fail-stop exceptions/COM1; no user Tasks, IPC/Grant syscalls, driver DMA, general Pager or stable ABI. Distinct UEFI loader and freestanding Rust kernel entry/platform CPU assumptions remain OPEN, and all RFC-001 security gates remain Proposed. [Readiness Gate](../reviews/unios-implementation-entry-readiness-gate-v0.1.md) records L1 NO-GO pending further entry microcontract and explicit user Go. No code, tests, accepted ABI or formal proof.
