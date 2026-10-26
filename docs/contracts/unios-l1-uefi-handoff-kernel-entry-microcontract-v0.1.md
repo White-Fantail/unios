@@ -245,3 +245,7 @@ UEFI x64 Rust target builds PE32+ with platform calling convention. Freestanding
 ---
 
 **History:** 2026-10-26 proposed v0.1. H1 embedded ELF and restricted loader; finite map/ExitBootServices retry; high-half W^X + mapped trampoline; distinct EFI/SysV ABI; 20 paper attack cases, 20 unproved invariants, 8 open decisions. No implementation, executable formal spec or Accepted ABI.
+
+## 12. 2026-10-26 Fixed-link/CR3/entry closure and scoped L1 Go readiness — Newer Proposed Finding
+
+**Superseding scoped follow-up:** [L1 Fixed-Link ELF, CR3 Bridge & Entry-State Closure v0.1](unios-l1-fixed-link-elf-cr3-bridge-entry-state-closure-v0.1.md) narrows H-O01/02/03 into **LAB-H1**: fixed **development-only** high-half VA at `0xffffffff80000000`, bounded ELF64 ET_EXEC without dynamic relocations, preallocated four-level 4KiB NX/WP mapping, an EFI-stub with same *linear* VA→physical backing under old/new CR3 verified in preflight, old/new shared bridge stack and early resident IDT/GDT/TSS/DF-IST, then ABI-safe `extern "C"` SysV kernel call. The referenced [L1 Go/No-Go review](../reviews/unios-l1-implementation-go-no-go-assessment-v0.1.md) now judges **L1 *experimental boot* design READY FOR USER GO** only; earlier “not ready” passages remain **dated prior assessments**, not the latest L1 implementation-entry state. Real ELF layout, OVMF old mappings, CR3/IST and negative cases are **post-user-approval verification obligations**, not claimed tested/proven. No user approval or OS code exists.
