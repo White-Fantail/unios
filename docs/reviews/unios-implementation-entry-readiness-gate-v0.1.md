@@ -1,5 +1,8 @@
 # UniOS — Implementation Entry & Design-Completion Readiness Gate v0.1
 
+**Later scoped L1 decision (2026-10-26):** This document's initial general NO-GO verdict is a historical baseline. Subsequent L1-specific contracts and the [L1 Go/No-Go Assessment](unios-l1-implementation-go-no-go-assessment-v0.1.md) established narrow paper readiness, and the user then gave explicit [scoped L1 approval](unios-l1-scoped-user-go-2026-10-26.md). L2 and L3 remain NO-GO; implementation and testing have not started under the current design-only project mode.
+
+
 > **Status:** Proposed, **NOT READY FOR IMPLEMENTATION APPROVAL**, 2026-10-26 NZDT.
 > **Scope:** Define when UniOS research is sufficient to **ask the user for permission to start an explicitly bounded implementation**, instead of indefinitely extending design or misrepresenting documentation as proof. This document creates **no implementation approval**, code, executable model, test, project schedule, hardware claim, native ABI or accepted kernel ADR.
 > **Architecture baseline:** [UniOS architecture v0.2](../architecture/unios-architecture-v0.2.md), whose **eight upper-level directions are Accepted**, while technical RFC-001…018 and CAPIPC models remain Proposed with open safety/feasibility blockers.
