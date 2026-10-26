@@ -681,3 +681,7 @@ D1–D8 are accepted at top-level design only. All SCHED-D01…D23 remain **Prop
 ## 2026-10-26 L1 IF-masked CPU/exception entry and ABIs — Proposed
 
 The [L1 UEFI Handoff & Kernel Entry Microcontract v0.1](../contracts/unios-l1-uefi-handoff-kernel-entry-microcontract-v0.1.md) separates UEFI firmware calling convention from bare-metal System V kernel `extern "C"`, with explicit kernel RSP alignment, no red zone, DF cleared, IF masked, valid GDT/IDT/TSS and double-fault IST through an early CR3 switch. Even with IF=0, NMI/synchronous exceptions may invalidate an unsupported interim handler; no universal serial trace is promised. BSP-only, no scheduler/timer/SMT/CPU budget or SMP implemented. H-O03 exact entry/exception context is still an L1 safety design blocker.
+
+## 2026-10-26 L1 SysV/IST/IF state closure and review-only Go readiness
+
+[L1 Fixed-Link ELF, CR3 Bridge & Entry-State Closure v0.1](../contracts/unios-l1-fixed-link-elf-cr3-bridge-entry-state-closure-v0.1.md) fixes the narrow first experimental CPU contract: single QEMU BSP, IF=0, DF=0, no scheduler/SMP, 4-level CR3, aligned bridge/main stacks, SysV entry no red-zone, mapped emergency IDT/GDT/TSS and DF IST1 before CR3. A diagnostic fault gap can still triple-fault; host reset/timeout must count FAIL, not pretend serial is guaranteed. [L1 review](../reviews/unios-l1-implementation-go-no-go-assessment-v0.1.md) rules **ready to ask for user-approved L1 lab code only**, not tested, formally proven or approved to implement yet.
