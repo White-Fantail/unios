@@ -1,5 +1,8 @@
 # UniOS — L1 Experimental Kernel Implementation Go/No-Go Assessment v0.1
 
+**Post-assessment decision (2026-10-26):** The user subsequently granted the explicit **scoped L1 Go** requested below. See the [L1 User-Go Record](unios-l1-scoped-user-go-2026-10-26.md). This dated assessment retains its *pre-approval* verdict as historical evidence. **No kernel code, QEMU run or runtime validation has been produced, and current project work remains design/research-only.**
+
+
 > **Evaluation date:** 2026-10-26 NZDT.
 > **Verdict:** **L1 DESIGN READY FOR EXPLICIT USER GO — NOT AUTHORIZED TO IMPLEMENT.**
 > **Scope only:** disposable **QEMU Q35/OVMF one-vCPU UEFI boot + fixed-map, privileged freestanding kernel + COM1 diagnostics and guarded exception proof-of-concept**. It is **not** a conclusion that UniOS's independent capability microkernel, native IPC, driver platform, Windows/Linux/Darwin app compatibility or end-user product is ready.
