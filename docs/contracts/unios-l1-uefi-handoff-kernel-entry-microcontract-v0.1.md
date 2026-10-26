@@ -1,5 +1,8 @@
 # UniOS — L1 UEFI Handoff & Kernel Entry Microcontract v0.1
 
+**Historical status clarification (2026-10-26):** The narrower fixed-link/CR3 closure subsequently resolved the paper entry-scope questions, a specific L1 readiness assessment followed, and the user explicitly recorded [L1 Go](../reviews/unios-l1-scoped-user-go-2026-10-26.md). This earlier contract's `NOT READY` statements are dated research findings, not current L1 authorization status; no implementation has occurred.
+
+
 > **Status:** Proposed / Design-Only / D1 candidate review — **2026-10-26 NZDT**. **NOT Accepted, implemented, boot-tested, formalized in executable notation, benchmarked, hardware-validated or ABI-frozen.**
 > **Authorization:** User permits **research and design only**. Creating bootloader/kernel source, tests, build scripts, QEMU artifacts and executable formal models requires a separately explicit scoped Go decision.
 > **Scope:** x86_64 **QEMU Q35 + OVMF / one vCPU / serial COM1** and one EFI image containing a separately linked **freestanding kernel ELF payload**, with a protected handoff to the kernel's first Rust instruction. Do **not** confuse this L1 probe with full UniOS Capability IPC, Pager, driver DMA, general supervisor, Verified Boot or Native ABI.
