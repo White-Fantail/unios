@@ -1,0 +1,11 @@
+[package]
+name = "unios_kernel"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "unios_kernel"
+path = "src/main.rs"
+test = false
+bench = false

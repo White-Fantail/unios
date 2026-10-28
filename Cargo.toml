@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/elfcheck", "kernel", "loader"]
+default-members = ["crates/elfcheck"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1

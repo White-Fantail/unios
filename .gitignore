@@ -1,0 +1,6 @@
+/target/
+/out/
+/artifacts/
+*.log
+*.img
+*.fd
