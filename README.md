@@ -1,19 +1,18 @@
 # UniOS
 
-> **L1 experimental implementation status — 2026-10-29:** E0–E2d
-> pre-ExitBootServices experiments have been merged into `main`. The
-> next E2e experimental branch verifies a bounded EFI executable
-> assembly canary and same-linear old/new page-table provenance under
-> QEMU/OVMF, with observed preflight exit **77**. This is **not**
-> ExitBootServices, new CR3 execution, a kernel boot or host success
-> exit **65**. L1 E2–E5 remain partial/unverified; **no L2**.
-> See [E2e evidence](docs/implementation/l1-e2e-bounded-bridge-2026-10-29.md)
-> and [test-stage admission policy](docs/implementation/l1-operator-test-readiness.md).
+> **L1 Experimental Kernel — 2026-10-29:** E2e's bounded EFI
+> executable-code preflight is merged into \`main\`. The E2f experimental
+> branch adds dormant GDT/IDT/TSS descriptors and a double-fault IST1
+> stack, with actual QEMU/OVMF **preflight-only exit 79** and 95 host/
+> unit tests. It does **not** execute ExitBootServices, install CPU
+> descriptor tables, switch CR3 or enter the freestanding kernel.
+> A full boot must eventually produce independently confirmed host
+> exit **65** with ordered COM1 stages. See [E2f evidence](docs/implementation/l1-e2f-emergency-descriptors-2026-10-29.md)
+> and [user test gate](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independent operating-system project implementing its
-restricted L1 Experimental Kernel while its general-purpose OS architecture
-and later compatibility goals remain longer-term research. The current
-repository is experimental code, **not a released or successfully booted OS**.
+**UniOS** is an independent operating system in its approved **L1
+Experimental Kernel** stage. It is not a released or successfully
+booted OS. Work on L2+ remains outside the approved implementation scope.
 
 ## Vision
 
