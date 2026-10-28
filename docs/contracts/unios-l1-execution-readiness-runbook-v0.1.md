@@ -131,6 +131,21 @@ Every logged outcome must identify **(source commit, image digest, VM manifest, 
 
 Before the first ExitBootServices attempt, do **not** assume direct COM1 port-I/O ownership merely because QEMU exposes ISA UART: OVMF may also use the port. For any pre-exit status output, establish a compatible UEFI-protocol/firmware ownership path while Boot Services are still usable, or restrict direct polled COM1 output to the explicitly controlled post-exit phase. After the **first** ExitBS attempt, the deliberately stricter L1 policy forbids firmware console/protocol calls; use only the allowed map/exit retry services. For failures where no safe diagnostic output is available, classify with the independent host timeout/reset observation, **never** a fabricated serial PASS. Record the selected pre-exit console/COM1 ownership policy in A01 and its behavior in A05. This refines diagnostic feasibility without expanding the L1 hardware scope.
 
+## 5A. Final paper audit addendum (2026-10-29) — governing E0 to E5
+
+Read the [L1 final pre-implementation design audit v0.1](../reviews/unios-l1-final-preimplementation-design-audit-v0.1.md) before using this runbook. The original E0–E5 gates remain, with **additional mandatory guardrails**:
+
+- **FA-01 / E0→E1 ELF:** the freestanding Rust target and kernel code model do **not** prove final ET_EXEC. Freeze explicit non-PIE/static relocation and linker strategy, then audit real ELF class, e_type, PT_LOAD, relocation table, high-half entry, W^X and no dynamic loader at E1. Any unsupported output = STOP.
+- **FA-02 / E2→E3 old CR3:** validate old/new mappings at the **actual final successful ExitBootServices boundary**, not solely before the first attempt. Firmware may mutate mappings during exit/retry; require a checked current-CR3 and bridge RIP/RSP/descriptor provenance (without banned firmware calls), or STOP.
+- **FA-03 / E0→E4 host oracle:** select/pin the independent terminal-completion mechanism **before first runtime**. Recommended QEMU-only lab candidate is configured isa-debug-exit for clean success, correlated with COM1 stage logs and QMP RESET/SHUTDOWN/STOP. A serial marker + CPU HLT **alone is never enough**. Failure paths must not emit the success exit token. Exact QEMU exit code semantics must be audited.
+- **FA-04/05 / E2:** define pre-/post-first-ExitBS console ownership and scrutinize Rust destructors/allocators and every firmware-call path. Preserve <=2 exit attempts and existing-buffer-only narrow retry.
+- **FA-06 / E0:** record Secure Boot off in DevUnsigned OVMF, immutable firmware CODE and disposable/ephemeral VARS backing; no attached writable user-data drive.
+- **FA-07 / E3/E4:** IF=0 does not mask NMI/#MC; record a conservative QEMU-only exception/host failure policy, with no unreviewed shared nested IST.
+- **FA-08 / E5:** 60 indexed cases = **59 applicable to DevUnsigned L1 + 1 explicitly DEFERRED (L1-X14)**, all **NOT RUN**. Test harness simulations must not be reported as genuine OVMF hardware/firmware proof.
+
+**Paper Go/No-Go:** narrow experimental L1 remains **CONDITIONAL GO FOR A FIRST-CODE ATTEMPT** only; the current project remains **design/research-only** and no artifacts/tests were made in this addendum. Any unresolved P0 blocks corresponding source/VM gate success and returns to design review.
+
+
 ## 6. Blocking uncertainties and exact escalation
 
 | Existing ID | Risk | Evidence needed before proceeding |
