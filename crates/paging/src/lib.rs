@@ -119,6 +119,12 @@ impl<'a> Builder<'a> {
         false
     }
     pub fn map4k(&mut self, va: u64, pa: u64, rights: Rights) -> Result<(), Error> {
+        // The generic public operation cannot create a low-physical direct
+        // map or mappings outside LAB-H1's exact high-half VA envelope.
+        if va < BASE || va >= LIMIT { return Err(Error::Range); }
+        self.map_raw(va,pa,rights)
+    }
+    fn map_raw(&mut self, va: u64, pa: u64, rights: Rights) -> Result<(), Error> {
         if !canonical(va) || va & (PAGE-1) != 0 { return Err(Error::BadVirtual); }
         if guard(va) { return Err(Error::Guard); }
         if !addr_ok(pa) || pa == 0 { return Err(Error::BadPhysical); }
@@ -162,9 +168,9 @@ impl<'a> Builder<'a> {
     }
     pub fn map_owned_low_bridge_stack(&mut self, pa: u64) -> Result<(), Error> {
         // Same-linear under old/new CR3, only after old-CR3 ownership proof.
-        if pa >= BASE || pa < 0x10_0000 { return Err(Error::Range); }
-        self.map4k(pa,pa,Rights::Rw)?;
-        self.map4k(pa+PAGE,pa+PAGE,Rights::Rw)
+        if pa < 0x10_0000 || pa > 0xffff_e000 { return Err(Error::Range); }
+        self.map_raw(pa,pa,Rights::Rw)?;
+        self.map_raw(pa+PAGE,pa+PAGE,Rights::Rw)
     }
     pub fn lookup(&self, va: u64) -> Result<Option<Leaf>, Error> {
         if !canonical(va) { return Err(Error::BadVirtual); }
@@ -272,16 +278,22 @@ mod tests {
             b.verify(seg.page_start,TEXT_PA+i*PAGE,rights).unwrap();
         }
     }
-    #[test] fn capacity_bound() {
+    #[test] fn rejects_outside_lab_high_half_envelope() {
         let mut b=builder();
-        // 140 separate 2MiB regions force >128 tables.
-        let mut rejected=false;
-        for i in 0..140u64 {
-            let va=0xffff_8000_0000_0000u64+i*(1<<21);
-            if b.map4k(va,TEXT_PA+i*PAGE,Rights::Ro)==Err(Error::Capacity) {
-                rejected=true;break;
-            }
-        }
-        assert!(rejected);
+        assert_eq!(b.map4k(BASE-PAGE,TEXT_PA,Rights::Rw),Err(Error::Range));
+        assert_eq!(b.map4k(LIMIT,TEXT_PA,Rights::Rw),Err(Error::Range));
+        assert_eq!(b.map4k(TEXT_PA,TEXT_PA,Rights::Rw),Err(Error::Range));
+    }
+    #[test] fn capacity_cap_requires_exact_precharge() {
+        let backing=Box::leak(vec![0u64; TABLE_WORDS-1].into_boxed_slice());
+        assert!(matches!(Builder::new(backing,0x0200_0000),Err(Error::Capacity)));
+    }
+    #[test] fn low_identity_mapping_only_via_bridge_stack() {
+        let mut b=builder();
+        b.map_owned_low_bridge_stack(0x1400_0000).unwrap();
+        b.verify(0x1400_0000,0x1400_0000,Rights::Rw).unwrap();
+        b.verify(0x1400_1000,0x1400_1000,Rights::Rw).unwrap();
+        assert_eq!(b.map_owned_low_bridge_stack(0x1400_0000),Err(Error::Alias));
+        assert_eq!(b.map_owned_low_bridge_stack(0x0008_0000),Err(Error::Range));
     }
 }
