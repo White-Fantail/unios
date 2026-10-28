@@ -40,6 +40,10 @@ These are **accepted design directions**, **not validated implementations**. Ker
 
 See the [L1 scoped user-Go decision record](docs/reviews/unios-l1-scoped-user-go-2026-10-26.md) and the dated [L1 readiness assessment](docs/reviews/unios-l1-implementation-go-no-go-assessment-v0.1.md).
 
+## L1 experimental entry — paper-only checklist (2026-10-29)
+
+The 2026-10-26 scoped user Go is recorded, but **implementation has not started**. The [L1 execution readiness runbook](docs/contracts/unios-l1-execution-readiness-runbook-v0.1.md) defines E0–E5 artifact, handoff, CR3, exception, host-oracle and stop gates. The [L1 verification traceability matrix](docs/reviews/unios-l1-verification-traceability-matrix-v0.1.md) indexes 18 + 20 + 22 = **60 planned paper test cases, 0 executed**; the DevSigned-only case is out of profile. Research and documentation remain the current working mode; no kernel source/build/QEMU runs or L2 authorization are implied.
+
 ## Architecture documents
 
 - **[L1 Scoped User Go — 2026-10-26 (Recorded, Not Implemented)](docs/reviews/unios-l1-scoped-user-go-2026-10-26.md)** — explicit user approval of the limited QEMU/OVMF single-CPU experimental boot/diagnostic kernel; execution still postponed under design-only working mode; source/build/test evidence absent and L2/L3 not approved.
