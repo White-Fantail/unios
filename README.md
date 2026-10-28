@@ -11,6 +11,16 @@
 
 **UniOS** is an independent operating system project currently in the **architecture design and feasibility research** stage. Its long-term goal is a general-purpose desktop OS, starting with a limited developer-focused environment.
 
+> **L1 experimental implementation progress — 2026-10-29:** E2b has
+> passed real QEMU/OVMF pre-ExitBS staged-copy and BSS checks and was merged
+> to main. E2c builds and audits a private four-level PML4 in a disposable
+> experiment, with RX/RO/RW+NX leaves, supervisor-only ownership and
+> unmapped stack guards. A QEMU-only preflight host exit **73** is observed;
+> **the new CR3 is not loaded**. No ExitBootServices, high-half kernel entry,
+> protected fault-path validation or full success token 65 exists yet.
+> See [E2c evidence](docs/implementation/l1-e2c-page-tables-2026-10-29.md).
+> E2/E3 remain **PARTIAL/UNVERIFIED**, not a successfully booted OS.
+
 ## Vision
 
 Design and evaluate an operating system with its **own kernel, native ABI, system services, and desktop experience**—not a Linux distribution or a fork of an existing operating system.
