@@ -9,6 +9,12 @@ use core::panic::PanicInfo;
 const COM1: u16 = 0x3f8;
 const POLL_LIMIT: usize = 100_000;
 
+// An actual zero-initialized PT_LOAD test fixture: ensures the first kernel
+// ELF exercises a writable BSS payload rather than only RX/R-only segments.
+#[no_mangle]
+#[link_section = ".bss.l1_probe"]
+static mut L1_BSS_PROBE: [u8; 4096] = [0; 4096];
+
 #[inline(always)]
 unsafe fn out(port: u16, byte: u8) {
     asm!("out dx, al", in("dx") port, in("al") byte, options(nomem, nostack, preserves_flags));
@@ -32,6 +38,12 @@ fn serial(message: &[u8]) {
 #[no_mangle]
 pub extern "C" fn _start(_boot_context: *const u8) -> ! {
     unsafe { asm!("cli", "cld", options(nomem, nostack)); }
+    // A future full-entry test must reject failed BSS initialization.
+    // Volatile reads keep both ends of the 4KiB BSS live in the linked ELF.
+    let bss = core::ptr::addr_of!(L1_BSS_PROBE).cast::<u8>();
+    let first = unsafe { core::ptr::read_volatile(bss) };
+    let last = unsafe { core::ptr::read_volatile(bss.add(4095)) };
+    if first != 0 || last != 0 { halt(); }
     serial(b"UNIOS:L1:KERNEL_ENTRY_UNVERIFIED\r\n");
     // Deliberately NOT HALTED_PASS. E2–E4 must validate the complete transition.
     halt()

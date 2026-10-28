@@ -31,6 +31,8 @@ fi
 unset RUSTFLAGS
 cargo run --locked --quiet -p unios_elf --bin audit -- "$KERNEL" | tee out/kernel-elf-audit.txt
 cargo run --locked --quiet -p unios_staging --bin audit -- "$KERNEL" | tee out/kernel-staging-audit.txt
+# An actual linked kernel segment must have nonzero BSS in this E2b test.
+awk -F'bss=' '/E2B_HOST_STAGE_OK/ { if ($2+0 > 0) found=1 } END { exit !found }' out/kernel-staging-audit.txt
 
 export UNIOS_KERNEL_ELF="$KERNEL"
 cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2b-staging --target x86_64-unknown-uefi
