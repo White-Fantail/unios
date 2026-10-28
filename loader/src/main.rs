@@ -10,6 +10,8 @@ use core::arch::asm;
 use core::panic::PanicInfo;
 #[cfg(feature = "lab-e2-preflight")]
 mod memory;
+#[cfg(feature = "lab-e2b-staging")]
+mod oldmap;
 
 const EFI_SYSTEM_TABLE_SIGNATURE: u64 = 0x5453_5953_2049_4249;
 const EFI_LOAD_ERROR: usize = (1usize << (usize::BITS - 1)) | 1;
@@ -82,20 +84,27 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
             #[cfg(feature = "lab-e2-preflight")]
             {
                 let service_ptr = unsafe { (*system_table).boot_services.cast::<memory::BootServices>() };
-                match memory::preflight(service_ptr, &checked) {
+                match memory::preflight(service_ptr, &checked, EMBEDDED_ELF) {
                     Ok(_count) => {
-                        // Any console call may change MapKey. This is an
-                        // observability-only E2a preflight: NEVER ExitBS.
+                        // E2b still remains a pre-ExitBS diagnostic. A newer
+                        // map snapshot is mandatory before any future ExitBS.
+                        #[cfg(feature = "lab-e2b-staging")]
+                        unsafe { console(system_table, b"UNIOS:L1:E2B_STAGED_AND_VERIFIED_ONLY\r\n"); }
+                        #[cfg(not(feature = "lab-e2b-staging"))]
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            asm!("out dx, al", in("dx") 0xf4u16, in("al") 0x22u8,
+                            #[cfg(feature = "lab-e2b-staging")]
+                            const CODE: u8 = 0x23;
+                            #[cfg(not(feature = "lab-e2b-staging"))]
+                            const CODE: u8 = 0x22;
+                            asm!("out dx, al", in("dx") 0xf4u16, in("al") CODE,
                                  options(nomem, nostack, preserves_flags));
                         }
                         return EFI_UNSUPPORTED;
                     }
                     Err(_) => {
-                        unsafe { console(system_table, b"UNIOS:L1:E2A_REJECTED\r\n"); }
+                        unsafe { console(system_table, b"UNIOS:L1:E2_PRE_EXIT_REJECTED\r\n"); }
                         return EFI_LOAD_ERROR;
                     }
                 }

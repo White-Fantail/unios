@@ -11,6 +11,14 @@ name = "unios_elf"
 version = "0.1.0"
 
 [[package]]
+name = "unios_staging"
+version = "0.1.0"
+dependencies = [
+ "unios_elf",
+ "unios_staging",
+]
+
+[[package]]
 name = "unios_kernel"
 version = "0.1.0"
 

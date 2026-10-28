@@ -1,5 +1,5 @@
-// LAB-H1 E2a: reserve physical frames and validate a real UEFI memory map.
-// NO writes to unverified physical addresses, no ExitBootServices, no CR3.
+// LAB-H1 E2a/E2b: UEFI frame ownership and gated ELF staging in a pinned QEMU profile.
+// NO ExitBootServices, kernel-CR3 write or freestanding kernel entry.
 // This is EFI preflight only, intentionally returning to firmware afterwards.
 use core::{ptr, slice};
 use unios_bootmap::{Reservation, EMPTY, MAP_CAP, PAGE};
@@ -44,6 +44,10 @@ pub enum Error {
     TooMany,
     MemoryMap,
     MapInvalid,
+    #[cfg(feature = "lab-e2b-staging")]
+    OldCr3,
+    #[cfg(feature = "lab-e2b-staging")]
+    Staging,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -65,7 +69,7 @@ fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> 
     Ok(Reservation { base: address, pages, id })
 }
 
-pub fn preflight(services: *mut BootServices, image: &Image) -> Result<usize, Error> {
+pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> Result<usize, Error> {
     if services.is_null() { return Err(Error::BadServices); }
     let bs = unsafe { &*services };
     if bs.header.signature != EFI_BOOT_SERVICES_SIGNATURE ||
@@ -122,7 +126,28 @@ pub fn preflight(services: *mut BootServices, image: &Image) -> Result<usize, Er
     if report.reservations != count || report.reserved_pages == 0 {
         return Err(Error::MapInvalid);
     }
-    // In future E2b, a *new* final map key is required immediately before
+    #[cfg(feature = "lab-e2b-staging")]
+    {
+        // This tests same-linear physical pages *under the current old CR3*.
+        // It does not establish their post-ExitBootServices provenance.
+        // Fail closed on any unsupported or mismatched translation.
+        crate::oldmap::check_owned_identity(&ledger[..count])
+            .map_err(|_| Error::OldCr3)?;
+        for (segment, reserved) in image.segments.iter().take(image.count)
+            .zip(ledger.iter().take(image.count))
+        {
+            let size = usize::try_from(reserved.pages * PAGE).map_err(|_| Error::Staging)?;
+            // SAFETY: frames were allocated by EFI and shown to be RW and
+            // identity-mapped by the current firmware CR3 page walk.
+            let dest = unsafe { slice::from_raw_parts_mut(reserved.base as *mut u8, size) };
+            unios_staging::stage(segment, payload, dest).map_err(|_| Error::Staging)?;
+            unios_staging::verify(segment, payload, dest).map_err(|_| Error::Staging)?;
+        }
+    }
+    #[cfg(not(feature = "lab-e2b-staging"))]
+    let _ = payload;
+
+    // In future E2c, a *new* final map key is required immediately before
     // ExitBootServices. This preflight key is not reusable after console calls.
     Ok(report.descriptors)
 }
