@@ -36,7 +36,7 @@ class OracleTest(unittest.TestCase):
         self.assertFalse(clean_pass(self.good(serial="\n".join(STAGES + (STAGES[-1],)))))
 
     def test_missing_stage(self):
-        self.assertFalse(clean_pass(self.good(serial="\n".join(STAGES[1:])))
+        self.assertFalse(clean_pass(self.good(serial="\n".join(STAGES[1:]))))
 
 if __name__ == "__main__":
     unittest.main()
