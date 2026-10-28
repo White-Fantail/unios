@@ -104,7 +104,7 @@ pub fn preflight(services: *mut BootServices, image: &Image) -> Result<usize, Er
     let mut map_key = 0usize;
     let mut descriptor_size = 0usize;
     let mut descriptor_version = 0u32;
-    let buffer = ptr::addr_of_mut!(MAP_BUFFER.0).cast::<u8>();
+    let buffer = unsafe { ptr::addr_of_mut!(MAP_BUFFER.0).cast::<u8>() };
     let status = unsafe {
         (bs.get_memory_map)(
             &mut map_size, buffer, &mut map_key,

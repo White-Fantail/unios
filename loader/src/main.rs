@@ -107,7 +107,8 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
             #[cfg(all(feature = "lab-debug-exit", not(feature = "lab-e2-preflight")))]
             unsafe { asm!("out dx, al", in("dx") 0xf4u16, in("al") 0x21u8,
                           options(nomem, nostack, preserves_flags)); }
-            EFI_UNSUPPORTED // NOT a clean kernel boot, and NOT a handoff
+            #[cfg(not(feature = "lab-e2-preflight"))]
+            { EFI_UNSUPPORTED } // NOT a clean kernel boot, and NOT a handoff
         }
     }
 }
