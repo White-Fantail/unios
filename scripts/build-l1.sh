@@ -36,6 +36,8 @@ awk -F'bss=' '/E2B_HOST_STAGE_OK/ { if ($2+0 > 0) found=1 } END { exit !found }'
 
 cargo run --locked --quiet -p unios_paging --bin audit -- "$KERNEL" out/e2c-page-tables.bin | tee out/host-pte-builder.txt
 python3 scripts/audit_e2c_pte.py "$KERNEL" out/e2c-page-tables.bin | tee out/host-pte-independent-audit.txt
+cargo run --locked --quiet -p unios_descriptors --bin audit -- out/e2f-descriptors.bin | tee out/host-descriptor-builder.txt
+python3 scripts/audit_e2f_descriptors.py out/e2f-descriptors.bin | tee out/host-descriptor-independent-audit.txt
 export UNIOS_KERNEL_ELF="$KERNEL"
 cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2f-descriptors --target x86_64-unknown-uefi
 EFI="$ROOT/target/x86_64-unknown-uefi/release/unios_loader.efi"
