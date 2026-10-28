@@ -47,6 +47,12 @@ No native user Task, capability/Handle, IPC SEND/RECEIVE, Pager, PMM, heap, sche
 - A negative test yields false PASS, persistent hang without host failure recognition, or any unwanted media write.
 - Scope drifts into L2, drivers, physical hardware or compatibility functionality.
 
+## 4A. Follow-up paper gate artifacts (2026-10-29)
+
+- [L1 Experimental Kernel Execution Readiness Runbook v0.1](../contracts/unios-l1-execution-readiness-runbook-v0.1.md) adds ordered E0–E5 implementation-time acceptance and explicit stop points, **without writing implementation code**.
+- [L1 Verification Traceability Matrix v0.1](unios-l1-verification-traceability-matrix-v0.1.md) maps the earlier 18 L1-X + 20 H-X + 22 LC-X cases to expected host/guest outcomes. **0/60 executed**; DevSigned-only L1-X14 is explicitly out-of-profile and untested.
+- The project still operates in design/research mode. These documents **do not** change this record's approval scope or imply an executed prototype, security assurance or expanded L2 Go.
+
 ## 5. Status register
 
 | Decision / artifact | Status on 2026-10-26 |
