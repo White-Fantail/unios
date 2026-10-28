@@ -1,8 +1,8 @@
-name: L1 experimental E2d EFI exec anchor and CPU gate
+name: L1 experimental E2e bounded EFI code-span preflight
 on:
   push:
     branches:
-      - "experiment/l1-e2d-bridge-provenance"
+      - "experiment/l1-e2e-bounded-bridge"
   workflow_dispatch:
 
 permissions:
@@ -24,13 +24,13 @@ jobs:
         run: bash scripts/build-l1.sh
       - name: Install restricted QEMU preflight dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf gdisk dosfstools mtools
-      - name: E2d QEMU/OVMF executable anchor & CPU gate audit (NOT kernel boot)
+      - name: E2e QEMU/OVMF bounded code-span audit (NOT kernel boot)
         run: bash scripts/qemu-preflight.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: unios-l1-e2d
+          name: unios-l1-e2e
           path: |
             out/
             target/x86_64-unknown-none/release/unios_kernel

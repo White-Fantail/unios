@@ -7,6 +7,10 @@ name = "unios_bootmap"
 version = "0.1.0"
 
 [[package]]
+name = "unios_bridgecheck"
+version = "0.1.0"
+
+[[package]]
 name = "unios_cpugate"
 version = "0.1.0"
 
@@ -30,6 +34,7 @@ name = "unios_loader"
 version = "0.1.0"
 dependencies = [
  "unios_bootmap",
+ "unios_bridgecheck",
  "unios_cpugate",
  "unios_elf",
  "unios_paging",

@@ -10,6 +10,7 @@ unios_bootmap = { path = "../crates/bootmap" }
 unios_staging = { path = "../crates/staging" }
 unios_paging = { path = "../crates/paging" }
 unios_cpugate = { path = "../crates/cpugate" }
+unios_bridgecheck = { path = "../crates/bridgecheck" }
 
 [[bin]]
 name = "unios_loader"
@@ -23,3 +24,4 @@ lab-e2-preflight = []
 lab-e2b-staging = ["lab-e2-preflight"]
 lab-e2c-tables = ["lab-e2b-staging"]
 lab-e2d-bridge-audit = ["lab-e2c-tables"]
+lab-e2e-bounded-bridge = ["lab-e2d-bridge-audit"]

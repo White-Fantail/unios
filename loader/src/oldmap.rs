@@ -9,7 +9,7 @@ use core::{arch::asm, ptr};
 use unios_bootmap::{Reservation, PAGE};
 
 #[derive(Clone, Copy, Debug)]
-pub enum Error { Mode, Root, NotMapped, NonIdentity, NotWritable, NotExecutable, NotLoaderCode, Address }
+pub enum Error { Mode, Root, NotMapped, NonIdentity, NotWritable, NotExecutable, NotLoaderCode, User, Address }
 
 const ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
 const PRESENT: u64 = 1;
@@ -28,10 +28,11 @@ fn read_cr3_cr4() -> (u64, u64) {
 // SAFETY: the first firmware page-table physical root is experimentally read
 // at the same linear address. Only the pinned disposable QEMU guest runs this
 // probe. A fault means no usable proof and must never produce the lab exit.
-unsafe fn translate(root: u64, va: u64) -> Result<(u64,bool,bool), Error> {
+unsafe fn translate(root: u64, va: u64) -> Result<(u64,bool,bool,bool), Error> {
     let mut table_pa = root;
     let mut can_write = true;
     let mut can_execute = true;
+    let mut can_user = true;
     for (depth, shift) in [39u32, 30, 21, 12].iter().enumerate() {
         let index = (va >> *shift) & 0x1ff;
         let entry_addr = table_pa.checked_add(index * 8).ok_or(Error::Address)?;
@@ -40,15 +41,16 @@ unsafe fn translate(root: u64, va: u64) -> Result<(u64,bool,bool), Error> {
         if entry & PRESENT == 0 { return Err(Error::NotMapped); }
         can_write &= entry & WRITABLE != 0;
         can_execute &= entry & (1u64 << 63) == 0;
+        can_user &= entry & 4 != 0;
         if depth == 1 && entry & LARGE != 0 {
             let mask = (1u64 << 30) - 1;
-            return Ok(((entry & ADDR_MASK & !mask) | (va & mask),can_write,can_execute));
+            return Ok(((entry & ADDR_MASK & !mask) | (va & mask),can_write,can_execute,can_user));
         }
         if depth == 2 && entry & LARGE != 0 {
             let mask = (1u64 << 21) - 1;
-            return Ok(((entry & ADDR_MASK & !mask) | (va & mask),can_write,can_execute));
+            return Ok(((entry & ADDR_MASK & !mask) | (va & mask),can_write,can_execute,can_user));
         }
-        if depth == 3 { return Ok(((entry & ADDR_MASK) | (va & 0xfff), can_write, can_execute)); }
+        if depth == 3 { return Ok(((entry & ADDR_MASK) | (va & 0xfff), can_write, can_execute, can_user)); }
         table_pa = entry & ADDR_MASK;
         if table_pa == 0 { return Err(Error::Root); }
     }
@@ -61,14 +63,14 @@ pub fn check_owned_identity(reservations: &[Reservation]) -> Result<u64, Error> 
     let root = cr3 & ADDR_MASK;
     if root == 0 || root % PAGE != 0 { return Err(Error::Root); }
     // Audit root self-access before using firmware PA values as Rust VA.
-    let (mapped_root, _, _) = unsafe { translate(root, root)? };
+    let (mapped_root, _, _, _) = unsafe { translate(root, root)? };
     if mapped_root != root { return Err(Error::NonIdentity); }
     for res in reservations {
         let length = res.pages.checked_mul(PAGE).ok_or(Error::Address)?;
         let end = res.base.checked_add(length).ok_or(Error::Address)?;
         let mut va = res.base;
         while va < end {
-            let (mapped, rw, _) = unsafe { translate(root, va)? };
+            let (mapped, rw, _, _) = unsafe { translate(root, va)? };
             if mapped != va { return Err(Error::NonIdentity); }
             if !rw { return Err(Error::NotWritable); }
             va = va.checked_add(PAGE).ok_or(Error::Address)?;
@@ -89,9 +91,11 @@ pub fn audit_efi_code_page(
     let va=anchor & !(PAGE-1);
     let cr3=read_cr3_cr4().0;
     let root=cr3 & ADDR_MASK;
-    let (first,_,exec) = unsafe { translate(root,anchor)? };
+    let (first,_,exec,user) = unsafe { translate(root,anchor)? };
     if !exec {return Err(Error::NotExecutable);}
-    let (last,_,end_exec) = unsafe { translate(root,va+PAGE-1)? };
+    if user {return Err(Error::User);}
+    let (last,_,end_exec,end_user) = unsafe { translate(root,va+PAGE-1)? };
+    if end_user {return Err(Error::User);}
     if !end_exec || (first & !(PAGE-1)) != (last & !(PAGE-1)) {
         return Err(Error::NotExecutable);
     }

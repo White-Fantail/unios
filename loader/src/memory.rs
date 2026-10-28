@@ -52,6 +52,8 @@ pub enum Error {
     Paging,
     #[cfg(feature = "lab-e2d-bridge-audit")]
     Bridge,
+    #[cfg(feature = "lab-e2e-bounded-bridge")]
+    BoundedBridge,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -211,6 +213,44 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                     .map_err(|_|Error::Bridge)?;
                 tables.verify(code_va,code_pa,Rights::Rx)
                     .map_err(|_|Error::Bridge)?;
+            }
+            #[cfg(feature = "lab-e2e-bounded-bridge")]
+            {
+                use unios_bridgecheck::{Page, Span};
+                // The assembly stub is finite and can be inspected by its
+                // exact linker-defined range. It is still NOT executed.
+                let (begin,end)=crate::bridge_span::bounds();
+                let span=Span::new(begin,end).map_err(|_|Error::BoundedBridge)?;
+                let cpu=crate::cpuprobe::inspect().map_err(|_|Error::BoundedBridge)?;
+                let mut proofs=[Page {
+                    linear:0, old_physical:0,new_physical:0,
+                    old_executable:false,new_executable:false,
+                    old_supervisor:false,new_supervisor:false,efi_loader_code:false,
+                };unios_bridgecheck::MAX_CODE_PAGES];
+                for n in 0..span.pages {
+                    let address=span.page(n).ok_or(Error::BoundedBridge)?;
+                    let (va,pa)=crate::oldmap::audit_efi_code_page(
+                        address,map,map_size,descriptor_size,
+                    ).map_err(|_|Error::BoundedBridge)?;
+                    // The anchor may occupy the same EFI loader code page.
+                    // If so, demand identical PA and rights, not a remap.
+                    match tables.lookup(va).map_err(|_|Error::BoundedBridge)? {
+                        Some(existing) if existing.pa == pa &&
+                            existing.rights == Rights::Rx => {}
+                        Some(_) => return Err(Error::BoundedBridge),
+                        None => tables.map_efi_executable_anchor(va,pa)
+                            .map_err(|_|Error::BoundedBridge)?,
+                    }
+                    tables.verify(va,pa,Rights::Rx).map_err(|_|Error::BoundedBridge)?;
+                    proofs[n]=Page {
+                        linear:va,old_physical:pa,new_physical:pa,
+                        old_executable:true,new_executable:true,
+                        old_supervisor:true,new_supervisor:true,efi_loader_code:true,
+                    };
+                }
+                unios_bridgecheck::verify(
+                    span,&proofs[..span.pages],cpu.wp_enabled,cpu.nxe_enabled,
+                ).map_err(|_|Error::BoundedBridge)?;
             }
             if tables.used_tables() < 4 {return Err(Error::Paging);}
             // NO write to CR3. Missing shared-linear EFI code, exception
