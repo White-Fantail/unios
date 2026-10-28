@@ -1,8 +1,8 @@
 # UniOS LAB-H1 E2f — dormant GDT/IDT/TSS and double-fault IST
 
 **Date:** 2026-10-29 NZDT.
-**Branch:** \`experiment/l1-e2f-emergency-descriptors\`.
-**Last tested code:** \`16f18a926924261df19ec9c94043334489da21ea\`.
+**Branch:** `experiment/l1-e2f-emergency-descriptors`.
+**Last tested code:** `16f18a926924261df19ec9c94043334489da21ea`.
 **Actual Actions / QEMU:** https://github.com/White-Fantail/unios/actions/runs/40777489144
 
 ## Implemented, but not installed in the CPU
@@ -24,12 +24,12 @@
   stack. The emergency handler symbols are ELF/UEFI-resident code
   that is audited under the *current firmware* CR3 and mapped RX
   in the new, not-yet-loaded CR3. All vectors terminate rather than
-  \`iretq\` if the stubs are ever invoked in a disposable VM.
+  `iretq` if the stubs are ever invoked in a disposable VM.
 - The two EFI handlers write **non-PASS** debug-exit bytes 0x31
   and 0x32, respectively; no attempt to invoke them exists in E2f.
   The handler byte ranges, full exception entry ABI and live descriptor
   activation are **not yet independently verified**.
-- No \`lgdt\`, \`lidt\`, \`ltr\`, \`mov cr3\`, ExitBootServices, kernel entry
+- No `lgdt`, `lidt`, `ltr`, `mov cr3`, ExitBootServices, kernel entry
   or hardware/VM negative-fault injection was performed.
 - The distinct E2f success *preflight-only* byte 0x27 corresponds to
   observed QEMU host exit **79**. Full success exit **65** is never emitted.

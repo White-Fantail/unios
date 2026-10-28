@@ -1,7 +1,7 @@
 # UniOS
 
 > **L1 Experimental Kernel — 2026-10-29:** E2e's bounded EFI
-> executable-code preflight is merged into \`main\`. The E2f experimental
+> executable-code preflight is merged into `main`. The E2f experimental
 > branch adds dormant GDT/IDT/TSS descriptors and a double-fault IST1
 > stack, with actual QEMU/OVMF **preflight-only exit 79** and 95 host/
 > unit tests. It does **not** execute ExitBootServices, install CPU
