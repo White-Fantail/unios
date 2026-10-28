@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# E2e QEMU: link-bounded EFI code under old/new map; NEVER CR3 switch.
-# Distinct debug-exit byte 0x26 returns 77; 65 is reserved for E4 clean PASS.
+# E2f QEMU: build dormant GDT/TSS/32-vector IDT and DF IST; NO IDT installation.
+# Distinct debug-exit byte 0x27 returns 79; 65 is reserved for E4 clean PASS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -26,11 +26,11 @@ qemu-system-x86_64 --version | tee out/qemu-version.txt
 sha256sum "$CODE" "$VARS_TEMPLATE" "$(command -v qemu-system-x86_64)" |
   tee out/preflight-host-digests.txt
 cat > out/qemu-profile.txt <<'PROFILE'
-LAB-H1 E2e-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
+LAB-H1 E2f-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
 1 vCPU, 256 MiB, OVMF DevUnsigned, immutable CODE,
 disposable pflash VARS, disposable GPT ESP with ephemeral snapshot overlay,
 no network and no real user media, COM1 to finite log.
-E2e host exit=77, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
+E2f host exit=79, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
 PROFILE
 set +e
 timeout --signal=TERM --kill-after=5s 35s qemu-system-x86_64 \
@@ -47,8 +47,8 @@ timeout --signal=TERM --kill-after=5s 35s qemu-system-x86_64 \
 rc=$?
 set -e
 echo "$rc" | tee out/preflight-host-exit.txt
-if [[ "$rc" -ne 77 ]]; then
-  echo "ERROR: E2e bounded executable span preflight was not independently observed (code $rc)" >&2
+if [[ "$rc" -ne 79 ]]; then
+  echo "ERROR: E2f dormant emergency descriptor preflight was not independently observed (code $rc)" >&2
   cat out/preflight-qemu-stderr.log >&2
   exit 1
 fi
@@ -56,5 +56,5 @@ if grep -Eq 'HALTED_PASS' out/preflight-serial.log; then
   echo "ERROR: E1 smoke printed forbidden full-kernel success" >&2
   exit 1
 fi
-echo "E2E_QEMU_BOUNDED_BRIDGE_PREFLIGHT_ONLY (NO EXITBS / NO CR3 / NO CLEAN_PASS)" |
+echo "E2F_QEMU_DORMANT_DESCRIPTORS_PREFLIGHT_ONLY (NO EXITBS / NO CR3 / NO CLEAN_PASS)" |
   tee out/preflight-outcome.txt

@@ -54,6 +54,8 @@ pub enum Error {
     Bridge,
     #[cfg(feature = "lab-e2e-bounded-bridge")]
     BoundedBridge,
+    #[cfg(feature = "lab-e2f-descriptors")]
+    Descriptors,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -253,6 +255,56 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 ).map_err(|_|Error::BoundedBridge)?;
                 crate::bridge_span::validate_linked_bytes()
                     .map_err(|_|Error::BoundedBridge)?;
+            }
+            #[cfg(feature = "lab-e2f-descriptors")]
+            {
+                // Dormant descriptor image in the already-allocated
+                // one-page EFI metadata reservation. No LGDT/LIDT/LTR:
+                // current UEFI firmware descriptors stay live.
+                let (generic,df)=crate::emergency_handlers::addresses();
+                if generic==df {return Err(Error::Descriptors);}
+                for handler in [generic,df] {
+                    let (va,pa)=crate::oldmap::audit_efi_code_page(
+                        handler,map,map_size,descriptor_size,
+                    ).map_err(|_|Error::Descriptors)?;
+                    match tables.lookup(va).map_err(|_|Error::Descriptors)? {
+                        Some(existing) if existing.pa==pa &&
+                            existing.rights==Rights::Rx => {}
+                        Some(_) => return Err(Error::Descriptors),
+                        None => tables.map_efi_executable_anchor(va,pa)
+                            .map_err(|_|Error::Descriptors)?,
+                    }
+                    tables.verify(va,pa,Rights::Rx).map_err(|_|Error::Descriptors)?;
+                }
+                let desc_pa=aux[4].base;
+                tables.verify(DESCRIPTORS_VA,desc_pa,Rights::Rw)
+                    .map_err(|_|Error::Descriptors)?;
+                tables.audit_guard_pages().map_err(|_|Error::Descriptors)?;
+                let desc=unsafe {
+                    slice::from_raw_parts_mut(desc_pa as *mut u8,unios_descriptors::PAGE)
+                };
+                let main_top=MAIN_STACK_VA+4*PAGE;
+                let df_top=IST_STACK_VA+4*PAGE;
+                let image=unios_descriptors::build(
+                    desc,DESCRIPTORS_VA,main_top,df_top,generic,df,
+                ).map_err(|_|Error::Descriptors)?;
+                unios_descriptors::verify(desc,image,main_top,df_top,generic,df)
+                    .map_err(|_|Error::Descriptors)?;
+                // Validate that both top-of-stack addresses are the
+                // ends of their last 4KiB mapped page.
+                tables.verify(main_top-1,aux[2].base+4*PAGE-1,Rights::Rw)
+                    .map_err(|_|Error::Descriptors)?;
+                tables.verify(df_top-1,aux[3].base+4*PAGE-1,Rights::Rw)
+                    .map_err(|_|Error::Descriptors)?;
+                if tables.lookup(unios_paging::MAIN_GUARD_VA)
+                    .map_err(|_|Error::Descriptors)?.is_some() ||
+                   tables.lookup(unios_paging::IST_GUARD_VA)
+                    .map_err(|_|Error::Descriptors)?.is_some() {
+                    return Err(Error::Descriptors);
+                }
+                // Next stages must independently prove the complete
+                // exception handler bytes and machine frame ABI before
+                // these descriptor images can ever be installed.
             }
             if tables.used_tables() < 4 {return Err(Error::Paging);}
             // NO write to CR3. Missing shared-linear EFI code, exception

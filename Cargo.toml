@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/elfcheck", "crates/bootmap", "crates/staging", "crates/paging", "crates/cpugate", "crates/bridgecheck", "kernel", "loader"]
+members = ["crates/elfcheck", "crates/bootmap", "crates/staging", "crates/paging", "crates/cpugate", "crates/bridgecheck", "crates/descriptors", "kernel", "loader"]
 default-members = ["crates/elfcheck"]
 
 [profile.dev]

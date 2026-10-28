@@ -15,6 +15,10 @@ name = "unios_cpugate"
 version = "0.1.0"
 
 [[package]]
+name = "unios_descriptors"
+version = "0.1.0"
+
+[[package]]
 name = "unios_elf"
 version = "0.1.0"
 
@@ -36,6 +40,7 @@ dependencies = [
  "unios_bootmap",
  "unios_bridgecheck",
  "unios_cpugate",
+ "unios_descriptors",
  "unios_elf",
  "unios_paging",
  "unios_staging",
