@@ -121,6 +121,7 @@ impl<'a> Builder<'a> {
     pub fn map4k(&mut self, va: u64, pa: u64, rights: Rights) -> Result<(), Error> {
         // The generic public operation cannot create a low-physical direct
         // map or mappings outside LAB-H1's exact high-half VA envelope.
+        if !canonical(va) || va & (PAGE-1) != 0 { return Err(Error::BadVirtual); }
         if va < BASE || va >= LIMIT { return Err(Error::Range); }
         self.map_raw(va,pa,rights)
     }
