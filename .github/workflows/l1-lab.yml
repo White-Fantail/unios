@@ -30,7 +30,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: unios-l1-e0-e1
+          name: unios-l1-e2a
           path: |
             out/
             target/x86_64-unknown-none/release/unios_kernel
