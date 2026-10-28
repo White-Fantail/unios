@@ -251,6 +251,8 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 unios_bridgecheck::verify(
                     span,&proofs[..span.pages],cpu.wp_enabled,cpu.nxe_enabled,
                 ).map_err(|_|Error::BoundedBridge)?;
+                crate::bridge_span::validate_linked_bytes()
+                    .map_err(|_|Error::BoundedBridge)?;
             }
             if tables.used_tables() < 4 {return Err(Error::Paging);}
             // NO write to CR3. Missing shared-linear EFI code, exception

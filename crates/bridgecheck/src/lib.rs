@@ -12,7 +12,7 @@ const EFI_LOW_END: u64 = 1 << 32;
 pub enum Error {
     Empty, Oversize, PageCount, NonCanonical, Address, Count,
     PageOrder, ChangedPhysical, Executable, User, Aliased, Ownership,
-    CpuProtection,
+    CpuProtection, StubBytes,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
@@ -31,6 +31,12 @@ pub struct Page {
     pub old_supervisor: bool,
     pub new_supervisor: bool,
     pub efi_loader_code: bool,
+}
+
+pub fn validate_preflight_stub(bytes: &[u8]) -> Result<(),Error> {
+    // Exactly cli; cld; nop; ret. Never executed during E2e.
+    if bytes != [0xfa,0xfc,0x90,0xc3] {return Err(Error::StubBytes);}
+    Ok(())
 }
 
 impl Span {
@@ -99,6 +105,11 @@ mod tests {
                  new_supervisor:true,efi_loader_code:true}
         ];
         (span,data)
+    }
+    #[test] fn checked_instruction_bytes() {
+        assert_eq!(validate_preflight_stub(&[0xfa,0xfc,0x90,0xc3]),Ok(()));
+        assert_eq!(validate_preflight_stub(&[0xfa,0xfc,0x90,0x90]),Err(Error::StubBytes));
+        assert_eq!(validate_preflight_stub(&[0xfa,0xfc,0x90]),Err(Error::StubBytes));
     }
     #[test] fn valid_two_page_span(){let (s,p)=sample();assert_eq!(verify(s,&p,true,true),Ok(()));}
     #[test] fn empty_span_rejected(){assert_eq!(Span::new(0x110000,0x110000),Err(Error::Empty));}
