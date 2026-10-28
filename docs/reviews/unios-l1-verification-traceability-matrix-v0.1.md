@@ -2,17 +2,17 @@
 
 > **Prepared:** 2026-10-29 NZDT. **Status: PAPER MATRIX — 0/60 CASES EXECUTED.**
 > **Scope decision:** [L1 scoped user-Go](unios-l1-scoped-user-go-2026-10-26.md). **Execution runbook:** [L1 execution readiness v0.1](../contracts/unios-l1-execution-readiness-runbook-v0.1.md).
-> **Coverage:** 18 \`L1-X\` first-slice cases + 20 \`H-X\` handoff cases + 22 \`LC-X\` fixed-link/CR3 cases = **60 uniquely indexed paper cases**. Overlap is intentional; count case IDs, not independent vulnerabilities. **One conditional DevSigned-only test (L1-X14) is deferred/out-of-profile for DevUnsigned L1 and is NOT a completed test.**
+> **Coverage:** 18 `L1-X` first-slice cases + 20 `H-X` handoff cases + 22 `LC-X` fixed-link/CR3 cases = **60 uniquely indexed paper cases**. Overlap is intentional; count case IDs, not independent vulnerabilities. **One conditional DevSigned-only test (L1-X14) is deferred/out-of-profile for DevUnsigned L1 and is NOT a completed test.**
 > **No compiled kernel, VM run, actual result, measured time, crash dump, formal proof or security guarantee exists in this matrix.**
 
 ## 1. Evidence semantics and test-level rules
 
-- **Canonical source order:** [minimal MVP](../contracts/unios-minimal-boot-exception-memory-mvp-contract-v0.1.md) for \`L1-X\`, [handoff microcontract](../contracts/unios-l1-uefi-handoff-kernel-entry-microcontract-v0.1.md) for \`H-X\`, [fixed-link closure](../contracts/unios-l1-fixed-link-elf-cr3-bridge-entry-state-closure-v0.1.md) for \`LC-X\`. Preserve their IDs to avoid silently erasing untested promises.
-- **Every row status = \`NOT_RUN\` as of 2026-10-29.** Future evidence must be case-ID-addressable and carry A00–A06 artifacts, expected result and actual host/guest trace. The paper acceptance predicate in a row is **not** evidence it was met.
+- **Canonical source order:** [minimal MVP](../contracts/unios-minimal-boot-exception-memory-mvp-contract-v0.1.md) for `L1-X`, [handoff microcontract](../contracts/unios-l1-uefi-handoff-kernel-entry-microcontract-v0.1.md) for `H-X`, [fixed-link closure](../contracts/unios-l1-fixed-link-elf-cr3-bridge-entry-state-closure-v0.1.md) for `LC-X`. Preserve their IDs to avoid silently erasing untested promises.
+- **Every row status = `NOT_RUN` as of 2026-10-29.** Future evidence must be case-ID-addressable and carry A00–A06 artifacts, expected result and actual host/guest trace. The paper acceptance predicate in a row is **not** evidence it was met.
 - **Method** is a proposed way to verify, not a generated tool or script. **ELF parser** means controlled negative fixtures in a disposable environment; **VM injection** means intentional emulator perturbation; **HOST injection** means exercising the host result classifier. Do not manipulate real disks or claim fabricated firmware-map corruption equals a genuine OVMF integration result.
 - Where safe source/artifact review is stronger than executing an illegal post-ExitBS firmware call, prefer a **static prohibited-call audit plus controlled simulation**. Real invalid firmware operations are never required to claim a safe negative-case observation.
-- For a future positive test only, \`CLEAN_PASS\` requires declared stage ordering, exactly one \`HALTED_PASS\` and independent host evidence of the expected final non-return/no reset. A negative test succeeds only when its **expected rejection or fault** is confirmed, but its kernel is *not* a clean-boot PASS.
-- Host reset/triple-fault/timeout, missing serial or a post-PASS crash are always **non-clean** results. Absence of evidence is \`UNRUN\` or \`INVALID_RUN\`, never implicit PASS.
+- For a future positive test only, `CLEAN_PASS` requires declared stage ordering, exactly one `HALTED_PASS` and independent host evidence of the expected final non-return/no reset. A negative test succeeds only when its **expected rejection or fault** is confirmed, but its kernel is *not* a clean-boot PASS.
+- Host reset/triple-fault/timeout, missing serial or a post-PASS crash are always **non-clean** results. Absence of evidence is `UNRUN` or `INVALID_RUN`, never implicit PASS.
 - Test coverage is not proof of universal security. L2 capability, pageable receive, hardware DMA, real PC and app compatibility are outside this matrix.
 
 ## 2. E0–E5 reference gates, artifacts and test ownership
@@ -120,16 +120,16 @@
 
 | Field | Meaning / constraint |
 |---|---|
-| \`case_id\` | one exact \`L1-Xnn\`, \`H-Xnn\`, or \`LC-Xnn\`; never inferred from test label |
-| \`gate\` and \`method\` | one of E0–E5; precise injected artifact/fixture and preconditions |
-| \`scope\` | expected VM profile, image+firmware version and test-mode flag |
-| \`evidence_id\` | A01–A06 files/records proving environment, guest and host observations |
-| \`expected\` | predeclared CLEAN_PASS, EXPECTED_REJECT, EXPECTED_FAULT, FAIL_STOP or HOST_FAIL |
-| \`observed\` | actual outcome + serial stage records + host process/reset/timeout report |
-| \`case_result\` | PASS_NEGATIVE, PASS_POSITIVE, FAIL, INVALID_RUN, UNRUN, DEFERRED; **PASS_NEGATIVE is not CLEAN_PASS** |
-| \`review\` | reviewer, source commit, date and final open/closed explanation |
+| `case_id` | one exact `L1-Xnn`, `H-Xnn`, or `LC-Xnn`; never inferred from test label |
+| `gate` and `method` | one of E0–E5; precise injected artifact/fixture and preconditions |
+| `scope` | expected VM profile, image+firmware version and test-mode flag |
+| `evidence_id` | A01–A06 files/records proving environment, guest and host observations |
+| `expected` | predeclared CLEAN_PASS, EXPECTED_REJECT, EXPECTED_FAULT, FAIL_STOP or HOST_FAIL |
+| `observed` | actual outcome + serial stage records + host process/reset/timeout report |
+| `case_result` | PASS_NEGATIVE, PASS_POSITIVE, FAIL, INVALID_RUN, UNRUN, DEFERRED; **PASS_NEGATIVE is not CLEAN_PASS** |
+| `review` | reviewer, source commit, date and final open/closed explanation |
 
-**Release gate:** after real implementation is enabled and attempted, E5 may declare **only narrowly validated L1** when all in-scope mandatory rows have supported outcomes and no critical stop condition remains. L1-X14 cannot be silently counted complete: either a separately scoped DevSigned study is authorized or E5 must explicitly record it as **DEFERRED (outside current signed-boot scope)**. If a controlled VM test cannot be meaningfully constructed, mark it \`UNRUN/NOT VERIFIED\` and do not claim full negative coverage.
+**Release gate:** after real implementation is enabled and attempted, E5 may declare **only narrowly validated L1** when all in-scope mandatory rows have supported outcomes and no critical stop condition remains. L1-X14 cannot be silently counted complete: either a separately scoped DevSigned study is authorized or E5 must explicitly record it as **DEFERRED (outside current signed-boot scope)**. If a controlled VM test cannot be meaningfully constructed, mark it `UNRUN/NOT VERIFIED` and do not claim full negative coverage.
 
 ## 8. Final current status
 
@@ -144,4 +144,4 @@
 | L1 implemented/validated | **NO** |
 | L2 / general OS implementation approval | **NO** |
 
-**Next action remains design review and traceability audit until the project's design-only operating constraint changes.** A later engineering record must **not** backfill \`PASS\` from these paper expectations.
+**Next action remains design review and traceability audit until the project's design-only operating constraint changes.** A later engineering record must **not** backfill `PASS` from these paper expectations.
