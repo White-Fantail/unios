@@ -53,6 +53,9 @@ No native user Task, capability/Handle, IPC SEND/RECEIVE, Pager, PMM, heap, sche
 - [L1 Verification Traceability Matrix v0.1](unios-l1-verification-traceability-matrix-v0.1.md) maps the earlier 18 L1-X + 20 H-X + 22 LC-X cases to expected host/guest outcomes. **0/60 executed**; DevSigned-only L1-X14 is explicitly out-of-profile and untested.
 - The project still operates in design/research mode. These documents **do not** change this record's approval scope or imply an executed prototype, security assurance or expanded L2 Go.
 
+**2026-10-29 final design audit:** [L1 Final Pre-Implementation Design Audit v0.1](unios-l1-final-preimplementation-design-audit-v0.1.md) records a **conditional** bounded first-code GO with **three P0 validation/stop risks and five P1 controls**. The prior scoped approval is unchanged and no implementation has started. The 60 planned paper cases remain 0 executed (59 applicable to DevUnsigned; one deferred).
+
+
 ## 5. Status register
 
 | Decision / artifact | Status on 2026-10-26 |
