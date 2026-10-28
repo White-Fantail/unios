@@ -131,6 +131,22 @@
 
 **Release gate:** after real implementation is enabled and attempted, E5 may declare **only narrowly validated L1** when all in-scope mandatory rows have supported outcomes and no critical stop condition remains. L1-X14 cannot be silently counted complete: either a separately scoped DevSigned study is authorized or E5 must explicitly record it as **DEFERRED (outside current signed-boot scope)**. If a controlled VM test cannot be meaningfully constructed, mark it `UNRUN/NOT VERIFIED` and do not claim full negative coverage.
 
+## 8A. Final review negative-control obligations (not new executed cases)
+
+The [2026-10-29 final L1 design audit](unios-l1-final-preimplementation-design-audit-v0.1.md) adds **sub-obligations** within the 60 source cases; they do not increment the denominator or create fictitious test runs.
+
+| Existing cases | New review-critical sub-obligation |
+|---|---|
+| H-X06, LC-X07, LC-X15 | Inspect emitted **ELF ET_EXEC versus ET_DYN/PIE** and exact Rust UEFI efiapi versus kernel SysV call sequence. A target triple alone is not pass evidence. |
+| H-X11/H-X12, LC-X08–LC-X10/LC-X14 | Corroborate bridge VA→PA and current CR3 at actual post-ExitBS cut and after a stale-key retry. Distinguish before-exit preflight from after-exit evidence. |
+| H-X20, LC-X20/LC-X21, L1-X12/L1-X16 | Host oracle must fail four negative controls: premature HALTED_PASS followed by reset, marker followed by hang, host terminal signal without required serial/stages, and success-looking text in a negative fixture. Plain HLT + marker is insufficient. |
+| H-X07–H-X09, LC-X16–LC-X18, L1-X02–L1-X04/L1-X13 | Audit Rust allocator/drop/console paths after first ExitBS attempt; only preallocated GetMemoryMap + ExitBootServices retry allowed, at most two attempts. |
+| LC-X13, L1-X07/L1-X15, LC-X22 | Pin OVMF Secure Boot off in DevUnsigned profile, CODE/volatile VARS sources, VM CPU features, one vCPU, no real writable media, and NMI/#MC fatal-path scope. |
+| L1-X14 | **DEFERRED (DevSigned only)** — one of 60 paper IDs, excluded from DevUnsigned L1's **59 applicable** rows. Never count as executed or passed. |
+
+**Reminder:** **0/60 executed**, **59 current-profile applicable**, **1 deferred**, and **60 indexed** are different measurements. No suite or row has been executed.
+
+
 ## 8. Final current status
 
 | Measure | Status |
