@@ -18,15 +18,15 @@
 | Domain | Initial reviewable value / contract | Reject if |
 |---|---|---|
 | Platform | x86_64 QEMU Q35, OVMF, one vCPU, 4-level paging, LA57=0, PCIDE=0, NX available, known ISA COM1 device, disposable read-only boot media | mode/device/CPU/firmware differ without design review |
-| Loader | single PE32+ UEFI image built for \`x86_64-unknown-uefi\`; Rust UEFI interfaces use the **\`efiapi\`** ABI where required; UEFI entry call must not be confused with kernel entry | UEFI call convention or firmware-lifecycle assumption wrong |
-| Kernel | embedded ELF64 little-endian \`EM_X86_64/ET_EXEC\`, built separately for \`x86_64-unknown-none\`, non-PIE, fixed high-half mapping, **no required runtime relocation** | PT_DYNAMIC, dynamic dependency, unsupported relocation, bad ELF subset |
-| Link VA | base \`0xffffffff80000000\`, maximum envelope \`[0xffffffff80000000, 0xffffffff84000000)\`, aligned | actual artifact outside declared envelope |
+| Loader | single PE32+ UEFI image built for `x86_64-unknown-uefi`; Rust UEFI interfaces use the **`efiapi`** ABI where required; UEFI entry call must not be confused with kernel entry | UEFI call convention or firmware-lifecycle assumption wrong |
+| Kernel | embedded ELF64 little-endian `EM_X86_64/ET_EXEC`, built separately for `x86_64-unknown-none`, non-PIE, fixed high-half mapping, **no required runtime relocation** | PT_DYNAMIC, dynamic dependency, unsupported relocation, bad ELF subset |
+| Link VA | base `0xffffffff80000000`, maximum envelope `[0xffffffff80000000, 0xffffffff84000000)`, aligned | actual artifact outside declared envelope |
 | ELF load | <=8 PT_LOAD, <=16 MiB staged load span, bounds/overlaps/permissions fully checked; entry within RX mapping | bad filesz/memsz, overflow, W+X, duplicate/conflicting page, noncanonical entry |
 | Pages | 4 KiB mappings, PML4, CR0.WP=1, EFER.NXE=1, high-half text RX, rodata R/NX, data/BSS RW/NX | writable text alias, unbounded direct map, guard mapped |
 | Precharged tables and memory | tentative <=512 KiB page tables; <=64 KiB map buffer; all image, tables, stacks, context, descriptors allocated **before final map** | limits exceeded: stop and **review**, not silently enlarge |
 | Stacks | 8 KiB dedicated bridge stack; 16 KiB main stack + unmapped 4 KiB guard; 16 KiB #DF IST stack + unmapped 4 KiB guard | overlapping/missing guard, unmapped bridge, stale firmware stack |
 | Transition | authenticated old-linear->physical mapping of bridge code/stack/critical descriptors; **same linear addresses** mapped in new CR3 | assumption based only on identity mapping; unauditable old CR3 |
-| CPU | single bootstrap processor, interrupts masked IF=0, resident GDT/IDT/TSS/IST, explicit exception stubs, high-half Rust \`extern "C"\` entry with **SysV, no red zone** | EFI ABI leaks into kernel call, invalid selectors, missing IST or wrong error-code frame |
+| CPU | single bootstrap processor, interrupts masked IF=0, resident GDT/IDT/TSS/IST, explicit exception stubs, high-half Rust `extern "C"` entry with **SysV, no red zone** | EFI ABI leaks into kernel call, invalid selectors, missing IST or wrong error-code frame |
 | Handoff | latest GetMemoryMap stride/version/MapKey, <=2 ExitBootServices attempts; after *first attempt* only existing-buffer GetMemoryMap + ExitBootServices retry; **after success no firmware calls** | late allocator/console/file/service use; map unexpectedly grows beyond buffer |
 | Diagnostics | bounded polled serial records, static/fixed panic output, no raw memory dump or heap; HALTED_PASS only after all success predicates, otherwise halt/externally detected failure | infinite polling, false PASS, panic recursive call, unsafe persistence |
 
@@ -53,7 +53,7 @@ Each item is a **not-yet-executed acceptance condition**. A gate may be entered 
 ### E0 — Reproducible, isolated lab governance
 
 - [ ] Confirm current project operating policy permits actual code; limit source to isolated experimental branch, keep main documentation/protected until review.
-- [ ] Record exact Rust \`rustc\`, Cargo, linker/LLVM tools, architecture target definitions and flags, QEMU and OVMF revisions, firmware hashes and provenance, host OS, 1-vCPU CPU model, RAM, machine options, COM1 configuration.
+- [ ] Record exact Rust `rustc`, Cargo, linker/LLVM tools, architecture target definitions and flags, QEMU and OVMF revisions, firmware hashes and provenance, host OS, 1-vCPU CPU model, RAM, machine options, COM1 configuration.
 - [ ] Document licenses of compiler/firmware/dependencies and source; use only disposable read-only media or in-memory volatile artifacts, no personal disks/network/secrets.
 - [ ] Define immutable run manifest: commit, compiler/linker/QEMU/OVMF hashes, embedded payload SHA, VM profile, fault-injection ID, start/finish time, expected oracle. SHA is *provenance*, **not authenticated boot**.
 - [ ] Pre-register a finite host timeout and reset/triple-fault detection rule, without treating firmware watchdog as host oracle.
@@ -88,7 +88,7 @@ Each item is a **not-yet-executed acceptance condition**. A gate may be entered 
 - [ ] Confirm #PF (#PF error code/CR2), #GP, #UD, #BP, and #DF paths with correct architectural stub stack frames and separate #DF IST where appropriate.
 - [ ] Verify guard read/write and RX-write fault probes; accept **controlled expected fault** only in negative-test mode with independently verifiable classification. No fault path may manufacture a clean PASS.
 - [ ] COM1 finite per-byte polling; unavailable UART must terminate/fail via host timeout, not deadlock indefinitely. Panic no unwind/heap, no recursive formatter or raw memory dump.
-- [ ] Clean test emits ordered stage markers and exactly one \`HALTED_PASS\` only after declared checks. Host independently verifies final halt/state/no reset within prescribed observation interval; a premature PASS followed by crash is **FAIL**.
+- [ ] Clean test emits ordered stage markers and exactly one `HALTED_PASS` only after declared checks. Host independently verifies final halt/state/no reset within prescribed observation interval; a premature PASS followed by crash is **FAIL**.
 - **Exit:** valid positive boot and all mandatory negative cases with host-correlated results. **STOP:** false PASS, uncaught reset, unmapped #DF dependency, infinite logger or unauthorized media writes.
 
 ### E5 — Evidence review and next bounded decision
@@ -103,13 +103,13 @@ Each item is a **not-yet-executed acceptance condition**. A gate may be entered 
 
 | Classification | Conditions | May count as clean positive L1 PASS? |
 |---|---|---|
-| \`CLEAN_PASS\` | authorized positive case; required ordered stages; one final HALTED_PASS; host corroborates terminal non-return without subsequent reset/triple fault; exact profile and manifest match | **YES**, for this VM profile only |
-| \`EXPECTED_REJECT\` | malformed input or unsupported VM profile rejected before unsafe transfer, identifiable per test expectation | **NO** (counts as passing an individual negative case only) |
-| \`EXPECTED_FAULT\` | intentional test fault accurately identified and safely halted or externally detected, as specified for that case | **NO** (negative case can pass) |
-| \`FAIL_STOP\` | controlled stop, bounded logger failed, or incomplete staged boot | **NO** |
-| \`CRASH_RESET\` | VM reset/triple fault or other non-clean termination, including after HALTED_PASS | **NO** |
-| \`TIMEOUT\` | external deadline, no reliable terminal state | **NO** |
-| \`INVALID_RUN\` | wrong vCPU/machine/firmware, missing provenance/host trace, invalid test fixture or artifact | **NO** |
+| `CLEAN_PASS` | authorized positive case; required ordered stages; one final HALTED_PASS; host corroborates terminal non-return without subsequent reset/triple fault; exact profile and manifest match | **YES**, for this VM profile only |
+| `EXPECTED_REJECT` | malformed input or unsupported VM profile rejected before unsafe transfer, identifiable per test expectation | **NO** (counts as passing an individual negative case only) |
+| `EXPECTED_FAULT` | intentional test fault accurately identified and safely halted or externally detected, as specified for that case | **NO** (negative case can pass) |
+| `FAIL_STOP` | controlled stop, bounded logger failed, or incomplete staged boot | **NO** |
+| `CRASH_RESET` | VM reset/triple fault or other non-clean termination, including after HALTED_PASS | **NO** |
+| `TIMEOUT` | external deadline, no reliable terminal state | **NO** |
+| `INVALID_RUN` | wrong vCPU/machine/firmware, missing provenance/host trace, invalid test fixture or artifact | **NO** |
 
 **Two independent notions:** a *negative test* can **pass its expected rejection/fault criterion**, but its guest may **never report the positive boot success**. No serial text alone establishes successful machine termination. No guarantee can be made that #DF or triple-fault paths print output; host reset/timeout detection remains mandatory.
 
@@ -117,15 +117,19 @@ Each item is a **not-yet-executed acceptance condition**. A gate may be entered 
 
 | Artifact ID | Minimum contents | Owner / status |
 |---|---|---|
-| \`A00\` | scoped decision + exact tested repository commit | L1 reviewer / **PAPER** |
-| \`A01\` | toolchain + OVMF/QEMU versions, license and hash/provenance manifest | experiment owner / **NOT RUN** |
-| \`A02\` | EFI PE / ELF PHDR and relocation audit; linker map | compiler/reviewer / **NOT RUN** |
-| \`A03\` | firmware memory map stride/version/key, allocations and BootContext bounds | loader/reviewer / **NOT RUN** |
-| \`A04\` | old/new CR3 mapping proof, alias/guard scan, GDT/IDT/TSS/IST/entry ABI inspection | kernel/reviewer / **NOT RUN** |
-| \`A05\` | time-ordered guest serial stages + independent host VM reset/timeout/final-state trace | harness/reviewer / **NOT RUN** |
-| \`A06\` | test results indexed by all case IDs; expected vs observed; blockers and review decision | reviewer / **NOT RUN** |
+| `A00` | scoped decision + exact tested repository commit | L1 reviewer / **PAPER** |
+| `A01` | toolchain + OVMF/QEMU versions, license and hash/provenance manifest | experiment owner / **NOT RUN** |
+| `A02` | EFI PE / ELF PHDR and relocation audit; linker map | compiler/reviewer / **NOT RUN** |
+| `A03` | firmware memory map stride/version/key, allocations and BootContext bounds | loader/reviewer / **NOT RUN** |
+| `A04` | old/new CR3 mapping proof, alias/guard scan, GDT/IDT/TSS/IST/entry ABI inspection | kernel/reviewer / **NOT RUN** |
+| `A05` | time-ordered guest serial stages + independent host VM reset/timeout/final-state trace | harness/reviewer / **NOT RUN** |
+| `A06` | test results indexed by all case IDs; expected vs observed; blockers and review decision | reviewer / **NOT RUN** |
 
 Every logged outcome must identify **(source commit, image digest, VM manifest, test ID, expected outcome, observed guest trace, observed host trace, result, reviewer)**. A missing required field fails audit; do not infer it from a neighboring test.
+
+### E0/E2 diagnostic-interface constraint (G-IO01)
+
+Before the first ExitBootServices attempt, do **not** assume direct COM1 port-I/O ownership merely because QEMU exposes ISA UART: OVMF may also use the port. For any pre-exit status output, establish a compatible UEFI-protocol/firmware ownership path while Boot Services are still usable, or restrict direct polled COM1 output to the explicitly controlled post-exit phase. After the **first** ExitBS attempt, the deliberately stricter L1 policy forbids firmware console/protocol calls; use only the allowed map/exit retry services. For failures where no safe diagnostic output is available, classify with the independent host timeout/reset observation, **never** a fabricated serial PASS. Record the selected pre-exit console/COM1 ownership policy in A01 and its behavior in A05. This refines diagnostic feasibility without expanding the L1 hardware scope.
 
 ## 6. Blocking uncertainties and exact escalation
 
