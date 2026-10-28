@@ -1,0 +1,87 @@
+#![no_std]
+#![no_main]
+
+// E1 UEFI entry / embedded ELF preflight. NO ExitBootServices/CR3 transition
+// until E2/E3 mapping provenance and emergency exception path are reviewed.
+// Returning EFI_UNSUPPORTED is intentional: preflight is not an L1 boot PASS.
+use core::ffi::c_void;
+use core::panic::PanicInfo;
+
+const EFI_SYSTEM_TABLE_SIGNATURE: u64 = 0x5453_5953_2049_4249;
+const EFI_LOAD_ERROR: usize = (1usize << (usize::BITS - 1)) | 1;
+const EFI_UNSUPPORTED: usize = (1usize << (usize::BITS - 1)) | 3;
+const EMBEDDED_ELF: &[u8] = include_bytes!(env!("UNIOS_KERNEL_ELF"));
+
+#[repr(C)]
+struct TableHeader {
+    signature: u64,
+    revision: u32,
+    header_size: u32,
+    crc32: u32,
+    reserved: u32,
+}
+
+#[repr(C)]
+struct SimpleTextOutput {
+    reset: usize,
+    output_string: unsafe extern "efiapi" fn(*mut SimpleTextOutput, *const u16) -> usize,
+}
+
+#[repr(C)]
+struct SystemTable {
+    header: TableHeader,
+    firmware_vendor: *mut u16,
+    firmware_revision: u32,
+    console_in_handle: usize,
+    console_in: *mut c_void,
+    console_out_handle: usize,
+    console_out: *mut SimpleTextOutput,
+    standard_error_handle: usize,
+    standard_error: *mut SimpleTextOutput,
+    runtime_services: *mut c_void,
+    boot_services: *mut c_void,
+    number_of_table_entries: usize,
+    configuration_table: *mut c_void,
+}
+
+// UEFI protocol only, while Boot Services are alive. NOT COM1 port I/O.
+unsafe fn console(table: *mut SystemTable, message: &[u8]) {
+    if table.is_null() { return; }
+    let output = (*table).console_out;
+    if output.is_null() { return; }
+    for part in message.chunks(95) {
+        let mut buffer = [0u16; 96];
+        for (i, byte) in part.iter().enumerate() {
+            buffer[i] = *byte as u16;
+        }
+        let _status = ((*output).output_string)(output, buffer.as_ptr());
+    }
+}
+
+#[no_mangle]
+pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemTable) -> usize {
+    if system_table.is_null() {
+        return EFI_LOAD_ERROR;
+    }
+    if unsafe { (*system_table).header.signature } != EFI_SYSTEM_TABLE_SIGNATURE {
+        return EFI_LOAD_ERROR;
+    }
+    match unios_elf::validate(EMBEDDED_ELF) {
+        Err(_) => {
+            unsafe { console(system_table, b"UNIOS:L1:E1_REJECTED\r\n"); }
+            EFI_LOAD_ERROR
+        }
+        Ok(checked) => {
+            if checked.count == 0 || checked.staged_bytes > unios_elf::MAX_STAGED {
+                return EFI_LOAD_ERROR;
+            }
+            unsafe { console(system_table, b"UNIOS:L1:E1_PREFLIGHT_ONLY\r\n"); }
+            EFI_UNSUPPORTED // NOT a clean kernel boot, and NOT a handoff
+        }
+    }
+}
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop { core::hint::spin_loop(); }
+}
