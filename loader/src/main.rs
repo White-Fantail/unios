@@ -89,12 +89,19 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // E2b still remains a pre-ExitBS diagnostic. A newer
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
-                        unsafe { console(system_table, b"UNIOS:L1:E2B_STAGED_AND_VERIFIED_ONLY\r\n"); }
+                        unsafe {
+                            #[cfg(feature = "lab-e2c-tables")]
+                            console(system_table, b"UNIOS:L1:E2C_PRIVATE_TABLES_AUDITED_ONLY\r\n");
+                            #[cfg(not(feature = "lab-e2c-tables"))]
+                            console(system_table, b"UNIOS:L1:E2B_STAGED_AND_VERIFIED_ONLY\r\n");
+                        }
                         #[cfg(not(feature = "lab-e2b-staging"))]
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature = "lab-e2b-staging")]
+                            #[cfg(feature = "lab-e2c-tables")]
+                            const CODE: u8 = 0x24;
+                            #[cfg(all(feature = "lab-e2b-staging", not(feature = "lab-e2c-tables")))]
                             const CODE: u8 = 0x23;
                             #[cfg(not(feature = "lab-e2b-staging"))]
                             const CODE: u8 = 0x22;

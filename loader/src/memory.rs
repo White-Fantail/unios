@@ -48,6 +48,8 @@ pub enum Error {
     OldCr3,
     #[cfg(feature = "lab-e2b-staging")]
     Staging,
+    #[cfg(feature = "lab-e2c-tables")]
+    Paging,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -142,6 +144,61 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
             let dest = unsafe { slice::from_raw_parts_mut(reserved.base as *mut u8, size) };
             unios_staging::stage(segment, payload, dest).map_err(|_| Error::Staging)?;
             unios_staging::verify(segment, payload, dest).map_err(|_| Error::Staging)?;
+        }
+            #[cfg(feature = "lab-e2c-tables")]
+        {
+            use unios_paging::{Builder, Rights, TABLE_WORDS, MAIN_STACK_VA, IST_STACK_VA,
+                              DESCRIPTORS_VA, CONTEXT_VA};
+            let backing = ledger[image.count];
+            if backing.id != 2 || backing.pages != unios_paging::TABLE_PAGES as u64 {
+                return Err(Error::Paging);
+            }
+            // We already checked all 512 KiB of these exact owned frames
+            // under the firmware CR3. This pointer is NEVER used post-cut.
+            let frames=unsafe {
+                slice::from_raw_parts_mut(backing.base as *mut u64, TABLE_WORDS)
+            };
+            let mut tables=Builder::new(frames,backing.base).map_err(|_|Error::Paging)?;
+            for (seg, reserved) in image.segments.iter().take(image.count)
+                .zip(ledger.iter().take(image.count))
+            {
+                tables.map_kernel_segment(seg,reserved.base).map_err(|_|Error::Paging)?;
+                let rights=if seg.flags & 1 != 0 {Rights::Rx}
+                    else if seg.flags & 2 != 0 {Rights::Rw}
+                    else {Rights::Ro};
+                for n in 0..reserved.pages {
+                    tables.verify(seg.page_start + n*PAGE,reserved.base + n*PAGE,rights)
+                        .map_err(|_|Error::Paging)?;
+                }
+            }
+            // Fixed, nonoverlapping VM-only guard addresses; nothing maps
+            // these pages. No direct-map / writable kernel RX frame aliases.
+            let aux=&ledger[image.count..count];
+            if aux.len() != 7 || aux[1].id != 3 || aux[2].id != 4 ||
+                aux[3].id != 5 || aux[4].id != 6 || aux[5].id != 7 {
+                return Err(Error::Paging);
+            }
+            tables.map_owned_low_bridge_stack(aux[1].base).map_err(|_|Error::Paging)?;
+            tables.map_stack(MAIN_STACK_VA,aux[2].base,4).map_err(|_|Error::Paging)?;
+            tables.map_stack(IST_STACK_VA,aux[3].base,4).map_err(|_|Error::Paging)?;
+            tables.map4k(DESCRIPTORS_VA,aux[4].base,Rights::Rw)
+                .map_err(|_|Error::Paging)?;
+            tables.map4k(CONTEXT_VA,aux[5].base,Rights::Ro)
+                .map_err(|_|Error::Paging)?;
+            tables.audit_guard_pages().map_err(|_|Error::Paging)?;
+            // Defensive positive and negative check of supervisor leaf rights.
+            for (va,pa,rights) in [
+                (aux[1].base,aux[1].base,Rights::Rw),
+                (MAIN_STACK_VA,aux[2].base,Rights::Rw),
+                (IST_STACK_VA,aux[3].base,Rights::Rw),
+                (DESCRIPTORS_VA,aux[4].base,Rights::Rw),
+                (CONTEXT_VA,aux[5].base,Rights::Ro),
+            ] {
+                tables.verify(va,pa,rights).map_err(|_|Error::Paging)?;
+            }
+            if tables.used_tables() < 4 {return Err(Error::Paging);}
+            // NO write to CR3. Missing shared-linear EFI code, exception
+            // descriptors, independent old-CR3 proof and final map cut.
         }
     }
     #[cfg(not(feature = "lab-e2b-staging"))]

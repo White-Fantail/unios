@@ -11,6 +11,13 @@ name = "unios_elf"
 version = "0.1.0"
 
 [[package]]
+name = "unios_paging"
+version = "0.1.0"
+dependencies = [
+ "unios_elf",
+]
+
+[[package]]
 name = "unios_kernel"
 version = "0.1.0"
 
@@ -20,6 +27,7 @@ version = "0.1.0"
 dependencies = [
  "unios_bootmap",
  "unios_elf",
+ "unios_paging",
  "unios_staging",
 ]
 

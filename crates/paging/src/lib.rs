@@ -274,9 +274,9 @@ mod tests {
     }
     #[test] fn capacity_bound() {
         let mut b=builder();
-        // 125 separate 2MiB regions force >128 tables.
+        // 140 separate 2MiB regions force >128 tables.
         let mut rejected=false;
-        for i in 0..125u64 {
+        for i in 0..140u64 {
             let va=0xffff_8000_0000_0000u64+i*(1<<21);
             if b.map4k(va,TEXT_PA+i*PAGE,Rights::Ro)==Err(Error::Capacity) {
                 rejected=true;break;

@@ -8,6 +8,7 @@ publish = false
 unios_elf = { path = "../crates/elfcheck" }
 unios_bootmap = { path = "../crates/bootmap" }
 unios_staging = { path = "../crates/staging" }
+unios_paging = { path = "../crates/paging" }
 
 [[bin]]
 name = "unios_loader"
@@ -19,3 +20,4 @@ bench = false
 lab-debug-exit = []
 lab-e2-preflight = []
 lab-e2b-staging = ["lab-e2-preflight"]
+lab-e2c-tables = ["lab-e2b-staging"]
