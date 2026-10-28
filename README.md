@@ -1,10 +1,13 @@
 # UniOS
 
-> **2026-10-29 experimental source update:** L1 first-code work has begun
-> on [experiment/l1-lab-h1-bootstrap](https://github.com/White-Fantail/unios/tree/experiment/l1-lab-h1-bootstrap).
-> E0/E1 artifact checks are separate from an actual kernel boot.
-> The main branch is still design-only. E2-E5 and all L2 features are not accepted as implemented.
-> See [L1 implementation log](docs/implementation/l1-bootstrap-e0-e1.md) on the experiment branch.
+> **L1 experimental source status — 2026-10-29:** The repository now tracks the
+> bounded E0/E1 first-code prototype: fixed high-half Rust ELF, UEFI loader
+> preflight, host negative controls, and a QEMU/OVMF **preflight-only** smoke test.
+> CI has observed ELF/PE artifacts and E1 host exit **67**, which is **not**
+> a kernel boot. Full L1 clean-success exit **65** was **not run**.
+> E0/E1 remain **PARTIAL**; E2–E5 and the 59 applicable L1 matrix cases
+> are not validated. See [execution evidence](docs/implementation/l1-e1-evidence-2026-10-29.md).
+> This is experimental source, **not a released or successfully booted OS**.
 
 **UniOS** is an independent operating system project currently in the **architecture design and feasibility research** stage. Its long-term goal is a general-purpose desktop OS, starting with a limited developer-focused environment.
 
@@ -42,18 +45,54 @@ These are **accepted design directions**, **not validated implementations**. Ker
 
 ## Current status
 
-**Design/research-only execution status.** On 2026-10-26 the user gave an explicit **scoped L1 Go** for a disposable QEMU/OVMF, one-vCPU diagnostic boot kernel. This is an **authorization decision, not an implementation or successful boot**: no UniOS kernel, source, build, VM test, device driver, runtime or compatibility layer has been created or validated. The current project working mode still limits activity to research and documentation. No L2/L3 approval, implementation schedule, supported physical-hardware catalog, or Windows/Linux/macOS application compatibility is implied.
+**Architecture design baseline v0.2 plus explicitly experimental L1 E0/E1 source.**
+The user approved a *scoped* L1 experiment on 2026-10-26 and directed implementation
+on 2026-10-29. The approved architecture, RFCs and L1 technical contracts
+remain the design baseline; their dated paper-only reviews are **historical
+snapshots**, not evidence of a later successful run.
 
-See the [L1 scoped user-Go decision record](docs/reviews/unios-l1-scoped-user-go-2026-10-26.md) and the dated [L1 readiness assessment](docs/reviews/unios-l1-implementation-go-no-go-assessment-v0.1.md).
+The experimental code includes a freestanding high-half ELF and UEFI
+preflight loader, but the firmware handoff deliberately returns
+`EFI_UNSUPPORTED`; **there is no completed UniOS kernel boot**.
+The 2026-10-29 E1 QEMU/OVMF preflight observed host exit **67**.
+The full L1 terminal oracle exit **65** has not been exercised.
+E0/E1 are **partial**, E2/E3/E4/E5 are **not implemented/validated**.
+No L2 features, product security claim, stable ABI or desktop application
+compatibility are authorized or delivered.
 
-## L1 experimental entry — paper-only checklist (2026-10-29)
+The source can be integrated for traceability and incremental review
+without declaring any L1 acceptance gate passed. Later work must
+still use the experimental branch, controlled builds and actual QEMU
+proof before claiming complete L1 validation.
 
-The 2026-10-26 scoped user Go is recorded, but **implementation has not started**. The [L1 execution readiness runbook](docs/contracts/unios-l1-execution-readiness-runbook-v0.1.md) defines E0–E5 artifact, handoff, CR3, exception, host-oracle and stop gates. The [L1 verification traceability matrix](docs/reviews/unios-l1-verification-traceability-matrix-v0.1.md) indexes 18 + 20 + 22 = **60 planned paper test cases, 0 executed**; the DevSigned-only case is out of profile. Research and documentation remain the current working mode; no kernel source/build/QEMU runs or L2 authorization are implied.
+For reproducibility and exact evidence limits, see the
+[L1 implementation log](docs/implementation/l1-bootstrap-e0-e1.md),
+[2026-10-29 E1 evidence](docs/implementation/l1-e1-evidence-2026-10-29.md),
+[L1 execution runbook](docs/contracts/unios-l1-execution-readiness-runbook-v0.1.md)
+and [60-case traceability matrix](docs/reviews/unios-l1-verification-traceability-matrix-v0.1.md)
+(59 DevUnsigned cases pending, one DevSigned-only case deferred).
 
-## Final L1 paper audit (2026-10-29)
+## L1 experimental verification boundary
 
-The [L1 final pre-implementation design audit](docs/reviews/unios-l1-final-preimplementation-design-audit-v0.1.md) determined **conditional GO for a narrowly scoped future first-code experiment**, not that a kernel boots or that the project has switched out of design-only mode. Three P0 stops concern fixed ELF **ET_EXEC** artifact output, the real old/new CR3 bridge across ExitBootServices, and independently observable host completion; five further P1 risk controls cover diagnostics, UEFI lifecycle, OVMF reproducibility, NMI/exception handling and test evidence. The 60 indexed cases are **0 executed; 59 apply to DevUnsigned L1 and one DevSigned-only case is deferred**. L2/L3 remain unapproved.
+- **Observed:** Rust 1.90.0 cross-target binaries and ELF/PE audits;
+  9 ELF parser and 9 simulated host-oracle unit tests; QEMU/OVMF
+  loader-only E1 preflight ending with exit 67.
+- **Not yet observed:** bounded EFI frame allocation and segment
+  staging; real ExitBootServices; old/new CR3 bridge; exception/guard
+  probes; post-handoff kernel execution; independent full-success
+  host evidence; per-case E5 negative coverage.
+- **Acceptance policy:** do not infer full L1 boot, memory safety,
+  security assurance or a complete E0–E5 gate from E1-only evidence.
+  Keep the approved L1 stop conditions in force. No L2 implementation.
 
+## Final L1 paper audit (historical design snapshot, 2026-10-29)
+
+The [L1 final pre-implementation design audit](docs/reviews/unios-l1-final-preimplementation-design-audit-v0.1.md)
+recorded **conditional GO for the first-code experiment**, not an
+engineering assurance decision. Its three P0 concerns were fixed ELF
+ET_EXEC output, post-ExitBootServices CR3 bridge proof, and independent
+host completion. The new E1 evidence addresses the artifact and preflight
+**partly**, but does not close the CR3/ExitBS or full host-completion gates.
 
 ## Architecture documents
 
