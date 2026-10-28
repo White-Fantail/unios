@@ -35,7 +35,7 @@ PROFILE
 set +e
 timeout --signal=TERM --kill-after=5s 35s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu qemu64,+nx,-la57,-pcid \
-  -smp 1 -m 256 \
+  -smp 1 -m 256 -nic none \
   -drive if=pflash,unit=0,format=raw,readonly=on,file="$CODE" \
   -drive if=pflash,unit=1,format=raw,file="$ROOT/out/preflight-vars.fd" \
   -drive if=none,id=esp,format=raw,file="$ROOT/out/preflight-disk.img",snapshot=on \

@@ -16,6 +16,9 @@ class OracleTest(unittest.TestCase):
     def test_simulated_positive(self):
         self.assertTrue(clean_pass(self.good()))
 
+    def test_uefi_preflight_cannot_be_clean_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=67)))
+
     def test_marker_then_reset(self):
         self.assertFalse(clean_pass(self.good(qmp_events=["RESET"])))
 
