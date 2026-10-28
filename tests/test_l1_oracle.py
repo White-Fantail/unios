@@ -28,6 +28,9 @@ class OracleTest(unittest.TestCase):
     def test_e2c_private_tables_not_kernel_pass(self):
         self.assertFalse(clean_pass(self.good(exit_code=73)))
 
+    def test_e2d_anchor_cannot_be_clean_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=75)))
+
     def test_marker_then_reset(self):
         self.assertFalse(clean_pass(self.good(qmp_events=["RESET"])))
 

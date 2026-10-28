@@ -12,6 +12,10 @@ use core::panic::PanicInfo;
 mod memory;
 #[cfg(feature = "lab-e2b-staging")]
 mod oldmap;
+#[cfg(feature = "lab-e2d-bridge-audit")]
+mod cpuprobe;
+#[cfg(feature = "lab-e2d-bridge-audit")]
+mod bridge_anchor;
 
 const EFI_SYSTEM_TABLE_SIGNATURE: u64 = 0x5453_5953_2049_4249;
 const EFI_LOAD_ERROR: usize = (1usize << (usize::BITS - 1)) | 1;
@@ -90,7 +94,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature = "lab-e2c-tables")]
+                            #[cfg(feature = "lab-e2d-bridge-audit")]
+                            console(system_table, b"UNIOS:L1:E2D_EXEC_ANCHOR_AND_CPU_PREFLIGHT_ONLY\r\n");
+                            #[cfg(all(feature = "lab-e2c-tables", not(feature = "lab-e2d-bridge-audit")))]
                             console(system_table, b"UNIOS:L1:E2C_PRIVATE_TABLES_AUDITED_ONLY\r\n");
                             #[cfg(not(feature = "lab-e2c-tables"))]
                             console(system_table, b"UNIOS:L1:E2B_STAGED_AND_VERIFIED_ONLY\r\n");
@@ -99,7 +105,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature = "lab-e2c-tables")]
+                            #[cfg(feature = "lab-e2d-bridge-audit")]
+                            const CODE: u8 = 0x25;
+                            #[cfg(all(feature = "lab-e2c-tables", not(feature = "lab-e2d-bridge-audit")))]
                             const CODE: u8 = 0x24;
                             #[cfg(all(feature = "lab-e2b-staging", not(feature = "lab-e2c-tables")))]
                             const CODE: u8 = 0x23;

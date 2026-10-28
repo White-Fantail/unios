@@ -50,6 +50,8 @@ pub enum Error {
     Staging,
     #[cfg(feature = "lab-e2c-tables")]
     Paging,
+    #[cfg(feature = "lab-e2d-bridge-audit")]
+    Bridge,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -195,6 +197,20 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 (CONTEXT_VA,aux[5].base,Rights::Ro),
             ] {
                 tables.verify(va,pa,rights).map_err(|_|Error::Paging)?;
+            }
+            #[cfg(feature = "lab-e2d-bridge-audit")]
+            {
+                // An executable anchor page, not actual CR3-switch code.
+                // Check CPU *capability* and current firmware profile, but
+                // do not change WP/NXE or claim enforcement at future cut.
+                let _audit = crate::cpuprobe::inspect().map_err(|_|Error::Bridge)?;
+                let (code_va,code_pa)=crate::oldmap::audit_efi_code_page(
+                    crate::bridge_anchor::linear_address(),map,map_size,descriptor_size,
+                ).map_err(|_|Error::Bridge)?;
+                tables.map_efi_executable_anchor(code_va,code_pa)
+                    .map_err(|_|Error::Bridge)?;
+                tables.verify(code_va,code_pa,Rights::Rx)
+                    .map_err(|_|Error::Bridge)?;
             }
             if tables.used_tables() < 4 {return Err(Error::Paging);}
             // NO write to CR3. Missing shared-linear EFI code, exception

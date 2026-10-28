@@ -167,6 +167,16 @@ impl<'a> Builder<'a> {
         }
         Ok(())
     }
+    pub fn map_efi_executable_anchor(&mut self, linear: u64, physical: u64)
+        -> Result<(),Error>
+    {
+        // Caller must have established old-CR3 mapping and EFI_LOADER_CODE
+        // ownership. Only ONE page, explicitly not a full bridge stub.
+        if linear < 0x10_0000 || linear >= (1u64<<32) {
+            return Err(Error::Range);
+        }
+        self.map_raw(linear,physical,Rights::Rx)
+    }
     pub fn map_owned_low_bridge_stack(&mut self, pa: u64) -> Result<(), Error> {
         // Same-linear under old/new CR3, only after old-CR3 ownership proof.
         if pa < 0x10_0000 || pa > 0xffff_e000 { return Err(Error::Range); }
@@ -288,6 +298,13 @@ mod tests {
     #[test] fn capacity_cap_requires_exact_precharge() {
         let backing=Box::leak(vec![0u64; TABLE_WORDS-1].into_boxed_slice());
         assert!(matches!(Builder::new(backing,0x0200_0000),Err(Error::Capacity)));
+    }
+    #[test] fn code_anchor_can_be_rx_but_not_reused_as_rw_alias() {
+        let mut b=builder();
+        b.map_efi_executable_anchor(0x1500_0000,0x1600_0000).unwrap();
+        b.verify(0x1500_0000,0x1600_0000,Rights::Rx).unwrap();
+        assert_eq!(b.map4k(BASE,0x1600_0000,Rights::Rw),Err(Error::Alias));
+        assert_eq!(b.map_efi_executable_anchor(0x1500_0000,0x1700_0000),Err(Error::Overlap));
     }
     #[test] fn low_identity_mapping_only_via_bridge_stack() {
         let mut b=builder();
