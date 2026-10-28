@@ -30,7 +30,7 @@ Authority: scoped L1 Go; NOT permission to implement L2.
 
 ## Explicit stop boundaries
 
-The initial E1 artifact validation passed in GitHub Actions run 40737489885.\nA separate QEMU E1 preflight smoke is being evaluated; it is NOT an E2+ handoff.\n\nNo kernel entry from EFI before proven old/new same-linear bridge RIP/stack/
+The initial E1 artifact validation passed in GitHub Actions run 40737489885.\nQEMU/OVMF E1 preflight smoke also passed at source commit d3fe104c24ad45175ee5f94fed95ba6f8c543076 (Actions run 40738064621, host exit 67). This is NOT an E2+ handoff.\n\nNo kernel entry from EFI before proven old/new same-linear bridge RIP/stack/
 descriptors after final ExitBootServices. Do not assume identity paging.
 All memory/stacks/table capacities stay at approved LAB-H1 limits. Never
 award CLEAN_PASS based on text or a simulated oracle. No main merge
