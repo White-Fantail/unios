@@ -22,7 +22,7 @@ Authority: scoped L1 Go; NOT permission to implement L2.
 | Gate | Evidence state |
 |---|---|
 | E0 | **PARTIAL** — experimental branch, compiler pin, oracle policy; actual runner/firmware/VM hashes required |
-| E1 | **SOURCE ADDED / NOT PROVED UNTIL CI** — compiler/linker outputs must pass real checks |
+| E1 | **ARTIFACT BUILT / PARTIALLY VERIFIED** — ET_EXEC, PE32+, no relocation and parser audit passed in GitHub Actions; full staging/ownership checks remain |
 | E2 | **NOT IMPLEMENTED / NOT RUN** — GetMemoryMap and ExitBootServices absent |
 | E3 | **NOT IMPLEMENTED / NOT RUN** — CR3, bridge, guard, GDT/TSS/IST absent |
 | E4 | **NOT IMPLEMENTED / NOT RUN** — QEMU fault probes / success oracle absent |
@@ -30,7 +30,7 @@ Authority: scoped L1 Go; NOT permission to implement L2.
 
 ## Explicit stop boundaries
 
-No kernel entry from EFI before proven old/new same-linear bridge RIP/stack/
+The initial E1 artifact validation passed in GitHub Actions run 40737489885.\nA separate QEMU E1 preflight smoke is being evaluated; it is NOT an E2+ handoff.\n\nNo kernel entry from EFI before proven old/new same-linear bridge RIP/stack/
 descriptors after final ExitBootServices. Do not assume identity paging.
 All memory/stacks/table capacities stay at approved LAB-H1 limits. Never
 award CLEAN_PASS based on text or a simulated oracle. No main merge

@@ -28,7 +28,7 @@ sha256sum "$CODE" "$VARS_TEMPLATE" "$(command -v qemu-system-x86_64)" |
 cat > out/qemu-profile.txt <<'PROFILE'
 LAB-H1 E1-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
 1 vCPU, 256 MiB, OVMF DevUnsigned, immutable CODE,
-disposable pflash VARS, read-only disposable GPT ESP,
+disposable pflash VARS, disposable GPT ESP with ephemeral snapshot overlay,
 no network and no real user media, COM1 to finite log.
 E1 host exit=67, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
 PROFILE
@@ -38,7 +38,7 @@ timeout --signal=TERM --kill-after=5s 35s qemu-system-x86_64 \
   -smp 1 -m 256 \
   -drive if=pflash,unit=0,format=raw,readonly=on,file="$CODE" \
   -drive if=pflash,unit=1,format=raw,file="$ROOT/out/preflight-vars.fd" \
-  -drive if=none,id=esp,format=raw,file="$ROOT/out/preflight-disk.img",readonly=on \
+  -drive if=none,id=esp,format=raw,file="$ROOT/out/preflight-disk.img",snapshot=on \
   -device ide-hd,drive=esp \
   -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
   -serial file:"$ROOT/out/preflight-serial.log" \

@@ -1,5 +1,11 @@
 # UniOS
 
+> **2026-10-29 experimental source update:** L1 first-code work has begun
+> on [experiment/l1-lab-h1-bootstrap](https://github.com/White-Fantail/unios/tree/experiment/l1-lab-h1-bootstrap).
+> E0/E1 artifact checks are separate from an actual kernel boot.
+> The main branch is still design-only. E2-E5 and all L2 features are not accepted as implemented.
+> See [L1 implementation log](docs/implementation/l1-bootstrap-e0-e1.md) on the experiment branch.
+
 **UniOS** is an independent operating system project currently in the **architecture design and feasibility research** stage. Its long-term goal is a general-purpose desktop OS, starting with a limited developer-focused environment.
 
 ## Vision
