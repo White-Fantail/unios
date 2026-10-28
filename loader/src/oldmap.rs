@@ -48,7 +48,7 @@ unsafe fn translate(root: u64, va: u64) -> Result<(u64,bool,bool), Error> {
             let mask = (1u64 << 21) - 1;
             return Ok(((entry & ADDR_MASK & !mask) | (va & mask),can_write,can_execute));
         }
-        if depth == 3 { return Ok(((entry & ADDR_MASK) | (va & 0xfff), can_write)); }
+        if depth == 3 { return Ok(((entry & ADDR_MASK) | (va & 0xfff), can_write, can_execute)); }
         table_pa = entry & ADDR_MASK;
         if table_pa == 0 { return Err(Error::Root); }
     }
