@@ -12,3 +12,6 @@ name = "unios_loader"
 path = "src/main.rs"
 test = false
 bench = false
+
+[features]
+lab-debug-exit = []

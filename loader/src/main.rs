@@ -5,6 +5,8 @@
 // until E2/E3 mapping provenance and emergency exception path are reviewed.
 // Returning EFI_UNSUPPORTED is intentional: preflight is not an L1 boot PASS.
 use core::ffi::c_void;
+#[cfg(feature = "lab-debug-exit")]
+use core::arch::asm;
 use core::panic::PanicInfo;
 
 const EFI_SYSTEM_TABLE_SIGNATURE: u64 = 0x5453_5953_2049_4249;
@@ -76,6 +78,11 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                 return EFI_LOAD_ERROR;
             }
             unsafe { console(system_table, b"UNIOS:L1:E1_PREFLIGHT_ONLY\r\n"); }
+            // QEMU-only E1 preflight signal: 0x21 => host exit status 67.
+            // DIFFERENT from 0x20 (reserved for full post-handoff success).
+            #[cfg(feature = "lab-debug-exit")]
+            unsafe { asm!("out dx, al", in("dx") 0xf4u16, in("al") 0x21u8,
+                          options(nomem, nostack, preserves_flags)); }
             EFI_UNSUPPORTED // NOT a clean kernel boot, and NOT a handoff
         }
     }

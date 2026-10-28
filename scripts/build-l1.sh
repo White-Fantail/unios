@@ -32,7 +32,7 @@ unset RUSTFLAGS
 cargo run --locked --quiet -p unios_elf --bin audit -- "$KERNEL" | tee out/kernel-elf-audit.txt
 
 export UNIOS_KERNEL_ELF="$KERNEL"
-cargo build --locked --release -p unios_loader --target x86_64-unknown-uefi
+cargo build --locked --release -p unios_loader --features lab-debug-exit --target x86_64-unknown-uefi
 EFI="$ROOT/target/x86_64-unknown-uefi/release/unios_loader.efi"
 file "$EFI" | tee out/uefi-pe-header.txt
 if ! grep -Eq 'PE32\+.*EFI application' out/uefi-pe-header.txt; then
