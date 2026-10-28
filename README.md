@@ -1,25 +1,19 @@
 # UniOS
 
-> **L1 experimental source status — 2026-10-29:** The repository now tracks the
-> bounded E0/E1 first-code prototype: fixed high-half Rust ELF, UEFI loader
-> preflight, host negative controls, and a QEMU/OVMF **preflight-only** smoke test.
-> CI has observed ELF/PE artifacts and E1 host exit **67**, which is **not**
-> a kernel boot. Full L1 clean-success exit **65** was **not run**.
-> E0/E1 remain **PARTIAL**; E2–E5 and the 59 applicable L1 matrix cases
-> are not validated. See [execution evidence](docs/implementation/l1-e1-evidence-2026-10-29.md).
-> This is experimental source, **not a released or successfully booted OS**.
+> **L1 experimental implementation status — 2026-10-29:** E0–E2d
+> pre-ExitBootServices experiments have been merged into `main`. The
+> next E2e experimental branch verifies a bounded EFI executable
+> assembly canary and same-linear old/new page-table provenance under
+> QEMU/OVMF, with observed preflight exit **77**. This is **not**
+> ExitBootServices, new CR3 execution, a kernel boot or host success
+> exit **65**. L1 E2–E5 remain partial/unverified; **no L2**.
+> See [E2e evidence](docs/implementation/l1-e2e-bounded-bridge-2026-10-29.md)
+> and [test-stage admission policy](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independent operating system project currently in the **architecture design and feasibility research** stage. Its long-term goal is a general-purpose desktop OS, starting with a limited developer-focused environment.
-
-> **L1 experimental implementation progress — 2026-10-29:** E2b has
-> passed real QEMU/OVMF pre-ExitBS staged-copy and BSS checks and was merged
-> to main. E2c builds and audits a private four-level PML4 in a disposable
-> experiment, with RX/RO/RW+NX leaves, supervisor-only ownership and
-> unmapped stack guards. A QEMU-only preflight host exit **73** is observed;
-> **the new CR3 is not loaded**. No ExitBootServices, high-half kernel entry,
-> protected fault-path validation or full success token 65 exists yet.
-> See [E2c evidence](docs/implementation/l1-e2c-page-tables-2026-10-29.md).
-> E2/E3 remain **PARTIAL/UNVERIFIED**, not a successfully booted OS.
+**UniOS** is an independent operating-system project implementing its
+restricted L1 Experimental Kernel while its general-purpose OS architecture
+and later compatibility goals remain longer-term research. The current
+repository is experimental code, **not a released or successfully booted OS**.
 
 ## Vision
 
