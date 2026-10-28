@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "unios_bootmap"
+version = "0.1.0"
+
+[[package]]
 name = "unios_elf"
 version = "0.1.0"
 
@@ -14,5 +18,6 @@ version = "0.1.0"
 name = "unios_loader"
 version = "0.1.0"
 dependencies = [
+ "unios_bootmap",
  "unios_elf",
 ]

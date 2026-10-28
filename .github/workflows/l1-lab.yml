@@ -1,8 +1,8 @@
-name: L1 experimental E0-E1 artifact checks
+name: L1 experimental E2a memory-map reservation preflight
 on:
   push:
     branches:
-      - "experiment/l1-lab-h1-bootstrap"
+      - "experiment/l1-e2-memory-map-preflight"
   workflow_dispatch:
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
         run: bash scripts/build-l1.sh
       - name: Install restricted QEMU preflight dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf gdisk dosfstools mtools
-      - name: E1-only QEMU/OVMF preflight (NOT kernel boot)
+      - name: E2a QEMU/OVMF allocation and map audit (NOT kernel boot)
         run: bash scripts/qemu-preflight.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4

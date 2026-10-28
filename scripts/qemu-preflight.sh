@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# E1 QEMU smoke: the UEFI loader parsed its embedded ELF, NOT kernel handoff.
-# A dedicated debug-exit byte 0x21 returns 67; 65 is reserved for E4 clean PASS.
+# E2a QEMU smoke: UEFI physical reservations and memory-map audit; NOT handoff.
+# Distinct debug-exit byte 0x22 returns 69; 65 is reserved for E4 clean PASS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -26,11 +26,11 @@ qemu-system-x86_64 --version | tee out/qemu-version.txt
 sha256sum "$CODE" "$VARS_TEMPLATE" "$(command -v qemu-system-x86_64)" |
   tee out/preflight-host-digests.txt
 cat > out/qemu-profile.txt <<'PROFILE'
-LAB-H1 E1-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
+LAB-H1 E2a-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
 1 vCPU, 256 MiB, OVMF DevUnsigned, immutable CODE,
 disposable pflash VARS, disposable GPT ESP with ephemeral snapshot overlay,
 no network and no real user media, COM1 to finite log.
-E1 host exit=67, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
+E2a host exit=69, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
 PROFILE
 set +e
 timeout --signal=TERM --kill-after=5s 35s qemu-system-x86_64 \
@@ -47,8 +47,8 @@ timeout --signal=TERM --kill-after=5s 35s qemu-system-x86_64 \
 rc=$?
 set -e
 echo "$rc" | tee out/preflight-host-exit.txt
-if [[ "$rc" -ne 67 ]]; then
-  echo "ERROR: E1 loader preflight was not independently observed (code $rc)" >&2
+if [[ "$rc" -ne 69 ]]; then
+  echo "ERROR: E2a memory-map preflight was not independently observed (code $rc)" >&2
   cat out/preflight-qemu-stderr.log >&2
   exit 1
 fi
@@ -56,5 +56,5 @@ if grep -Eq 'HALTED_PASS' out/preflight-serial.log; then
   echo "ERROR: E1 smoke printed forbidden full-kernel success" >&2
   exit 1
 fi
-echo "E1_QEMU_PREFLIGHT_ONLY (NO EXITBS / NO CR3 / NO CLEAN_PASS)" |
+echo "E2A_QEMU_MAP_PREFLIGHT_ONLY (NO EXITBS / NO CR3 / NO CLEAN_PASS)" |
   tee out/preflight-outcome.txt

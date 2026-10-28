@@ -8,6 +8,8 @@ use core::ffi::c_void;
 #[cfg(feature = "lab-debug-exit")]
 use core::arch::asm;
 use core::panic::PanicInfo;
+#[cfg(feature = "lab-e2-preflight")]
+mod memory;
 
 const EFI_SYSTEM_TABLE_SIGNATURE: u64 = 0x5453_5953_2049_4249;
 const EFI_LOAD_ERROR: usize = (1usize << (usize::BITS - 1)) | 1;
@@ -77,10 +79,32 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
             if checked.count == 0 || checked.staged_bytes > unios_elf::MAX_STAGED {
                 return EFI_LOAD_ERROR;
             }
+            #[cfg(feature = "lab-e2-preflight")]
+            {
+                let service_ptr = unsafe { (*system_table).boot_services.cast::<memory::BootServices>() };
+                match memory::preflight(service_ptr, &checked) {
+                    Ok(_count) => {
+                        // Any console call may change MapKey. This is an
+                        // observability-only E2a preflight: NEVER ExitBS.
+                        unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
+                        #[cfg(feature = "lab-debug-exit")]
+                        unsafe {
+                            asm!("out dx, al", in("dx") 0xf4u16, in("al") 0x22u8,
+                                 options(nomem, nostack, preserves_flags));
+                        }
+                        return EFI_UNSUPPORTED;
+                    }
+                    Err(_) => {
+                        unsafe { console(system_table, b"UNIOS:L1:E2A_REJECTED\r\n"); }
+                        return EFI_LOAD_ERROR;
+                    }
+                }
+            }
+            #[cfg(not(feature = "lab-e2-preflight"))]
             unsafe { console(system_table, b"UNIOS:L1:E1_PREFLIGHT_ONLY\r\n"); }
             // QEMU-only E1 preflight signal: 0x21 => host exit status 67.
             // DIFFERENT from 0x20 (reserved for full post-handoff success).
-            #[cfg(feature = "lab-debug-exit")]
+            #[cfg(all(feature = "lab-debug-exit", not(feature = "lab-e2-preflight")))]
             unsafe { asm!("out dx, al", in("dx") 0xf4u16, in("al") 0x21u8,
                           options(nomem, nostack, preserves_flags)); }
             EFI_UNSUPPORTED // NOT a clean kernel boot, and NOT a handoff
