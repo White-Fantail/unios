@@ -44,6 +44,11 @@ See the [L1 scoped user-Go decision record](docs/reviews/unios-l1-scoped-user-go
 
 The 2026-10-26 scoped user Go is recorded, but **implementation has not started**. The [L1 execution readiness runbook](docs/contracts/unios-l1-execution-readiness-runbook-v0.1.md) defines E0–E5 artifact, handoff, CR3, exception, host-oracle and stop gates. The [L1 verification traceability matrix](docs/reviews/unios-l1-verification-traceability-matrix-v0.1.md) indexes 18 + 20 + 22 = **60 planned paper test cases, 0 executed**; the DevSigned-only case is out of profile. Research and documentation remain the current working mode; no kernel source/build/QEMU runs or L2 authorization are implied.
 
+## Final L1 paper audit (2026-10-29)
+
+The [L1 final pre-implementation design audit](docs/reviews/unios-l1-final-preimplementation-design-audit-v0.1.md) determined **conditional GO for a narrowly scoped future first-code experiment**, not that a kernel boots or that the project has switched out of design-only mode. Three P0 stops concern fixed ELF **ET_EXEC** artifact output, the real old/new CR3 bridge across ExitBootServices, and independently observable host completion; five further P1 risk controls cover diagnostics, UEFI lifecycle, OVMF reproducibility, NMI/exception handling and test evidence. The 60 indexed cases are **0 executed; 59 apply to DevUnsigned L1 and one DevSigned-only case is deferred**. L2/L3 remain unapproved.
+
+
 ## Architecture documents
 
 - **[L1 Scoped User Go — 2026-10-26 (Recorded, Not Implemented)](docs/reviews/unios-l1-scoped-user-go-2026-10-26.md)** — explicit user approval of the limited QEMU/OVMF single-CPU experimental boot/diagnostic kernel; execution still postponed under design-only working mode; source/build/test evidence absent and L2/L3 not approved.
