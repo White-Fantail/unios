@@ -34,6 +34,8 @@ cargo run --locked --quiet -p unios_staging --bin audit -- "$KERNEL" | tee out/k
 # An actual linked kernel segment must have nonzero BSS in this E2b test.
 awk -F'bss=' '/E2B_HOST_STAGE_OK/ { if ($2+0 > 0) found=1 } END { exit !found }' out/kernel-staging-audit.txt
 
+cargo run --locked --quiet -p unios_paging --bin audit -- "$KERNEL" out/e2c-page-tables.bin | tee out/host-pte-builder.txt
+python3 scripts/audit_e2c_pte.py "$KERNEL" out/e2c-page-tables.bin | tee out/host-pte-independent-audit.txt
 export UNIOS_KERNEL_ELF="$KERNEL"
 cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2c-tables --target x86_64-unknown-uefi
 EFI="$ROOT/target/x86_64-unknown-uefi/release/unios_loader.efi"
