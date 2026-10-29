@@ -189,6 +189,43 @@ pub fn verify_lab_ud(
                    normal_handler,df_handler,Some(ud_handler))
 }
 
+/// E2m disposable QEMU-only double-fault injection: a real #GP must
+/// occur while CPU is trying to deliver an earlier #GP. Make *only* the
+/// vector 13 (#GP) gate's code selector invalid, beyond GDTR limit 39.
+/// The valid vector 8 (#DF) IST1 gate remains untouched. NEVER use on
+/// physical hardware or an operational IDT.
+pub const LAB_BAD_GP_SELECTOR:u16=0x28;
+pub fn build_lab_df(
+    b:&mut [u8],descriptors_va:u64,main_top:u64,df_ist_top:u64,
+    normal_handler:u64,df_handler:u64,ud_handler:u64,
+)->Result<Image,Error> {
+    let image=build_lab_ud(b,descriptors_va,main_top,df_ist_top,
+                           normal_handler,df_handler,ud_handler)?;
+    set16(b,IDT_OFF+13*16+2,LAB_BAD_GP_SELECTOR);
+    verify_lab_df(b,image,main_top,df_ist_top,
+                  normal_handler,df_handler,ud_handler)?;
+    Ok(image)
+}
+pub fn verify_lab_df(
+    b:&[u8],image:Image,main_top:u64,df_ist_top:u64,
+    normal_handler:u64,df_handler:u64,ud_handler:u64,
+)->Result<(),Error> {
+    if b.len()!=PAGE{return Err(Error::Length);}
+    if get16(b,IDT_OFF+13*16+2)!=LAB_BAD_GP_SELECTOR ||
+       LAB_BAD_GP_SELECTOR<=image.gdtr_limit ||
+       get_gate(b,DOUBLE_FAULT).2!=1 {
+        return Err(Error::InvalidIdt);
+    }
+    // Clone the exact 4KiB page only inside the QEMU-only validation
+    // path, repair the *single intended corrupted selector* and then
+    // reuse every existing strict GDT/TSS/IDT/zero-fill rule.
+    let mut expected=[0u8;PAGE];
+    expected.copy_from_slice(b);
+    set16(&mut expected,IDT_OFF+13*16+2,KERNEL_CS);
+    verify_lab_ud(&expected,image,main_top,df_ist_top,
+                  normal_handler,df_handler,ud_handler)
+}
+
 #[cfg(test)]
 extern crate std;
 #[cfg(test)]
@@ -274,6 +311,38 @@ mod tests {
     #[test] fn live_lab_rejects_alias_ud_handler(){
         let mut bytes=vec![0;PAGE];
         assert_eq!(build_lab_ud(&mut bytes,VA,M,D,N,F,N),Err(Error::InvalidHandler));
+    }
+    #[test] fn e2m_df_injection_only_gp_selector_is_broken(){
+        let (mut b,_) = fixture();
+        let df=0x1400_0800;
+        let image=build_lab_df(&mut b,VA,M,D,N,df,0x1400_0600).unwrap();
+        assert_eq!(get_gate(&b,13).1,LAB_BAD_GP_SELECTOR);
+        assert_eq!(get_gate(&b,8).1,KERNEL_CS);
+        assert_eq!(get_gate(&b,8).2,1);
+        assert_eq!(get_gate(&b,6).0,0x1400_0600);
+        assert_eq!(verify_lab_df(&b,image,M,D,N,df,0x1400_0600),Ok(()));
+        assert_eq!(verify_lab_ud(&b,image,M,D,N,df,0x1400_0600),Err(Error::InvalidIdt));
+    }
+    #[test] fn e2m_df_injection_rejects_wrong_bad_selector(){
+        let (mut b,_) = fixture();
+        let df=0x1400_0800;
+        let image=build_lab_df(&mut b,VA,M,D,N,df,0x1400_0600).unwrap();
+        set16(&mut b,IDT_OFF+13*16+2,0x30);
+        assert_eq!(verify_lab_df(&b,image,M,D,N,df,0x1400_0600),Err(Error::InvalidIdt));
+    }
+    #[test] fn e2m_df_injection_rejects_missing_ist(){
+        let (mut b,_) = fixture();
+        let df=0x1400_0800;
+        let image=build_lab_df(&mut b,VA,M,D,N,df,0x1400_0600).unwrap();
+        b[IDT_OFF+8*16+4]=0;
+        assert_eq!(verify_lab_df(&b,image,M,D,N,df,0x1400_0600),Err(Error::InvalidIdt));
+    }
+    #[test] fn e2m_df_injection_rejects_corrupt_tss(){
+        let (mut b,_) = fixture();
+        let df=0x1400_0800;
+        let image=build_lab_df(&mut b,VA,M,D,N,df,0x1400_0600).unwrap();
+        b[TSS_OFF+36]^=1;
+        assert_eq!(verify_lab_df(&b,image,M,D,N,df,0x1400_0600),Err(Error::InvalidTss));
     }
     #[test] fn rejects_corrupt_tss_descriptor(){
         let (mut b,img)=fixture();b[29]^=0x80;
