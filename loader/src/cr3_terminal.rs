@@ -10,7 +10,7 @@ global_asm!(r#"
 unios_l1_cr3_terminal:
     cli
     cld
-    // SysV ABI first argument new private PML4 root, second bridge RSP.
+    // Explicit sysv64 ABI: RDI new private PML4 root, RSI bridge RSP.
     // Switch RSP under old identity-mapped firmware CR3 FIRST.
     mov rsp,rsi
     // All live following code bytes and low bridge stack are RX / RW
@@ -65,7 +65,10 @@ unios_l1_cr3_terminal:
     .globl unios_l1_cr3_terminal_end
 unios_l1_cr3_terminal_end:
 "#);
-extern "C" {
+// EFI uses Microsoft x64 ABI for the default C calling convention.
+// This handwritten stub explicitly uses SysV RDI/RSI arguments;
+// pin the FFI to sysv64 so the compiler cannot pass RCX/RDX instead.
+extern "sysv64" {
     fn unios_l1_cr3_terminal(root:u64,bridge_rsp:u64)->!;
     fn unios_l1_cr3_terminal_end();
 }
