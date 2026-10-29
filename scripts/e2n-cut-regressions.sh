@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2n QEMU-only CPU-delivered UD2 #UD, and INT8 software-interrupt IST1; NOT a real #DF.
+# E2n QEMU-only genuine CPU #UD, software INT8 IST1 and separate genuine nested #GP => #DF.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

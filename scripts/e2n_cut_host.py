@@ -204,6 +204,8 @@ def run(argv):
                 proof.update(full)
                 targeted=verify_targets(root,records,qmp)
                 proof.update(targeted)
+                proof["new_private_cr3_host_independently_audited"]=False
+                proof["guest_raw_cut_audit"]="inferred_from_distinct_guest_preflight_exit_only"
                 (base/"e2n-host-targeted-proof.json").write_text(
                     json.dumps({"result":"PASS",**proof},indent=2)+"\n")
                 (base/"e2n-host-hmp-root-sample.txt").write_text(
@@ -227,7 +229,7 @@ def run(argv):
                 (base/"preflight-outcome.txt").write_text(
                     f"E2N_QEMU_PRIVATE_PTE_CLOSURE_{mode.upper()}_SMOKE_ONLY "
                     "(NO EXITBS / NO NEW CR3 / NO CLEAN_PASS)\n")
-                print(f"E2N_HOST_NEW_MAP_CLOSURE_PROOF PASS mode={mode} root={proof['root_pa']} "
+                print(f"E2N_GUEST_RAW_CUT_AND_HOST_OLD_MAP_WITNESS PASS mode={mode} root={proof['root_pa']} "
                       f"targets={proof['sampled_reservation_pages']} "
                       f"tables={proof['fully_compared_table_pages']} "
                       f"leaf_sizes={proof['sampled_leaf_sizes']} exit={rc}")
