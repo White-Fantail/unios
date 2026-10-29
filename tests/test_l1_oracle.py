@@ -46,6 +46,9 @@ class OracleTest(unittest.TestCase):
     def test_e2i_all_table_preflight_not_kernel_pass(self):
         self.assertFalse(clean_pass(self.good(exit_code=85)))
 
+    def test_e2j_targeted_leaf_preflight_not_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=87)))
+
     def test_marker_then_reset(self):
         self.assertFalse(clean_pass(self.good(qmp_events=["RESET"])))
 

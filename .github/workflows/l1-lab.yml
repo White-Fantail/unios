@@ -1,8 +1,8 @@
-name: L1 experimental E2i independent QEMU upper-level old-CR3 table witness
+name: L1 experimental E2j QEMU targeted reservation leaf-path witness
 on:
   push:
     branches:
-      - "experiment/l1-e2i-qemu-page-table-witness"
+      - "experiment/l1-e2j-targeted-leaf-witness"
   workflow_dispatch:
 
 permissions:
@@ -24,13 +24,13 @@ jobs:
         run: bash scripts/build-l1.sh
       - name: Install restricted QEMU preflight dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf gdisk dosfstools mtools
-      - name: E2i QEMU paused CPU PML4 and PDPT physical/virtual frames (NOT kernel boot)
+      - name: E2j QEMU paused CPU upper and selected PD/PT frames (NOT kernel boot)
         run: bash scripts/qemu-preflight.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: unios-l1-e2i
+          name: unios-l1-e2j
           path: |
             out/
             target/x86_64-unknown-none/release/unios_kernel
