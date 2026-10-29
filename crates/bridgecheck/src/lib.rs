@@ -33,6 +33,22 @@ pub struct Page {
     pub efi_loader_code: bool,
 }
 
+pub const EMERGENCY_BYTES: usize=11;
+/// Exact 64-bit fail-stop handler: CLI, MOV DX,0xf4, MOV AL,code,
+/// OUT DX,AL, HLT, short JMP back to HLT. This is NOT IRETQ.
+/// Bytes are validated against *linked* UEFI code in E2k.
+pub fn validate_emergency_handler(bytes: &[u8], signal: u8)
+    -> Result<(),Error>
+{
+    // Restrict to previously reserved fatal/non-PASS debug-exit bytes.
+    if signal != 0x31 && signal != 0x32 {return Err(Error::StubBytes);}
+    if bytes.len()!=EMERGENCY_BYTES {return Err(Error::StubBytes);}
+    let expected=[0xfa,0x66,0xba,0xf4,0x00,0xb0,signal,
+                  0xee,0xf4,0xeb,0xfd];
+    if bytes != expected {return Err(Error::StubBytes);}
+    Ok(())
+}
+
 pub fn validate_preflight_stub(bytes: &[u8]) -> Result<(),Error> {
     // Exactly cli; cld; nop; ret. Never executed during E2e.
     if bytes != [0xfa,0xfc,0x90,0xc3] {return Err(Error::StubBytes);}
@@ -110,6 +126,31 @@ mod tests {
         assert_eq!(validate_preflight_stub(&[0xfa,0xfc,0x90,0xc3]),Ok(()));
         assert_eq!(validate_preflight_stub(&[0xfa,0xfc,0x90,0x90]),Err(Error::StubBytes));
         assert_eq!(validate_preflight_stub(&[0xfa,0xfc,0x90]),Err(Error::StubBytes));
+    }
+    #[test] fn emergency_generic_exact_bytes() {
+        assert_eq!(validate_emergency_handler(&[
+            0xfa,0x66,0xba,0xf4,0x00,0xb0,0x31,0xee,0xf4,0xeb,0xfd],0x31),Ok(()));
+    }
+    #[test] fn emergency_df_exact_bytes() {
+        assert_eq!(validate_emergency_handler(&[
+            0xfa,0x66,0xba,0xf4,0x00,0xb0,0x32,0xee,0xf4,0xeb,0xfd],0x32),Ok(()));
+    }
+    #[test] fn emergency_byte_mutation_rejected() {
+        let mut b=[0xfa,0x66,0xba,0xf4,0x00,0xb0,0x31,0xee,0xf4,0xeb,0xfd];
+        b[8]=0x90;
+        assert_eq!(validate_emergency_handler(&b,0x31),Err(Error::StubBytes));
+    }
+    #[test] fn emergency_wrong_exit_byte_rejected() {
+        let b=[0xfa,0x66,0xba,0xf4,0x00,0xb0,0x31,0xee,0xf4,0xeb,0xfd];
+        assert_eq!(validate_emergency_handler(&b,0x32),Err(Error::StubBytes));
+    }
+    #[test] fn emergency_clean_exit_forbidden() {
+        let b=[0xfa,0x66,0xba,0xf4,0x00,0xb0,0x20,0xee,0xf4,0xeb,0xfd];
+        assert_eq!(validate_emergency_handler(&b,0x20),Err(Error::StubBytes));
+    }
+    #[test] fn emergency_truncation_rejected() {
+        let b=[0xfa,0x66,0xba,0xf4,0x00,0xb0,0x31,0xee,0xf4,0xeb,0xfd];
+        assert_eq!(validate_emergency_handler(&b[..10],0x31),Err(Error::StubBytes));
     }
     #[test] fn valid_two_page_span(){let (s,p)=sample();assert_eq!(verify(s,&p,true,true),Ok(()));}
     #[test] fn empty_span_rejected(){assert_eq!(Span::new(0x110000,0x110000),Err(Error::Empty));}
