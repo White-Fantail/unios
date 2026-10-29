@@ -58,6 +58,8 @@ pub enum Error {
     Descriptors,
     #[cfg(feature = "lab-e2h-host-root-proof")]
     HostProof,
+    #[cfg(feature = "lab-e2k-emergency-closure")]
+    EmergencyCode,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -317,6 +319,57 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 // Next stages must independently prove the complete
                 // exception handler bytes and machine frame ABI before
                 // these descriptor images can ever be installed.
+            }
+            #[cfg(feature = "lab-e2k-emergency-closure")]
+            {
+                use unios_bridgecheck::{Page as CodePage, Span};
+                // E2k exact-linked emergency code closure, still DORMANT.
+                // For each page intersecting both fail-stop handlers prove:
+                // old CR3 supervisor executable + UEFI_LOADER_CODE owner,
+                // new private table same-PA supervisor RX, CPU WP/NXE.
+                let (normal,df)=crate::emergency_handlers::addresses();
+                let spans=crate::emergency_handlers::spans();
+                if spans[0].0!=normal || spans[1].0!=df ||
+                   spans[0].0>=spans[1].0 || spans[0].1>spans[1].0 {
+                    return Err(Error::EmergencyCode);
+                }
+                let cpu=crate::cpuprobe::inspect()
+                    .map_err(|_|Error::EmergencyCode)?;
+                for (begin,end) in spans {
+                    let span=Span::new(begin,end).map_err(|_|Error::EmergencyCode)?;
+                    let mut proof=[CodePage {
+                        linear:0,old_physical:0,new_physical:0,
+                        old_executable:false,new_executable:false,
+                        old_supervisor:false,new_supervisor:false,
+                        efi_loader_code:false,
+                    };unios_bridgecheck::MAX_CODE_PAGES];
+                    for n in 0..span.pages {
+                        let source_page=span.page(n).ok_or(Error::EmergencyCode)?;
+                        let (va,pa)=crate::oldmap::audit_efi_code_page(
+                            root_gate,source_page,map,map_size,descriptor_size
+                        ).map_err(|_|Error::EmergencyCode)?;
+                        match tables.lookup(va).map_err(|_|Error::EmergencyCode)? {
+                            Some(existing) if existing.pa==pa && existing.rights==Rights::Rx => {}
+                            Some(_) => return Err(Error::EmergencyCode),
+                            None => tables.map_efi_executable_anchor(va,pa)
+                                .map_err(|_|Error::EmergencyCode)?,
+                        }
+                        tables.verify(va,pa,Rights::Rx)
+                            .map_err(|_|Error::EmergencyCode)?;
+                        proof[n]=CodePage {
+                            linear:va,old_physical:pa,new_physical:pa,
+                            old_executable:true,new_executable:true,
+                            old_supervisor:true,new_supervisor:true,
+                            efi_loader_code:true,
+                        };
+                    }
+                    unios_bridgecheck::verify(
+                        span,&proof[..span.pages],cpu.wp_enabled,cpu.nxe_enabled
+                    ).map_err(|_|Error::EmergencyCode)?;
+                }
+                // Read only AFTER verifying old/new code page provenance.
+                crate::emergency_handlers::validate_linked_bytes()
+                    .map_err(|_|Error::EmergencyCode)?;
             }
             if tables.used_tables() < 4 {return Err(Error::Paging);}
             // NO write to CR3. Missing shared-linear EFI code, exception

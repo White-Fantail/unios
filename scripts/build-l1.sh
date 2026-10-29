@@ -41,7 +41,7 @@ python3 scripts/audit_e2f_descriptors.py out/e2f-descriptors.bin | tee out/host-
 cargo run --locked --quiet -p unios_rootgate --bin audit -- out/e2g-host-root-map.bin | tee out/host-root-builder.txt
 python3 scripts/audit_e2g_root.py out/e2g-host-root-map.bin | tee out/host-root-independent-audit.txt
 export UNIOS_KERNEL_ELF="$KERNEL"
-cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2j-targeted-leaf-proof --target x86_64-unknown-uefi
+cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2k-emergency-closure --target x86_64-unknown-uefi
 EFI="$ROOT/target/x86_64-unknown-uefi/release/unios_loader.efi"
 file "$EFI" | tee out/uefi-pe-header.txt
 if ! grep -Eq 'PE32\+.*EFI application' out/uefi-pe-header.txt; then
@@ -50,4 +50,4 @@ fi
 mkdir -p out/esp/EFI/BOOT
 cp "$EFI" out/esp/EFI/BOOT/BOOTX64.EFI
 sha256sum "$KERNEL" "$EFI" | tee out/image-digests.txt
-echo "E2J_TARGETED_LOWER_LEAF_CORROBORATION_PREFLIGHT_ONLY (E3-E5 NOT RUN)" | tee out/status.txt
+echo "E2K_BOUND_EMERGENCY_HANDLER_CLOSURE_PREFLIGHT_ONLY (E3-E5 NOT RUN)" | tee out/status.txt
