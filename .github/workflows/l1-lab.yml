@@ -1,8 +1,8 @@
-name: L1 experimental E2g UEFI firmware CR3 root metadata preflight
+name: L1 experimental E2h independent QEMU host root translation witness
 on:
   push:
     branches:
-      - "experiment/l1-e2g-old-cr3-root-audit"
+      - "experiment/l1-e2h-qemu-root-corroboration"
   workflow_dispatch:
 
 permissions:
@@ -24,13 +24,13 @@ jobs:
         run: bash scripts/build-l1.sh
       - name: Install restricted QEMU preflight dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf gdisk dosfstools mtools
-      - name: E2g QEMU/OVMF old-CR3 root RAM descriptor gate (NOT kernel boot)
+      - name: E2h QEMU paused CPU root gva2gpa and physical memory corroboration (NOT kernel boot)
         run: bash scripts/qemu-preflight.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: unios-l1-e2g
+          name: unios-l1-e2h
           path: |
             out/
             target/x86_64-unknown-none/release/unios_kernel

@@ -143,6 +143,12 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
         let root_gate=crate::oldmap::inspect_current_root(
             map,map_size,descriptor_size,&ledger[..count],
         ).map_err(|_|Error::OldCr3)?;
+        #[cfg(feature="lab-e2h-host-root-proof")]
+        if !crate::host_checkpoint::host_checkpoint() {
+            return Err(Error::HostProof);
+        }
+        // The first volatile physical-root pointer access must occur
+        // ONLY after the independent paused-QEMU host authorized COM2.
         crate::oldmap::check_owned_identity(&ledger[..count],root_gate)
             .map_err(|_| Error::OldCr3)?;
         for (segment, reserved) in image.segments.iter().take(image.count)

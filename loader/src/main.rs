@@ -20,6 +20,8 @@ mod bridge_anchor;
 mod bridge_span;
 #[cfg(feature = "lab-e2f-descriptors")]
 mod emergency_handlers;
+#[cfg(feature="lab-e2h-host-root-proof")]
+mod host_checkpoint;
 
 const EFI_SYSTEM_TABLE_SIGNATURE: u64 = 0x5453_5953_2049_4249;
 const EFI_LOAD_ERROR: usize = (1usize << (usize::BITS - 1)) | 1;
@@ -98,7 +100,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature = "lab-e2g-root-gate")]
+                            #[cfg(feature="lab-e2h-host-root-proof")]
+                            console(system_table, b"UNIOS:L1:E2H_HOST_CORROBORATED_ROOT_ONLY\r\n");
+                            #[cfg(all(feature="lab-e2g-root-gate",not(feature="lab-e2h-host-root-proof")))]
                             console(system_table, b"UNIOS:L1:E2G_FIRMWARE_CR3_ROOT_DESCRIPTOR_ONLY\r\n");
                             #[cfg(all(feature = "lab-e2f-descriptors", not(feature = "lab-e2g-root-gate")))]
                             console(system_table, b"UNIOS:L1:E2F_DORMANT_GDT_IDT_TSS_PREFLIGHT_ONLY\r\n");
@@ -115,7 +119,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature = "lab-e2g-root-gate")]
+                            #[cfg(feature="lab-e2h-host-root-proof")]
+                            const CODE: u8 = 0x29;
+                            #[cfg(all(feature="lab-e2g-root-gate",not(feature="lab-e2h-host-root-proof")))]
                             const CODE: u8 = 0x28;
                             #[cfg(all(feature = "lab-e2f-descriptors", not(feature = "lab-e2g-root-gate")))]
                             const CODE: u8 = 0x27;
