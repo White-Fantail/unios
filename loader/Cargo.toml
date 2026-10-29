@@ -13,6 +13,7 @@ unios_cpugate = { path = "../crates/cpugate" }
 unios_bridgecheck = { path = "../crates/bridgecheck" }
 unios_descriptors = { path = "../crates/descriptors" }
 unios_rootgate = { path = "../crates/rootgate" }
+unios_exitbs = { path = "../crates/exitbs" }
 
 [[bin]]
 name = "unios_loader"
