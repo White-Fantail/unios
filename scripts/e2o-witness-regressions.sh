@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2o QEMU-only genuine CPU #UD, software INT8 IST1 and separate genuine nested #GP => #DF.
+# E2o: independent second QMP new-PML4 witness precedes terminal CPU #UD/IST/real #DF regressions.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -22,7 +22,7 @@ for mode in ud ist df; do
   if [[ "$mode" == "df" ]]; then
     FEATURES="lab-debug-exit,lab-e2o-host-private-witness,lab-e2m-smoke-real-df"
   else
-    FEATURES="lab-debug-exit,lab-e2o-transition-closure,lab-e2l-smoke-$mode"
+    FEATURES="lab-debug-exit,lab-e2o-host-private-witness,lab-e2l-smoke-$mode"
   fi
   cargo build --locked --release -p unios_loader \
     --features "$FEATURES" \
@@ -46,7 +46,7 @@ done
 
 # Restore the non-fatal preflight image and final release target artifact.
 cargo build --locked --release -p unios_loader \
-  --features "lab-debug-exit,lab-e2o-transition-closure" \
+  --features "lab-debug-exit,lab-e2o-host-private-witness" \
   --target x86_64-unknown-uefi
 cmp target/x86_64-unknown-uefi/release/unios_loader.efi out/e2o-preflight-loader.efi
 cp out/e2o-preflight-loader.efi out/esp/EFI/BOOT/BOOTX64.EFI
