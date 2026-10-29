@@ -136,7 +136,7 @@ def expected_host_exit(mode):
 
 def run(argv):
     mode=os.environ.get("UNIOS_E2K_SMOKE","preflight")
-    expected=expected_host_exit(mode)
+    expected_exit=expected_host_exit(mode)
     base=Path("out")
     qmp_path=base/"e2j-qmp.sock"
     gate_path=base/"e2j-com2.sock"
@@ -219,8 +219,8 @@ def run(argv):
                 remaining=max(1,int(timeout-time.monotonic()))
                 rc=proc.wait(timeout=remaining)
                 (base/"preflight-host-exit.txt").write_text(f"{rc}\n")
-                if rc!=expected:
-                    raise RuntimeError(f"QEMU unexpected E2k diagnostic exit: {rc}, expected={expected} mode={mode}")
+                if rc!=expected_exit:
+                    raise RuntimeError(f"QEMU unexpected E2k diagnostic exit: {rc}, expected={expected_exit} mode={mode}")
                 serial=(base/"preflight-serial.log").read_text(errors="replace")
                 if "HALTED_PASS" in serial:
                     raise RuntimeError("E2k emitted forbidden kernel success marker")
