@@ -217,6 +217,7 @@ def run(argv):
                     "info registers after:\n"+regs2+"\n")
                 if any(x in ("RESET","SHUTDOWN") for x in qmp.events):
                     raise RuntimeError("unexpected VM reset/shutdown before proof")
+                print("E2Q_STAGE_J_OLD_ROOT_HOST_VERIFIED",flush=True)
                 # Authorize single guest gate, with CPU still paused.
                 gate_socket.sendall(b"J")
                 qmp.call("cont")
@@ -275,6 +276,7 @@ def run(argv):
                                 **new_proof},indent=2)+"\n")
                 if any(x in ("RESET","SHUTDOWN") for x in qmp.events):
                     raise RuntimeError("unexpected reset before second authorization")
+                print(f"E2Q_STAGE_O_NEW_PML4_HOST_VERIFIED root=0x{new_root:x} used={used}",flush=True)
                 # Only the successful independent physical-frame audit is
                 # allowed to unlock the guest; this is not a CR3 switch.
                 gate_socket.sendall(b"O")
@@ -310,6 +312,7 @@ def run(argv):
                             raise ValueError("post-switch COM2 marker missing")
                     if third.split(SWITCH_MARKER,1)[1]:
                         raise ValueError("extraneous data after third marker")
+                    print("E2Q_STAGE_Q_POST_CR3_MARKER_RECEIVED",flush=True)
                     qmp.call("stop")
                     if qmp.call("query-status").get("running") is not False:
                         raise RuntimeError("QEMU vCPU was not stopped post-CR3")
@@ -320,6 +323,7 @@ def run(argv):
                         int(new_proof["cr3_terminal_code_begin"],16),
                         int(new_proof["cr3_terminal_code_end"],16),
                         bridge["base"],bridge["end"])
+                    print(f"E2Q_STAGE_Q_CPU_REGISTERS_VERIFIED {live}",flush=True)
                     rip=int(live["cpu_live_rip"],16)
                     from e2i_table_walk import PAGE
                     if verify_new is None:raise RuntimeError("missing new host walker")
