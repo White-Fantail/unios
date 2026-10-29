@@ -41,7 +41,7 @@ python3 scripts/audit_e2f_descriptors.py out/e2f-descriptors.bin | tee out/host-
 cargo run --locked --quiet -p unios_rootgate --bin audit -- out/e2g-host-root-map.bin | tee out/host-root-builder.txt
 python3 scripts/audit_e2g_root.py out/e2g-host-root-map.bin | tee out/host-root-independent-audit.txt
 export UNIOS_KERNEL_ELF="$KERNEL"
-cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2p-exitbs-contract --target x86_64-unknown-uefi
+cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2q-cr3-code --target x86_64-unknown-uefi
 EFI="$ROOT/target/x86_64-unknown-uefi/release/unios_loader.efi"
 file "$EFI" | tee out/uefi-pe-header.txt
 if ! grep -Eq 'PE32\+.*EFI application' out/uefi-pe-header.txt; then
@@ -51,4 +51,4 @@ python3 scripts/audit_e2k_pe.py "$EFI" | tee out/e2k-independent-pe-handler-audi
 mkdir -p out/esp/EFI/BOOT
 cp "$EFI" out/esp/EFI/BOOT/BOOTX64.EFI
 sha256sum "$KERNEL" "$EFI" | tee out/image-digests.txt
-echo "E2P_FINAL_MEMORY_MAP_KEY_CONTRACT_ONLY (E3-E5 NOT RUN)" | tee out/status.txt
+echo "E2Q_CR3_TERMINAL_BRIDGE_BYTE_AND_PTE_PREFLIGHT_ONLY (E3-E5 NOT RUN)" | tee out/status.txt

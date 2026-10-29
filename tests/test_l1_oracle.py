@@ -76,6 +76,12 @@ class OracleTest(unittest.TestCase):
         self.assertFalse(clean_pass(self.good(exit_code=115)))
     def test_e2p_invalid_exitbs_not_clean_boot(self):
         self.assertFalse(clean_pass(self.good(exit_code=117)))
+    def test_e2q_bridge_preflight_not_kernel_boot(self):
+        self.assertFalse(clean_pass(self.good(exit_code=125)))
+    def test_e2q_live_cr3_not_kernel_boot(self):
+        self.assertFalse(clean_pass(self.good(exit_code=121)))
+    def test_e2q_failed_live_cr3_not_kernel_boot(self):
+        self.assertFalse(clean_pass(self.good(exit_code=123)))
     def test_marker_then_reset(self):
         self.assertFalse(clean_pass(self.good(qmp_events=["RESET"])))
 
