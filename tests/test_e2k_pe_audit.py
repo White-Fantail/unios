@@ -34,7 +34,7 @@ class PeEmergencyAudit(unittest.TestCase):
         d=pe_fixture();d[0x188+39]|=0x80
         with self.assertRaises(Reject):audit(d)
     def test_not_pe32_plus(self):
-        d=pe_fixture();d[0x98]=0x0b
+        d=pe_fixture();d[0x99]=0x00
         with self.assertRaises(Reject):audit(d)
     def test_truncated_section(self):
         with self.assertRaises(Reject):audit(pe_fixture()[:0x300])
