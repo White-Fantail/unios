@@ -146,7 +146,7 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
             map,map_size,descriptor_size,&ledger[..count],
         ).map_err(|_|Error::OldCr3)?;
         #[cfg(feature="lab-e2h-host-root-proof")]
-        if !crate::host_checkpoint::host_checkpoint() {
+        if !crate::host_checkpoint::host_checkpoint(&ledger[..count]) {
             return Err(Error::HostProof);
         }
         // The first volatile physical-root pointer access must occur

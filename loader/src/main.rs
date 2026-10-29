@@ -100,7 +100,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature="lab-e2i-host-table-proof")]
+                            #[cfg(feature="lab-e2j-targeted-leaf-proof")]
+                            console(system_table, b"UNIOS:L1:E2J_HOST_TARGETED_RESERVATION_LEAF_PREFLIGHT_ONLY\r\n");
+                            #[cfg(all(feature="lab-e2i-host-table-proof",not(feature="lab-e2j-targeted-leaf-proof")))]
                             console(system_table, b"UNIOS:L1:E2I_HOST_CORROBORATED_UPPER_OLD_TABLES_ONLY\r\n");
                             #[cfg(all(feature="lab-e2h-host-root-proof",not(feature="lab-e2i-host-table-proof")))]
                             console(system_table, b"UNIOS:L1:E2H_HOST_CORROBORATED_ROOT_ONLY\r\n");
@@ -121,7 +123,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature="lab-e2i-host-table-proof")]
+                            #[cfg(feature="lab-e2j-targeted-leaf-proof")]
+                            const CODE: u8 = 0x2b;
+                            #[cfg(all(feature="lab-e2i-host-table-proof",not(feature="lab-e2j-targeted-leaf-proof")))]
                             const CODE: u8 = 0x2a;
                             #[cfg(all(feature="lab-e2h-host-root-proof",not(feature="lab-e2i-host-table-proof")))]
                             const CODE: u8 = 0x29;
