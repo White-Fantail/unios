@@ -1,23 +1,22 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-29:** E2j's EFI reservation
-> boundary old-CR3 path witness is merged in `main`. E2k adds
-> **11-byte exact linked code closure for both emergency error
-> handlers**, independently audits real PE32+ executable bytes,
-> and confirms three real disposable QEMU/OVMF outcomes:
-> preflight **89**, generic-handler direct call **99**, and
-> DF-handler direct call **101**. **180/180 host/Rust tests pass**.
-> Direct calls are NOT CPU exception delivery or #DF IST proof.
-> **No GDT/IDT/TSS installation, ExitBootServices, CR3 switch,
-> or real high-half kernel boot has occurred**. True kernel
-> clean success exit **65** is unverified. See
-> [E2k evidence](docs/implementation/l1-e2k-emergency-handler-closure-2026-10-29.md)
-> and [operator testing gate](docs/implementation/l1-operator-test-readiness.md).
+> **L1 Experimental Kernel — 2026-10-30:** E2k's linked
+> emergency-handler code and fail-stop direct CALLs are in `main`.
+> E2l adds **genuine CPU-generated #UD via UD2 and active
+> GDT/IDT/TSS**, plus a **software INT8 IST1 stack switch**,
+> on disposable QEMU/OVMF. The final CI ran **191/191 tests** and
+> saw independent preflight **91**, hardware #UD **103**, and
+> software-vector IST1 **105**. **INT8 is not a genuine
+> CPU-generated #DF.** No ExitBootServices, new CR3, high-half
+> kernel entry or true full-boot exit **65** has occurred.
+> See [E2l evidence](docs/implementation/l1-e2l-active-idt-ist-2026-10-30.md)
+> and [operator test gate](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** implements its independently approved **L1 Experimental Kernel**
-as a staged preflight and boot-handoff research project. It is **not
-yet a successfully booted or released OS**. L2 and higher work
-requires a separate approval.
+**UniOS** is an independent OS project implementing its approved
+**L1 Experimental Kernel**. The source is currently an experimental
+EFI preflight / isolated QEMU exception lab, **not a booted or
+released general-purpose OS**. L2 and later functionality
+requires separate authorization.
 
 ## Vision
 
