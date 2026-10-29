@@ -14,7 +14,7 @@ class E2hHostWitnessTests(unittest.TestCase):
     def test_reports_root_mapping(self):
         self.assertTrue(verify_witness(REG,TR,PHY,PHY,REG)["root_phys_virtual_equal"])
     def test_qemu8_gpa_only_success(self):
-        self.assertTrue(parse_translation("gpa: 0x123000\\r\\n",ROOT))
+        self.assertTrue(parse_translation("gpa: 0x123000\r\n",ROOT))
     def test_qemu8_gpa_only_wrong(self):
         with self.assertRaises(ValueError):
             parse_translation("gpa: 0x124000",ROOT)
