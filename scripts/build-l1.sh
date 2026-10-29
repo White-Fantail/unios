@@ -48,6 +48,7 @@ if ! grep -Eq 'PE32\+.*EFI application' out/uefi-pe-header.txt; then
   echo "ERROR: UEFI artifact is not PE32+ EFI application" >&2; exit 1
 fi
 python3 scripts/audit_e2k_pe.py "$EFI" | tee out/e2k-independent-pe-handler-audit.txt
+python3 scripts/audit_e2q_cr3_pe.py "$EFI" | tee out/e2q-independent-machine-cr3-audit.txt
 mkdir -p out/esp/EFI/BOOT
 cp "$EFI" out/esp/EFI/BOOT/BOOTX64.EFI
 sha256sum "$KERNEL" "$EFI" | tee out/image-digests.txt

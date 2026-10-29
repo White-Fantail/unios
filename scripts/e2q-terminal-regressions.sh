@@ -35,6 +35,7 @@ for mode in ud ist df exitbs cr3; do
   cp target/x86_64-unknown-uefi/release/unios_loader.efi out/esp/EFI/BOOT/BOOTX64.EFI
   python3 scripts/audit_e2k_pe.py out/esp/EFI/BOOT/BOOTX64.EFI |
     tee "out/e2q-$mode-independent-pe.txt"
+  python3 scripts/audit_e2q_cr3_pe.py out/esp/EFI/BOOT/BOOTX64.EFI | tee "out/e2q-$mode-cr3-opcode-audit.txt"
   UNIOS_E2Q_SMOKE="$mode" bash scripts/qemu-preflight.sh |
     tee "out/e2q-$mode-smoke-host.txt"
   cp out/preflight-outcome.txt "out/e2q-$mode-smoke-outcome.txt"
