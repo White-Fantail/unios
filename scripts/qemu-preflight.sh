@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# E2m QEMU: existing host memory witness and terminal CPU-generated #DF exception laboratory.
-# Distinct debug-exit byte 0x2e returns 93; 65 is reserved for E4 clean PASS.
+# E2n QEMU: actual new-private-PTE cut closure and E2m fault-regression proof, no CR3 write.
+# Distinct debug-exit byte 0x2f returns 95; 65 is reserved for E4 clean PASS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -26,21 +26,21 @@ qemu-system-x86_64 --version | tee out/qemu-version.txt
 sha256sum "$CODE" "$VARS_TEMPLATE" "$(command -v qemu-system-x86_64)" |
   tee out/preflight-host-digests.txt
 cat > out/qemu-profile.txt <<'PROFILE'
-LAB-H1 E2m-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
+LAB-H1 E2n-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
 1 vCPU, 256 MiB, OVMF DevUnsigned, immutable CODE,
 disposable pflash VARS, disposable GPT ESP with ephemeral snapshot overlay,
 no network and no real user media; COM1 log, COM2 host barrier and QMP.
-E2m host exit=93, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
+E2n host exit=95, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
 PROFILE
 # Host controls a separate COM2 Unix socket and pauses vCPU0 at the root
 # dereference checkpoint. Guest cannot advance without successful QMP proof.
 # CPU-origin evidence: QEMU's native exception trace is collected only
 # for the opt-in nested-fault VM (not the default preflight).
 LOG_ARGS=()
-if [[ "${UNIOS_E2M_SMOKE:-preflight}" == "df" ]]; then
-  LOG_ARGS=(-d int -D "$ROOT/out/e2m-real-df-qemu-trace.log")
+if [[ "${UNIOS_E2N_SMOKE:-preflight}" == "df" ]]; then
+  LOG_ARGS=(-d int -D "$ROOT/out/e2n-real-df-qemu-trace.log")
 fi
-python3 scripts/e2m_df_host.py -- qemu-system-x86_64 \
+python3 scripts/e2n_cut_host.py -- qemu-system-x86_64 \
   "${LOG_ARGS[@]}" \
   -machine q35,accel=tcg -cpu qemu64,+nx,-la57,-pcid \
   -smp 1 -m 256 -nic none \

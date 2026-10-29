@@ -66,6 +66,8 @@ class OracleTest(unittest.TestCase):
         self.assertFalse(clean_pass(self.good(exit_code=109)))
     def test_e2m_failed_ist_error_is_not_kernel_pass(self):
         self.assertFalse(clean_pass(self.good(exit_code=111)))
+    def test_e2n_raw_cut_preflight_not_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=95)))
     def test_marker_then_reset(self):
         self.assertFalse(clean_pass(self.good(qmp_events=["RESET"])))
 

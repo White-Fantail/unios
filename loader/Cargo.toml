@@ -41,3 +41,4 @@ lab-e2l-smoke-ist = ["lab-e2l-lab-descriptors", "lab-debug-exit"]
 
 lab-e2m-lab-descriptors = ["lab-e2l-lab-descriptors"]
 lab-e2m-smoke-real-df = ["lab-e2m-lab-descriptors", "lab-debug-exit"]
+lab-e2n-transition-closure = ["lab-e2m-lab-descriptors"]
