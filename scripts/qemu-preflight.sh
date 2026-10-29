@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# E2g QEMU: gate first old CR3 root dereference by UEFI RAM descriptor ownership.
-# Distinct debug-exit byte 0x28 returns 81; 65 is reserved for E4 clean PASS.
+# E2h QEMU: independent host QMP proof *before* old CR3 root dereference.
+# Distinct debug-exit byte 0x29 returns 83; 65 is reserved for E4 clean PASS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -26,14 +26,15 @@ qemu-system-x86_64 --version | tee out/qemu-version.txt
 sha256sum "$CODE" "$VARS_TEMPLATE" "$(command -v qemu-system-x86_64)" |
   tee out/preflight-host-digests.txt
 cat > out/qemu-profile.txt <<'PROFILE'
-LAB-H1 E2g-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
+LAB-H1 E2h-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
 1 vCPU, 256 MiB, OVMF DevUnsigned, immutable CODE,
 disposable pflash VARS, disposable GPT ESP with ephemeral snapshot overlay,
-no network and no real user media, COM1 to finite log.
-E2g host exit=81, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
+no network and no real user media; COM1 log, COM2 host barrier and QMP.
+E2h host exit=83, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
 PROFILE
-set +e
-timeout --signal=TERM --kill-after=5s 35s qemu-system-x86_64 \
+# Host controls a separate COM2 Unix socket and pauses vCPU0 at the root
+# dereference checkpoint. Guest cannot advance without successful QMP proof.
+python3 scripts/e2h_root_host.py -- qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu qemu64,+nx,-la57,-pcid \
   -smp 1 -m 256 -nic none \
   -drive if=pflash,unit=0,format=raw,readonly=on,file="$CODE" \
@@ -42,19 +43,4 @@ timeout --signal=TERM --kill-after=5s 35s qemu-system-x86_64 \
   -device ide-hd,drive=esp \
   -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
   -serial file:"$ROOT/out/preflight-serial.log" \
-  -display none -monitor none -no-reboot -no-shutdown \
-  >out/preflight-qemu-stdout.log 2>out/preflight-qemu-stderr.log
-rc=$?
-set -e
-echo "$rc" | tee out/preflight-host-exit.txt
-if [[ "$rc" -ne 81 ]]; then
-  echo "ERROR: E2g firmware root metadata preflight was not independently observed (code $rc)" >&2
-  cat out/preflight-qemu-stderr.log >&2
-  exit 1
-fi
-if grep -Eq 'HALTED_PASS' out/preflight-serial.log; then
-  echo "ERROR: E1 smoke printed forbidden full-kernel success" >&2
-  exit 1
-fi
-echo "E2G_QEMU_FIRMWARE_ROOT_DESCRIPTOR_PREFLIGHT_ONLY (NO EXITBS / NO CR3 / NO CLEAN_PASS)" |
-  tee out/preflight-outcome.txt
+  -display none -monitor none -no-reboot -no-shutdown
