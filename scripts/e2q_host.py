@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from e2i_table_walk import walk_tables, qmp_read_table
+from e2i_table_walk import walk_tables, qmp_read_table,parse_full_page_dump
 from e2j_targeted import MARKER, parse_manifest, verify_targets
 from e2o_new_tree import MARKER as PRIVATE_MARKER
 from e2q_new_tree import PACKET,decode_manifest,verify_new,MARKER as SWITCH_MARKER,parse_switched_regs
@@ -330,8 +330,20 @@ def run(argv):
                     # Separate check of the actual CPU linear instruction
                     # address (distinct from guest-provided begin/end).
                     from e2o_new_tree import walk_new as walk_active
+                    def active_physical_page(pa):
+                        # After MOV CR3 the private table frames have no
+                        # low direct/identity mapping. The old-root
+                        # qmp_read_table intentionally demands 'x' and
+                        # gva2gpa aliases; using it here is WRONG.
+                        # QMP 'xp' is actual physical RAM independent of
+                        # the live CR3's address space. Bound all reads.
+                        if (pa<new_root or pa>=new_root+used*4096
+                                or (pa-new_root)%4096):
+                            raise ValueError("post-cut physical PTE read escaped private pool")
+                        return parse_full_page_dump(
+                            qmp.hmp(f"xp /512gx 0x{pa:x}"),pa)
                     pc_mapping=walk_active(
-                        new_root,used,rip,lambda pa:qmp_read_table(qmp,pa))
+                        new_root,used,rip,active_physical_page)
                     if pc_mapping!=(rip,1):
                         raise ValueError("actual post-switch RIP is not private RX identity")
                     # QEMU 8.2 HMP gva2gpa reports 'Unmapped' for
@@ -348,6 +360,7 @@ def run(argv):
                     (base/"e2q-live-cr3-proof.json").write_text(
                         json.dumps({"result":"PASS",**live,
                                     "pc_mapping_identity_rx":True,
+                                    "post_switch_qmp_pte_reader":"bounded_physical_xp_only_no_direct_map",
                                     "qmp_gva2gpa_result":gva_result,
                                     "efi_boot_services_exited":"inferred_from_terminal_marker_after_success_branch"},
                                    indent=2)+"\n")
