@@ -207,7 +207,7 @@ def run(argv):
                 proof.update(targeted)
                 proof["new_private_cr3_host_independently_audited"]=False
                 proof["guest_raw_cut_audit"]="inferred_from_distinct_guest_preflight_exit_only"
-                (base/"e2o-host-targeted-proof.json").write_text(
+                (base/"e2o-old-root-precheck.json").write_text(
                     json.dumps({"result":"PASS",**proof},indent=2)+"\n")
                 (base/"e2o-host-hmp-root-sample.txt").write_text(
                     "info registers before:\n"+regs1+"\n"+
@@ -267,6 +267,8 @@ def run(argv):
                     raise RuntimeError("old firmware CR3 changed during new-PTE audit")
                 proof.update(new_proof)
                 proof["guest_raw_cut_audit"]="completed_before_second_paused_checkpoint"
+                (base/"e2o-host-targeted-proof.json").write_text(
+                    json.dumps({"result":"PASS",**proof},indent=2)+"\\n")
                 (base/"e2o-new-root-host-proof.json").write_text(
                     json.dumps({"result":"PASS","old_root":f"0x{root:x}",
                                 **new_proof},indent=2)+"\\n")
