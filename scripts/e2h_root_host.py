@@ -27,12 +27,17 @@ def parse_cr3(registers):
     return raw, root
 
 def parse_translation(text, root):
-    if re.search(r"(?i)(invalid|not mapped|unknown|error|failed|unmapped)",text):
-        raise ValueError("QMP denied root gva2gpa translation")
-    values = [int(s,16) for s in re.findall(r"0x[0-9a-fA-F]+",text)]
-    if len(values) != 2 or values[0] != root or values[1] != root:
-        raise ValueError(f"host QMP root translation unexpected root=0x{root:x}, values={values}, raw={text[:350]!r}")
-    return True
+    # QEMU 8.x HMP gva2gpa prints ONLY "gpa: 0x...", not the GVA.
+    # Accept two pinned documented reply shapes; reject any extra lines.
+    s=text.strip()
+    one=re.fullmatch(r"(?i)gpa:\s*0x([0-9a-f]+)",s)
+    two=re.fullmatch(
+        r"(?i)gva\s+0x([0-9a-f]+)\s*->\s*gpa\s+0x([0-9a-f]+)",s)
+    if one and int(one.group(1),16)==root:
+        return True
+    if two and int(two.group(1),16)==root and int(two.group(2),16)==root:
+        return True
+    raise ValueError(f"host QMP root mapping is not identity: {s[:300]!r}")
 
 def parse_words(text, address, n=8):
     words=[]
