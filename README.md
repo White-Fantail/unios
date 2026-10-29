@@ -1,21 +1,20 @@
 # UniOS
 
-> **L1 implementation state — 2026-10-29:** E2f dormant
-> GDT/IDT/TSS and DF IST preflight is merged into `main`.
-> The next E2g experimental branch validates current CR3 root-frame
-> firmware RAM ownership **before** reading page-table bytes and
-> checks CR3 stability throughout preflight. Actual QEMU/OVMF
-> diagnostic exit **81** and **113 host/unit tests** were observed.
-> This is **not** an independent physical→linear identity proof,
-> ExitBootServices, a new CR3 or a successful UniOS kernel boot.
-> See [E2g evidence](docs/implementation/l1-e2g-root-gate-2026-10-29.md)
+> **L1 Experimental Kernel — 2026-10-29:** E2g CR3 root
+> firmware RAM ownership preflight is merged into `main`. E2h's
+> disposable QEMU host harness now **independently pauses vCPU0 and
+> corroborates the firmware CR3 root's virtual/physical identity**
+> before allowing the guest's first physical-root dereference.
+> Actual QEMU root proof succeeded with dedicated host exit **83**
+> and 125 host/unit tests. This is **not** full lower-page-table
+> provenance, ExitBootServices, new CR3, or a freestanding kernel
+> boot. Clean kernel exit **65** remains unobserved.
+> See [E2h evidence](docs/implementation/l1-e2h-host-cr3-proof-2026-10-29.md)
 > and [operator test readiness](docs/implementation/l1-operator-test-readiness.md).
-> Boot success exit **65** remains unobserved.
 
-**UniOS** is an independent operating-system project in its
-approved **L1 Experimental Kernel** implementation and validation
-stage. No L2+ work is authorized. This is experimental source code,
-not an installed or successfully booted operating system.
+**UniOS** is an independent OS project implementing the approved
+**L1 Experimental Kernel**, with L2+ deferred pending authorization.
+Current source is experimental and is not a booted or released OS.
 
 ## Vision
 
