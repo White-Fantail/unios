@@ -19,7 +19,7 @@ def verify_native_df_trace(raw):
     # Source of actual CPU #DF must be second contributory fault:
     # QEMU -d int "check_exception old: 0xd new 0xd" (QEMU 8.x).
     nested=list(re.finditer(
-        r"check_exception\s+old:\s*0x0*d\s+new:\s*0x0*d\b",
+        r"check_exception\s+old:\s*0x0*d\s+new:?\s*0x0*d\b",
         text,re.I))
     if not nested:
         raise ValueError("no independently logged GP-during-GP exception")
@@ -43,7 +43,7 @@ def run(filename):
           f"nested_gp={proof['nested_gp_count']} "
           f"df_error_zero={proof['hardware_df_zero_error_events']}")
     # A corrupted native trace must be rejected, independent of exit.
-    first=re.search(rb"check_exception\s+old:\s*0x0*d\s+new:\s*0x0*d\b",data,re.I)
+    first=re.search(rb"check_exception\s+old:\s*0x0*d\s+new:?\s*0x0*d\b",data,re.I)
     if not first:raise ValueError("lost native nested fault")
     bad=data[:first.start()]+b"check_exception old: 0xd new 0x6"+data[first.end():]
     try:verify_native_df_trace(bad)
