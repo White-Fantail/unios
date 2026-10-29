@@ -21,7 +21,7 @@ def parse_full_page_dump(response, physical):
     items=[]
     if not isinstance(response,str): raise ValueError("bad QEMU memory dump type")
     for line in response.strip().splitlines():
-        m=re.fullmatch(r"\s*(0x[0-9a-fA-F]+):\s*(.*?)\s*",line)
+        m=re.fullmatch(r"\s*(?:0x)?([0-9a-fA-F]+):\s*(.*?)\s*",line)
         if not m: raise ValueError(f"unexpected HMP memory line {line[:200]!r}; dump head {response[:250]!r}")
         offset=int(m.group(1),16)
         if offset!=physical+8*len(items):

@@ -33,6 +33,10 @@ class E2iHostWalkTest(unittest.TestCase):
         self.assertEqual(result["pte_qwords_verified"],2048)
         self.assertEqual(result["huge_2m_leaves"],1)
         self.assertEqual(result["leaf_4k_pages"],1)
+    def test_pinned_qemu_hmp_without_0x_address_prefix(self):
+        p=fixture()[ROOT]
+        lines=dump(ROOT,p).replace(f"0x{ROOT:x}:",f"{ROOT:016x}:")
+        self.assertEqual(parse_full_page_dump(lines,ROOT),tuple(p))
     def test_full_page_dump_accepted(self):
         p=fixture()[ROOT]
         self.assertEqual(parse_full_page_dump(dump(ROOT,p),ROOT),tuple(p))
