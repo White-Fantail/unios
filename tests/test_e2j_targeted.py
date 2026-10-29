@@ -84,6 +84,9 @@ class TargetWitnessTests(unittest.TestCase):
         d=fixture();d[PT][256]=0x500001
         got=witness_one(ROOT,0x500000,lambda pa:d[pa])
         self.assertFalse(got["effective_write"])
+    def test_sample_scope_is_not_full_coverage(self):
+        records=parse_manifest(encode([(1,1,0x300000),*AUX]))
+        self.assertLess(len(manifest_targets(records)),sum(r["pages"] for r in records))
     def test_no_full_coverage_claim(self):
         r=parse_manifest(encode([(1,1,0x300000),*AUX]))
         self.assertGreater(len(manifest_targets(r)),8)

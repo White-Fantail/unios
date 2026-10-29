@@ -107,16 +107,22 @@ def verify_targets(root,records,qmp,read_table=None):
         return cache[pa]
     targets=manifest_targets(records)
     checked=[]
+    size_counts={"1G":0,"2M":0,"4K":0}
     for va in targets:
         outcome=witness_one(root,va,cached)
         if not outcome["effective_write"]:
             raise ValueError("EFI reservation not writable under old CR3")
         parse_translation(qmp.hmp(f"gva2gpa 0x{va:x}"),va)
         checked.append(outcome)
+        name={1<<30:"1G",1<<21:"2M",PAGE:"4K"}.get(outcome["page_size"])
+        if name is None:raise ValueError("unknown leaf size")
+        size_counts[name]+=1
     return {
         "reservation_count":len(records),
         "sampled_reservation_pages":len(targets),
-        "sampled_lower_table_frames":sum(1 for page in cache if page!=root),
+        "sampled_lower_table_frames":max(0,len(cache)-1),
+        "sampled_leaf_sizes":size_counts,
+        "lower_pd_pt_frames_observed":any(len(item["frames"])>=3 for item in checked),
         "fully_compared_table_pages":len(cache),
         "verified_pte_qwords":len(cache)*512,
         "sampled_reservation_ends_only":True,
