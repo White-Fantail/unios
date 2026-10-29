@@ -60,6 +60,8 @@ pub enum Error {
     HostProof,
     #[cfg(feature = "lab-e2k-emergency-closure")]
     EmergencyCode,
+    #[cfg(feature = "lab-e2l-lab-descriptors")]
+    ActiveLab,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -370,6 +372,57 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 // Read only AFTER verifying old/new code page provenance.
                 crate::emergency_handlers::validate_linked_bytes()
                     .map_err(|_|Error::EmergencyCode)?;
+            }
+            #[cfg(feature="lab-e2l-lab-descriptors")]
+            {
+                // Build a second test-only register image at the CURRENT
+                // identity-mapped EFI physical VA; dormant high-half GDT
+                // cannot be installed under old firmware CR3. This happens
+                // after every E2k code-page/provenance proof has succeeded.
+                let (ud,ist)=crate::exception_lab::addresses();
+                if ud==ist {return Err(Error::ActiveLab);}
+                for handler in [ud,ist] {
+                    let (va,pa)=crate::oldmap::audit_efi_code_page(
+                        root_gate,handler,map,map_size,descriptor_size
+                    ).map_err(|_|Error::ActiveLab)?;
+                    // The active lab still never loads the new PML4.
+                    match tables.lookup(va).map_err(|_|Error::ActiveLab)? {
+                        Some(existing) if existing.pa==pa && existing.rights==Rights::Rx => {}
+                        Some(_) => return Err(Error::ActiveLab),
+                        None => tables.map_efi_executable_anchor(va,pa)
+                            .map_err(|_|Error::ActiveLab)?,
+                    }
+                    tables.verify(va,pa,Rights::Rx)
+                        .map_err(|_|Error::ActiveLab)?;
+                }
+                let desc_pa=aux[4].base;
+                let main_top=aux[2].base+4*PAGE;
+                let ist_top=aux[3].base+4*PAGE;
+                let desc=unsafe {
+                    slice::from_raw_parts_mut(desc_pa as *mut u8,unios_descriptors::PAGE)
+                };
+                let (normal,old_df)=crate::emergency_handlers::addresses();
+                // Software vector8 is restricted to explicitly named
+                // QEMU IST smoke mode, not claimed as a real double fault.
+                #[cfg(feature="lab-e2l-smoke-ist")]
+                let df=ist;
+                #[cfg(not(feature="lab-e2l-smoke-ist"))]
+                let df=old_df;
+                let img=unios_descriptors::build_lab_ud(
+                    desc,desc_pa,main_top,ist_top,normal,df,ud,
+                ).map_err(|_|Error::ActiveLab)?;
+                unios_descriptors::verify_lab_ud(
+                    desc,img,main_top,ist_top,normal,df,ud
+                ).map_err(|_|Error::ActiveLab)?;
+                // Old CR3 identity rights were already checked for all
+                // reservation pages, including physical metadata and IST.
+                // Terminal fault tests intentionally never return to EFI.
+                #[cfg(feature="lab-e2l-smoke-ud")]
+                unsafe {crate::exception_lab::trigger_ud(img);}
+                #[cfg(feature="lab-e2l-smoke-ist")]
+                unsafe {crate::exception_lab::trigger_ist(
+                    img,aux[3].base,ist_top,
+                );}
             }
             if tables.used_tables() < 4 {return Err(Error::Paging);}
             // NO write to CR3. Missing shared-linear EFI code, exception
