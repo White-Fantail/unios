@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2i QEMU: independent QMP full firmware page-table frame witness before dereference.
+# E2i QEMU: independent QMP upper PML4+PDPT page-table frame witness before dereference.
 # Distinct debug-exit byte 0x2a returns 85; 65 is reserved for E4 clean PASS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

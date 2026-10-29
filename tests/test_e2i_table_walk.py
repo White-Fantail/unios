@@ -37,6 +37,13 @@ class E2iHostWalkTest(unittest.TestCase):
         p=fixture()[ROOT]
         lines=dump(ROOT,p).replace(f"0x{ROOT:x}:",f"{ROOT:016x}:")
         self.assertEqual(parse_full_page_dump(lines,ROOT),tuple(p))
+    def test_upper_only_witness_explicitly_defers_pd_pt(self):
+        d=fixture()
+        result=walk_tables(ROOT,lambda pa:d[pa],max_depth=1)
+        self.assertEqual(result["table_pages"],2)
+        self.assertEqual(result["audited_level_depth"],1)
+        self.assertGreater(result["deferred_lower_table_links"],0)
+        self.assertFalse(result["full_four_level_proof"])
     def test_full_page_dump_accepted(self):
         p=fixture()[ROOT]
         self.assertEqual(parse_full_page_dump(dump(ROOT,p),ROOT),tuple(p))

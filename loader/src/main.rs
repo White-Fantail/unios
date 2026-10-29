@@ -101,7 +101,7 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
                             #[cfg(feature="lab-e2i-host-table-proof")]
-                            console(system_table, b"UNIOS:L1:E2I_HOST_CORROBORATED_ALL_OLD_TABLES_ONLY\r\n");
+                            console(system_table, b"UNIOS:L1:E2I_HOST_CORROBORATED_UPPER_OLD_TABLES_ONLY\r\n");
                             #[cfg(all(feature="lab-e2h-host-root-proof",not(feature="lab-e2i-host-table-proof")))]
                             console(system_table, b"UNIOS:L1:E2H_HOST_CORROBORATED_ROOT_ONLY\r\n");
                             #[cfg(all(feature="lab-e2g-root-gate",not(feature="lab-e2h-host-root-proof")))]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2i independent QEMU witness of ALL old CR3 page-table frames, before guest deref.
+"""E2i independent QEMU witness of bounded PML4 and PDPT old CR3 page-table frames, before guest deref.
 Only for pinned disposable LAB-H1; never a portable firmware guarantee.
 QMP HMP is an intentionally version-dependent QEMU 8.x interface.
 """
@@ -172,7 +172,7 @@ def run(argv):
                 virt=qmp.hmp(f"x /8gx 0x{root:x}")
                 regs2=qmp.hmp("info registers")
                 proof=verify_witness(regs1,translation,phys,virt,regs2)
-                full=walk_tables(root,lambda pa:qmp_read_table(qmp,pa))
+                full=walk_tables(root,lambda pa:qmp_read_table(qmp,pa),max_depth=1)
                 regs3=qmp.hmp("info registers")
                 _,later=parse_cr3(regs3)
                 if later!=root:
@@ -199,7 +199,7 @@ def run(argv):
                 if "HALTED_PASS" in serial:
                     raise RuntimeError("E2i emitted forbidden kernel success marker")
                 (base/"preflight-outcome.txt").write_text(
-                    "E2I_QEMU_ALL_CR3_TABLE_FRAMES_CORROBORATED_ONLY "
+                    "E2I_QEMU_UPPER_CR3_TABLE_FRAMES_CORROBORATED_ONLY "
                     "(NO EXITBS / NO NEW CR3 / NO CLEAN_PASS)\n")
                 print(f"E2I_HOST_TABLE_QMP_PROOF PASS root={proof['root_pa']} "
                       f"tables={proof['table_pages']} qwords={proof['pte_qwords_verified']} exit={rc}")

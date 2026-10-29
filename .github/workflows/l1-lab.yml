@@ -1,4 +1,4 @@
-name: L1 experimental E2i independent QEMU complete old-CR3 table witness
+name: L1 experimental E2i independent QEMU upper-level old-CR3 table witness
 on:
   push:
     branches:
@@ -24,7 +24,7 @@ jobs:
         run: bash scripts/build-l1.sh
       - name: Install restricted QEMU preflight dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf gdisk dosfstools mtools
-      - name: E2i QEMU paused CPU all reachable page-table physical/virtual frames (NOT kernel boot)
+      - name: E2i QEMU paused CPU PML4 and PDPT physical/virtual frames (NOT kernel boot)
         run: bash scripts/qemu-preflight.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4

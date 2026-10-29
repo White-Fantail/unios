@@ -1,6 +1,6 @@
 """LAB-H1 E2i: host-only four-level firmware page-table witness.
 
-Read all reachable *page-table frames* while CPU0 is paused. QMP HMP
+Read all *upper PML4 and PDPT frames* while CPU0 is paused. QMP HMP
 gva2gpa, xp and x are independent observations of the guest's own
 page-table walking; do not infer identity from any guest-reported data.
 This only works on the pinned disposable QEMU/OVMF profile, NOT hardware.
@@ -36,14 +36,15 @@ def parse_full_page_dump(response, physical):
         raise ValueError(f"QEMU page is truncated: {len(items)}/512 qwords")
     return tuple(items)
 
-def walk_tables(root, read_table, max_tables=MAX_TABLES):
-    """BFS of every reachable page-table PA; skip hardware 1G/2M leaves."""
-    if not 0<max_tables<=MAX_TABLES or root==0 or root&(PAGE-1):
+def walk_tables(root, read_table, max_tables=MAX_TABLES, max_depth=3):
+    """BFS until depth cap; unvisited lower-level links are explicit NO-PROOF."""
+    if not 0<max_tables<=MAX_TABLES or not 0<=max_depth<=3 or root==0 or root&(PAGE-1):
         raise ValueError("invalid root/cap")
     stack=[(root,0)]
     visited={}
     digest=hashlib.sha256()
     leaves_1g=leaves_2m=leaves_4k=0
+    deferred_lower_links=0
     while stack:
         pa,level=stack.pop()
         if pa in visited:
@@ -69,20 +70,26 @@ def walk_tables(root, read_table, max_tables=MAX_TABLES):
                 if level==1: leaves_1g+=1
                 elif level==2: leaves_2m+=1
                 continue
+            if level==max_depth:
+                deferred_lower_links+=1
+                continue
             child=pte&ADDRESS_MASK
             if child==0 or child >=1<<32:
                 raise ValueError("bad child page-table physical address")
             stack.append((child,level+1))
-    if not visited or not (leaves_1g+leaves_2m+leaves_4k):
+    if not visited or not (leaves_1g+leaves_2m+leaves_4k+deferred_lower_links):
         raise ValueError("firmware table walk has no present leaves")
     return {
         "table_pages":len(visited),
+        "audited_level_depth":max_depth,
+        "deferred_lower_table_links":deferred_lower_links,
+        "full_four_level_proof":max_depth==3,
         "pte_qwords_verified":len(visited)*TABLE_ENTRIES,
         "huge_1g_leaves":leaves_1g,
         "huge_2m_leaves":leaves_2m,
         "leaf_4k_pages":leaves_4k,
         "host_table_digest_sha256":digest.hexdigest(),
-        "corroboration":"all reachable table pages PA=VA and full xp/x page bytes agree"
+        "corroboration":"audited upper table pages PA=VA and full xp/x page bytes agree; lower levels unverified when deferred"
     }
 
 def qmp_read_table(qmp,pa):

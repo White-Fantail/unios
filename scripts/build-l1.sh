@@ -50,4 +50,4 @@ fi
 mkdir -p out/esp/EFI/BOOT
 cp "$EFI" out/esp/EFI/BOOT/BOOTX64.EFI
 sha256sum "$KERNEL" "$EFI" | tee out/image-digests.txt
-echo "E2I_FULL_OLD_CR3_TABLE_CORROBORATION_PREFLIGHT_ONLY (E3-E5 NOT RUN)" | tee out/status.txt
+echo "E2I_UPPER_OLD_CR3_TABLE_CORROBORATION_PREFLIGHT_ONLY (E3-E5 NOT RUN)" | tee out/status.txt
