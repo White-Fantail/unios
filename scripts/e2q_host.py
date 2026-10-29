@@ -287,9 +287,24 @@ def run(argv):
                     while SWITCH_MARKER not in third:
                         if time.monotonic()>timeout:
                             raise TimeoutError("no post-CR3 terminal COM2 checkpoint")
-                        fragment=gate_socket.recv(512)
+                        try:
+                            fragment=gate_socket.recv(512)
+                        except socket.timeout:
+                            # Explicit crash diagnostic ONLY on failure:
+                            # the host never grants Q without full proof.
+                            state=qmp.call("query-status")
+                            try:
+                                qmp.call("stop")
+                                cpu_crash=qmp.hmp("info registers")
+                            except Exception as ex:
+                                cpu_crash=f"QMP regs unavailable: {ex}"
+                            print("E2Q_POST_CR3_TIMEOUT_DEBUG "
+                                  f"status={state} "
+                                  f"events={qmp.events} "
+                                  f"cpu={cpu_crash[:1300]!r}",file=sys.stderr)
+                            raise RuntimeError("no third COM2 marker after CR3 transition")
                         if not fragment:
-                            raise ValueError("COM2 lost after terminal CR3 switch")
+                            raise ValueError(f"COM2 lost after terminal CR3 switch rc={proc.poll()}")
                         third.extend(fragment)
                         if len(third)>8192:
                             raise ValueError("post-switch COM2 marker missing")
