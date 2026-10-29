@@ -1,25 +1,26 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-30:** E2m's
-> genuine CPU-generated #DF + IST1 proof is in `main`.
-> **E2n** adds an independent **raw, uninstalled new-private-CR3
-> page-table walk** for the staged kernel entry, E2e bridge
-> code bounds, both emergency handlers, all bridge/main/DF-IST
-> stack pages, high-half metadata and guard pages.
-> Disposable QEMU/OVMF yields diagnostic **95** and
-> E2l/E2m fault regression exits **103/105/109**, with
-> **230/230 tests**. The QEMU host still independently
-> witnesses **the old firmware CR3 only**; new private PTEs
-> are decoded inside the guest, not separately by QMP.
-> **No active new CR3, ExitBootServices, high-half kernel
-> entry or clean kernel exit 65 has occurred.**
-> See [E2n evidence](docs/implementation/l1-e2n-raw-transition-closure-2026-10-30.md)
-> and [operator gate](docs/implementation/l1-operator-test-readiness.md).
+> **L1 Experimental Kernel — 2026-10-30:** E2n's guest
+> independent raw private-PML4 walker is in `main`.
+> **E2o** adds a second **independent paused-QMP host witness
+> of actual new private PML4 physical table pages**, with
+> a dedicated COM2 **O** authorization barrier after the
+> original old-root **J** check. The host verified **all
+> 8 used new 4KiB table frames**, **19 exact address/rights
+> targets including 2 absent guards**, and old CR3 remains
+> active. Disposable QEMU exits **97/103/105/109**, with
+> **252/252 unit/host tests passing**. The private CR3 is
+> still **NOT activated** and `ExitBootServices`, high-half
+> kernel entry, and real clean boot exit **65** have NOT
+> occurred. See
+> [E2o QEMU evidence](docs/implementation/l1-e2o-independent-pml4-host-witness-2026-10-30.md)
+> and [operator test readiness](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** implements the approved **L1 Experimental Kernel** as
-disposable, carefully gated EFI/QEMU preflight research. This
-is **not a booted or released operating system**. L2 and
-later development requires separate authorization.
+**UniOS** is an independently designed operating system project
+implementing its approved **L1 Experimental Kernel** as an
+experimental EFI/QEMU laboratory. This is **not a booted or
+released general-purpose OS**. L2+ development requires
+separate approval.
 
 ## Vision
 
