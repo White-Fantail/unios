@@ -43,8 +43,13 @@ dependencies = [
  "unios_descriptors",
  "unios_elf",
  "unios_paging",
+ "unios_rootgate",
  "unios_staging",
 ]
+
+[[package]]
+name = "unios_rootgate"
+version = "0.1.0"
 
 [[package]]
 name = "unios_staging"

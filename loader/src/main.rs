@@ -98,7 +98,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature = "lab-e2f-descriptors")]
+                            #[cfg(feature = "lab-e2g-root-gate")]
+                            console(system_table, b"UNIOS:L1:E2G_FIRMWARE_CR3_ROOT_DESCRIPTOR_ONLY\r\n");
+                            #[cfg(all(feature = "lab-e2f-descriptors", not(feature = "lab-e2g-root-gate")))]
                             console(system_table, b"UNIOS:L1:E2F_DORMANT_GDT_IDT_TSS_PREFLIGHT_ONLY\r\n");
                             #[cfg(all(feature = "lab-e2e-bounded-bridge", not(feature = "lab-e2f-descriptors")))]
                             console(system_table, b"UNIOS:L1:E2E_BOUNDED_BRIDGE_SPAN_ONLY\r\n");
@@ -113,7 +115,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature = "lab-e2f-descriptors")]
+                            #[cfg(feature = "lab-e2g-root-gate")]
+                            const CODE: u8 = 0x28;
+                            #[cfg(all(feature = "lab-e2f-descriptors", not(feature = "lab-e2g-root-gate")))]
                             const CODE: u8 = 0x27;
                             #[cfg(all(feature = "lab-e2e-bounded-bridge", not(feature = "lab-e2f-descriptors")))]
                             const CODE: u8 = 0x26;

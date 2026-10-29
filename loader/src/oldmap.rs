@@ -7,6 +7,7 @@
 // This is not the post-ExitBootServices bridge proof (LC-O02 remains open).
 use core::{arch::asm, ptr};
 use unios_bootmap::{Reservation, PAGE};
+use unios_rootgate::{Owned, Report};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Error { Mode, Root, NotMapped, NonIdentity, NotWritable, NotExecutable, NotLoaderCode, User, Address }
@@ -56,8 +57,23 @@ unsafe fn translate(root: u64, va: u64) -> Result<(u64,bool,bool,bool), Error> {
     }
     Err(Error::Root)
 }
-pub fn check_owned_identity(reservations: &[Reservation]) -> Result<u64, Error> {
+// Descriptor ownership is checked BEFORE the first physical-as-linear
+// read of the existing root. Still no identity proof for the root.
+pub fn inspect_current_root(
+    map: &[u8], used: usize, stride: usize, reservations: &[Reservation]
+) -> Result<Report,Error> {
+    if reservations.len()>16 {return Err(Error::Root);}
+    let mut owned=[Owned{base:0,pages:0};16];
+    for (i,r) in reservations.iter().enumerate(){
+        owned[i]=Owned{base:r.base,pages:r.pages};
+    }
+    let (cr3,cr4)=read_cr3_cr4();
+    unios_rootgate::check(cr3,cr4,map,used,stride,&owned[..reservations.len()])
+        .map_err(|_|Error::Root)
+}
+pub fn check_owned_identity(reservations: &[Reservation], gate: Report) -> Result<u64, Error> {
     let (cr3, cr4) = read_cr3_cr4();
+    unios_rootgate::verify_unchanged(gate,cr3).map_err(|_|Error::Root)?;
     // LAB-H1 four-level, no LA57, no PCID; no 5-level walker shortcut.
     if (cr4 & ((1<<12) | (1<<17))) != 0 { return Err(Error::Mode); }
     let root = cr3 & ADDR_MASK;
@@ -80,7 +96,7 @@ pub fn check_owned_identity(reservations: &[Reservation]) -> Result<u64, Error> 
 }
 
 pub fn audit_efi_code_page(
-    anchor: u64, map: &[u8], used: usize, stride: usize,
+    gate: Report, anchor: u64, map: &[u8], used: usize, stride: usize,
 ) -> Result<(u64,u64),Error> {
     // One-page executable provenance only. This is NOT a byte-bounded
     // trampoline or proof of a live RIP while CR3 is written.
@@ -90,7 +106,8 @@ pub fn audit_efi_code_page(
     }
     let va=anchor & !(PAGE-1);
     let cr3=read_cr3_cr4().0;
-    let root=cr3 & ADDR_MASK;
+    unios_rootgate::verify_unchanged(gate,cr3).map_err(|_|Error::Root)?;
+    let root=gate.root_pa;
     let (first,_,exec,user) = unsafe { translate(root,anchor)? };
     if !exec {return Err(Error::NotExecutable);}
     if user {return Err(Error::User);}

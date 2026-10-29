@@ -37,6 +37,9 @@ class OracleTest(unittest.TestCase):
     def test_e2f_dormant_descriptors_not_kernel_pass(self):
         self.assertFalse(clean_pass(self.good(exit_code=79)))
 
+    def test_e2g_root_preflight_not_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=81)))
+
     def test_marker_then_reset(self):
         self.assertFalse(clean_pass(self.good(qmp_events=["RESET"])))
 

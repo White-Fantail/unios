@@ -139,7 +139,11 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
         // This tests same-linear physical pages *under the current old CR3*.
         // It does not establish their post-ExitBootServices provenance.
         // Fail closed on any unsupported or mismatched translation.
-        crate::oldmap::check_owned_identity(&ledger[..count])
+        // Map and reservation ownership validated without any old-root deref.
+        let root_gate=crate::oldmap::inspect_current_root(
+            map,map_size,descriptor_size,&ledger[..count],
+        ).map_err(|_|Error::OldCr3)?;
+        crate::oldmap::check_owned_identity(&ledger[..count],root_gate)
             .map_err(|_| Error::OldCr3)?;
         for (segment, reserved) in image.segments.iter().take(image.count)
             .zip(ledger.iter().take(image.count))
@@ -209,7 +213,7 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 // do not change WP/NXE or claim enforcement at future cut.
                 let _audit = crate::cpuprobe::inspect().map_err(|_|Error::Bridge)?;
                 let (code_va,code_pa)=crate::oldmap::audit_efi_code_page(
-                    crate::bridge_anchor::linear_address(),map,map_size,descriptor_size,
+                    root_gate, crate::bridge_anchor::linear_address(),map,map_size,descriptor_size,
                 ).map_err(|_|Error::Bridge)?;
                 tables.map_efi_executable_anchor(code_va,code_pa)
                     .map_err(|_|Error::Bridge)?;
@@ -232,7 +236,7 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 for n in 0..span.pages {
                     let address=span.page(n).ok_or(Error::BoundedBridge)?;
                     let (va,pa)=crate::oldmap::audit_efi_code_page(
-                        address,map,map_size,descriptor_size,
+                    root_gate, address,map,map_size,descriptor_size,
                     ).map_err(|_|Error::BoundedBridge)?;
                     // The anchor may occupy the same EFI loader code page.
                     // If so, demand identical PA and rights, not a remap.
@@ -265,7 +269,7 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 if generic==df {return Err(Error::Descriptors);}
                 for handler in [generic,df] {
                     let (va,pa)=crate::oldmap::audit_efi_code_page(
-                        handler,map,map_size,descriptor_size,
+                    root_gate, handler,map,map_size,descriptor_size,
                     ).map_err(|_|Error::Descriptors)?;
                     match tables.lookup(va).map_err(|_|Error::Descriptors)? {
                         Some(existing) if existing.pa==pa &&

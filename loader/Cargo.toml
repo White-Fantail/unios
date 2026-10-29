@@ -12,6 +12,7 @@ unios_paging = { path = "../crates/paging" }
 unios_cpugate = { path = "../crates/cpugate" }
 unios_bridgecheck = { path = "../crates/bridgecheck" }
 unios_descriptors = { path = "../crates/descriptors" }
+unios_rootgate = { path = "../crates/rootgate" }
 
 [[bin]]
 name = "unios_loader"
@@ -27,3 +28,4 @@ lab-e2c-tables = ["lab-e2b-staging"]
 lab-e2d-bridge-audit = ["lab-e2c-tables"]
 lab-e2e-bounded-bridge = ["lab-e2d-bridge-audit"]
 lab-e2f-descriptors = ["lab-e2e-bounded-bridge"]
+lab-e2g-root-gate = ["lab-e2f-descriptors"]
