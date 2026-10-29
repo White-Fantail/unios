@@ -1,8 +1,8 @@
-name: L1 experimental E2l QEMU active IDT #UD and software INT8 IST dispatch
+name: L1 experimental E2m real CPU double-fault delivery and IST1 QEMU witness
 on:
   push:
     branches:
-      - "experiment/l1-e2l-active-idt-ist-lab"
+      - "experiment/l1-e2m-genuine-double-fault-qemu"
   workflow_dispatch:
 
 permissions:
@@ -24,15 +24,15 @@ jobs:
         run: bash scripts/build-l1.sh
       - name: Install restricted QEMU preflight dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf gdisk dosfstools mtools
-      - name: E2l QEMU physical IDT/TSS build preflight and E2j host witness (NOT kernel boot)
+      - name: E2m QEMU physical IDT/TSS preflight and E2j host witness (NOT kernel boot)
         run: bash scripts/qemu-preflight.sh
-      - name: E2l QEMU hardware UD2 exception and software INT8 IST1 checks
-        run: bash scripts/e2l-dispatch-smoke.sh
+      - name: E2m QEMU #UD, software INT8 and genuine nested #GP to #DF / IST1 checks
+        run: bash scripts/e2m-real-df-smoke.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: unios-l1-e2l
+          name: unios-l1-e2m
           path: |
             out/
             target/x86_64-unknown-none/release/unios_kernel

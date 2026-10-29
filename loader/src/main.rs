@@ -108,7 +108,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature="lab-e2l-lab-descriptors")]
+                            #[cfg(feature="lab-e2m-lab-descriptors")]
+                            console(system_table, b"UNIOS:L1:E2M_REAL_DOUBLE_FAULT_LAB_PREFLIGHT_ONLY\r\n");
+                            #[cfg(all(feature="lab-e2l-lab-descriptors",not(feature="lab-e2m-lab-descriptors")))]
                             console(system_table, b"UNIOS:L1:E2L_DORMANT_PHYSICAL_IDT_LAB_PREFLIGHT_ONLY\r\n");
                             #[cfg(all(feature="lab-e2k-emergency-closure",not(feature="lab-e2l-lab-descriptors")))]
                             console(system_table, b"UNIOS:L1:E2K_LINK_BOUNDED_EXCEPTION_HANDLERS_PREFLIGHT_ONLY\r\n");
@@ -135,7 +137,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature="lab-e2l-lab-descriptors")]
+                            #[cfg(feature="lab-e2m-lab-descriptors")]
+                            const CODE: u8 = 0x2e;
+                            #[cfg(all(feature="lab-e2l-lab-descriptors",not(feature="lab-e2m-lab-descriptors")))]
                             const CODE: u8 = 0x2d;
                             #[cfg(all(feature="lab-e2k-emergency-closure",not(feature="lab-e2l-lab-descriptors")))]
                             const CODE: u8 = 0x2c;
