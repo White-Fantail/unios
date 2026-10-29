@@ -12,8 +12,8 @@ def page(*pairs):
 def fixture():
     return {ROOT:page((0,PDPT|3)),
             PDPT:page((0,PD|3)),
-            PD:page((0,PT|3)),
-            PT:page((0,0x500000|3),(1,0x501000|3))}
+            PD:page((2,PT|3)),
+            PT:page((256,0x500000|3),(257,0x501000|3))}
 def encode(items):
     b=bytes((len(items),))
     for rid,pages,base in items:
@@ -52,20 +52,20 @@ class TargetWitnessTests(unittest.TestCase):
         self.assertEqual(len(got["frames"]),4)
     def test_large_page_2m(self):
         d=fixture()
-        d[PD][0]=0x400000|0x83
+        d[PD][2]=0x400000|0x83
         self.assertEqual(witness_one(ROOT,0x401000,lambda pa:d[pa])["page_size"],2*1024*1024)
     def test_large_page_1g(self):
         d=fixture()
-        d[PDPT][0]=0x40000000|0x83
+        d[PDPT][1]=0x40000000|0x83
         self.assertEqual(witness_one(ROOT,0x40001000,lambda pa:d[pa])["page_size"],1<<30)
     def test_nonidentity_4k(self):
         d=fixture()
-        d[PT][0]=0x502003
+        d[PT][256]=0x502003
         with self.assertRaisesRegex(ValueError,"not identity"):
             witness_one(ROOT,0x500000,lambda pa:d[pa])
     def test_nonidentity_2m(self):
         d=fixture()
-        d[PD][0]=0x600000|0x83
+        d[PD][2]=0x600000|0x83
         with self.assertRaisesRegex(ValueError,"not identity"):
             witness_one(ROOT,0x401000,lambda pa:d[pa])
     def test_nonpresent(self):
@@ -81,7 +81,7 @@ class TargetWitnessTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"PML4"):
             witness_one(ROOT,0x500000,lambda pa:d[pa])
     def test_source_read_only(self):
-        d=fixture();d[PT][0]=0x500001
+        d=fixture();d[PT][256]=0x500001
         got=witness_one(ROOT,0x500000,lambda pa:d[pa])
         self.assertFalse(got["effective_write"])
     def test_no_full_coverage_claim(self):
