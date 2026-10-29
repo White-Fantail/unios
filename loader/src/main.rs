@@ -180,7 +180,21 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         }
                         return EFI_UNSUPPORTED;
                     }
-                    Err(_) => {
+                    Err(err) => {
+                        #[cfg(feature="lab-e2p-exitbs-contract")]
+                        unsafe {
+                            // Explicit FAIL (never the expected E2p
+                            // preflight/ExitBS codes) so QEMU cannot
+                            // silently time out in OVMF Boot Manager.
+                            let code:u8=if matches!(err,memory::Error::FinalMap) {
+                                0x3a
+                            } else {0x3b};
+                            asm!("out dx,al",in("dx") 0xf4u16,
+                                 in("al") code,
+                                 options(nomem,nostack,preserves_flags));
+                        }
+                        #[cfg(not(feature="lab-e2p-exitbs-contract"))]
+                        let _=err;
                         unsafe { console(system_table, b"UNIOS:L1:E2_PRE_EXIT_REJECTED\r\n"); }
                         return EFI_LOAD_ERROR;
                     }
