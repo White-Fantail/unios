@@ -1,20 +1,20 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-29:** E2g CR3 root
-> firmware RAM ownership preflight is merged into `main`. E2h's
-> disposable QEMU host harness now **independently pauses vCPU0 and
-> corroborates the firmware CR3 root's virtual/physical identity**
-> before allowing the guest's first physical-root dereference.
-> Actual QEMU root proof succeeded with dedicated host exit **83**
-> and 125 host/unit tests. This is **not** full lower-page-table
-> provenance, ExitBootServices, new CR3, or a freestanding kernel
-> boot. Clean kernel exit **65** remains unobserved.
-> See [E2h evidence](docs/implementation/l1-e2h-host-cr3-proof-2026-10-29.md)
-> and [operator test readiness](docs/implementation/l1-operator-test-readiness.md).
+> **L1 Experimental Kernel — 2026-10-29:** E2h's independently paused
+> QEMU old-CR3 *root* witness has been incorporated into `main`.
+> E2i extends the live QEMU witness to **all PML4/PDPT table frames**
+> before firmware-root dereference; the pinned VM preflight observes
+> host exit **85**, with 143 host/Rust unit tests. **PD/PT lower tables
+> remain unverified**, and no ExitBootServices, new CR3, exception
+> descriptor installation, or real kernel boot occurred. True L1 boot
+> exit **65** remains UNVERIFIED. Review
+> [E2i evidence](docs/implementation/l1-e2i-upper-table-witness-2026-10-29.md)
+> and [operator release gate](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independent OS project implementing the approved
-**L1 Experimental Kernel**, with L2+ deferred pending authorization.
-Current source is experimental and is not a booted or released OS.
+**UniOS** is an independent operating system developing its approved
+**L1 Experimental Kernel**. The current source is an experimental
+preflight, **not a booted or released general-purpose OS**.
+L2 and later functionality are outside the approved implementation scope.
 
 ## Vision
 
