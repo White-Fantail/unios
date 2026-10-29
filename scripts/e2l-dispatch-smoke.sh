@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2l QEMU-only direct-call fatal handler path; NOT live CPU exceptions.
+# E2l QEMU-only CPU-delivered UD2 #UD, and INT8 software-interrupt IST1; NOT a real #DF.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -20,10 +20,10 @@ restore_default_image() {
 trap restore_default_image EXIT
 for mode in ud ist; do
   cargo build --locked --release -p unios_loader \
-    --features "lab-debug-exit,lab-e2l-emergency-closure,lab-e2l-smoke-$mode" \
+    --features "lab-debug-exit,lab-e2l-lab-descriptors,lab-e2l-smoke-$mode" \
     --target x86_64-unknown-uefi
   cp target/x86_64-unknown-uefi/release/unios_loader.efi out/esp/EFI/BOOT/BOOTX64.EFI
-  python3 scripts/audit_e2l_pe.py out/esp/EFI/BOOT/BOOTX64.EFI |
+  python3 scripts/audit_e2k_pe.py out/esp/EFI/BOOT/BOOTX64.EFI |
     tee "out/e2l-$mode-independent-pe.txt"
   UNIOS_E2L_SMOKE="$mode" bash scripts/qemu-preflight.sh |
     tee "out/e2l-$mode-smoke-host.txt"
@@ -36,7 +36,7 @@ done
 
 # Restore the non-fatal preflight image and final release target artifact.
 cargo build --locked --release -p unios_loader \
-  --features "lab-debug-exit,lab-e2l-emergency-closure" \
+  --features "lab-debug-exit,lab-e2l-lab-descriptors" \
   --target x86_64-unknown-uefi
 cmp target/x86_64-unknown-uefi/release/unios_loader.efi out/e2l-preflight-loader.efi
 cp out/e2l-preflight-loader.efi out/esp/EFI/BOOT/BOOTX64.EFI
@@ -45,7 +45,7 @@ cp out/e2l-preflight-outcome.txt out/preflight-outcome.txt
 cp out/e2l-preflight-host-exit.txt out/preflight-host-exit.txt
 cp out/e2l-preflight-host-proof.json out/e2l-host-targeted-proof.json
 # Never upload an implicitly bootable disposable GPT holding a fatal
-# direct-call smoke EFI; retain separate text and digest evidence only.
+# exception dispatch smoke EFI; retain separate text and digest evidence only.
 rm -f out/preflight-disk.img out/preflight-fat.img out/preflight-vars.fd
 echo "E2L_PRE_FLIGHT_DEFAULT_RESTORED (NO FATAL SMOKE BY DEFAULT)" |
   tee out/e2l-artifact-restore-proof.txt
