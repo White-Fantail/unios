@@ -29,6 +29,12 @@ pub struct BootServices {
     get_memory_map: unsafe extern "efiapi" fn(
         *mut usize, *mut u8, *mut usize, *mut usize, *mut u32
     ) -> usize,
+    // EFI_BOOT_SERVICES offset 64..232, verified x64 layout.
+    // No use of the intervening services in E2p.
+    #[cfg(feature="lab-e2p-actual-exitbs")]
+    unused_boot_services: [usize;21],
+    #[cfg(feature="lab-e2p-actual-exitbs")]
+    exit_boot_services: unsafe extern "efiapi" fn(usize,usize)->usize,
 }
 
 #[repr(align(4096))]
@@ -66,6 +72,8 @@ pub enum Error {
     TransitionCut,
     #[cfg(feature="lab-e2o-host-private-witness")]
     NewHostProof,
+    #[cfg(feature="lab-e2p-exitbs-contract")]
+    FinalMap,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -87,7 +95,7 @@ fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> 
     Ok(Reservation { base: address, pages, id })
 }
 
-pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> Result<usize, Error> {
+pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image, payload: &[u8]) -> Result<usize, Error> {
     if services.is_null() { return Err(Error::BadServices); }
     let bs = unsafe { &*services };
     if bs.header.signature != EFI_BOOT_SERVICES_SIGNATURE ||
@@ -556,7 +564,78 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
     #[cfg(not(feature = "lab-e2b-staging"))]
     let _ = payload;
 
-    // In future E2c, a *new* final map key is required immediately before
-    // ExitBootServices. This preflight key is not reusable after console calls.
+    #[cfg(feature="lab-e2p-exitbs-contract")]
+    {
+        // This is a separately obtained map; the earlier E2a snapshot
+        // cannot be reused as a final map key after QEMU checkpoints.
+        // All allocations and host acknowledgements have finished.
+        // No console, UART or firmware allocation is called between
+        // the final map read and any opt-in ExitBootServices call.
+        let mut final_size=MAP_CAP;
+        let mut final_key=0usize;
+        let mut final_stride=0usize;
+        let mut final_version=0u32;
+        let status=unsafe {
+            (bs.get_memory_map)(&mut final_size,buffer,&mut final_key,
+                                &mut final_stride,&mut final_version)
+        };
+        unios_exitbs::validate_map(status,unios_exitbs::Snapshot{
+            bytes:final_size,key:final_key,
+            stride:final_stride,version:final_version,
+        },MAP_CAP).map_err(|_|Error::FinalMap)?;
+        unios_bootmap::validate(
+            map,final_size,final_stride,final_version,&ledger[..count]
+        ).map_err(|_|Error::FinalMap)?;
+        #[cfg(feature="lab-e2p-actual-exitbs")]
+        {
+            // Terminal disposable-QEMU ONLY. After success, even
+            // returning through Rust/UEFI is forbidden. No GDT/CR3
+            // change is attempted; only a raw debug port write.
+            // A stale key may be retried only after a fresh GetMemoryMap.
+            for attempt in 0..unios_exitbs::ATTEMPTS {
+                // First attempt uses just-validated map. A second
+                // attempt MUST fetch and validate a *fresh* key.
+                let key=if attempt==0 {final_key} else {
+                    let mut n=MAP_CAP;
+                    let mut k=0usize;
+                    let mut st=0usize;
+                    let mut ver=0u32;
+                    let ret=unsafe {
+                        (bs.get_memory_map)(&mut n,buffer,&mut k,&mut st,&mut ver)
+                    };
+                    if unios_exitbs::validate_map(ret,unios_exitbs::Snapshot{
+                        bytes:n,key:k,stride:st,version:ver,
+                    },MAP_CAP).is_err() {
+                        unsafe {terminal_debug(0x3a);}
+                    }
+                    if unios_bootmap::validate(
+                        map,n,st,ver,&ledger[..count]
+                    ).is_err() {unsafe {terminal_debug(0x3a);}}
+                    k
+                };
+                let status=unsafe {(bs.exit_boot_services)(image_handle,key)};
+                match unios_exitbs::after_exit(status,attempt) {
+                    Ok(unios_exitbs::ExitDecision::Success)=>{
+                        // NO EFI CALLS AFTER SUCCESS; NO return-to-firmware.
+                        unsafe {terminal_debug(0x39);}
+                    }
+                    Ok(unios_exitbs::ExitDecision::Retry)=>{},
+                    Err(_)=>unsafe {terminal_debug(0x3a);},
+                }
+            }
+            unsafe {terminal_debug(0x3a);}
+        }
+    }
+    #[cfg(not(feature="lab-e2p-exitbs-contract"))]
+    let _=image_handle;
     Ok(report.descriptors)
 }
+
+#[cfg(feature="lab-e2p-actual-exitbs")]
+#[inline(never)]
+unsafe fn terminal_debug(signal:u8)->! {
+    core::arch::asm!("cli","out dx,al",in("dx") 0xf4u16,
+                     in("al") signal,options(nomem,nostack));
+    loop {core::arch::asm!("hlt",options(nomem,nostack));}
+}
+

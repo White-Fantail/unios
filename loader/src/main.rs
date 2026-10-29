@@ -96,7 +96,7 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
             #[cfg(feature = "lab-e2-preflight")]
             {
                 let service_ptr = unsafe { (*system_table).boot_services.cast::<memory::BootServices>() };
-                match memory::preflight(service_ptr, &checked, EMBEDDED_ELF) {
+                match memory::preflight(service_ptr, _image_handle, &checked, EMBEDDED_ELF) {
                     Ok(_count) => {
                         // QEMU-only direct call after all code provenance checks.
                         // NOT an IDT-delivered CPU exception or live #DF.
@@ -108,7 +108,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature="lab-e2o-host-private-witness")]
+                            #[cfg(feature="lab-e2p-exitbs-contract")]
+                            console(system_table, b"UNIOS:L1:E2P_FINAL_MAP_KEY_VERIFIED_ONLY_NO_EXITBS\r\n");
+                            #[cfg(all(feature="lab-e2o-host-private-witness",not(feature="lab-e2p-exitbs-contract")))]
                             console(system_table, b"UNIOS:L1:E2O_INDEPENDENT_NEW_PML4_HOST_WITNESS_ONLY\r\n");
                             #[cfg(all(feature="lab-e2n-transition-closure",not(feature="lab-e2o-host-private-witness")))]
                             console(system_table, b"UNIOS:L1:E2N_RAW_PRIVATE_CR3_CUT_CLOSURE_PREFLIGHT_ONLY\r\n");
@@ -141,7 +143,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature="lab-e2o-host-private-witness")]
+                            #[cfg(feature="lab-e2p-exitbs-contract")]
+                            const CODE: u8 = 0x38;
+                            #[cfg(all(feature="lab-e2o-host-private-witness",not(feature="lab-e2p-exitbs-contract")))]
                             const CODE: u8 = 0x30;
                             #[cfg(all(feature="lab-e2n-transition-closure",not(feature="lab-e2o-host-private-witness")))]
                             const CODE: u8 = 0x2f;
