@@ -62,6 +62,8 @@ pub enum Error {
     EmergencyCode,
     #[cfg(feature = "lab-e2l-lab-descriptors")]
     ActiveLab,
+    #[cfg(feature="lab-e2n-transition-closure")]
+    TransitionCut,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -372,6 +374,60 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 // Read only AFTER verifying old/new code page provenance.
                 crate::emergency_handlers::validate_linked_bytes()
                     .map_err(|_|Error::EmergencyCode)?;
+            }
+            #[cfg(feature="lab-e2n-transition-closure")]
+            {
+                use unios_paging::transition_closure::{CutSpec,Witness};
+                // No CR3 changes. Audit actual raw private PTE words,
+                // separately from Builder::lookup and its high-level
+                // verify() method, including *every* stack frame.
+                // Never use this check as an ExitBootServices permit.
+                let mut entry=None;
+                for (seg,res) in image.segments.iter().take(image.count)
+                    .zip(ledger.iter().take(image.count))
+                {
+                    if seg.flags&1!=0 &&
+                       image.entry>=seg.vaddr &&
+                       image.entry<seg.vaddr+seg.mem_size {
+                        entry=Some(Witness{
+                            va:image.entry,
+                            pa:res.base+(image.entry-seg.page_start),
+                        });
+                    }
+                }
+                let entry=entry.ok_or(Error::TransitionCut)?;
+                let (bridge_begin,bridge_end)=crate::bridge_span::bounds();
+                let (normal,df)=crate::emergency_handlers::addresses();
+                if bridge_end<=bridge_begin {
+                    return Err(Error::TransitionCut);
+                }
+                let anchors=[bridge_begin,bridge_end-1,normal,df];
+                let mut code=[Witness{va:0,pa:0};4];
+                for (i,anchor) in anchors.iter().enumerate() {
+                    // Independently recheck firmware executable ownership
+                    // and old-CR3 page provenance for each target address.
+                    let (va,pa)=crate::oldmap::audit_efi_code_page(
+                        root_gate,*anchor,map,map_size,descriptor_size
+                    ).map_err(|_|Error::TransitionCut)?;
+                    code[i]=Witness{va:*anchor,pa:pa+(*anchor-va)};
+                }
+                let spec=CutSpec {
+                    bridge_stack_pa:aux[1].base,
+                    main_stack_pa:aux[2].base,
+                    ist_stack_pa:aux[3].base,
+                    descriptor_pa:aux[4].base,
+                    context_pa:aux[5].base,
+                    kernel_entry:entry,code,
+                };
+                let closure=tables.audit_transition_cut(spec)
+                    .map_err(|_|Error::TransitionCut)?;
+                if closure.verified_pages!=13 || closure.code_anchors!=4 ||
+                   closure.bridge_stack_top!=aux[1].base+2*PAGE ||
+                   closure.main_stack_top!=MAIN_STACK_VA+4*PAGE ||
+                   closure.ist_stack_top!=IST_STACK_VA+4*PAGE {
+                    return Err(Error::TransitionCut);
+                }
+                tables.audit_guard_pages().map_err(|_|Error::TransitionCut)?;
             }
             #[cfg(feature="lab-e2l-lab-descriptors")]
             {
