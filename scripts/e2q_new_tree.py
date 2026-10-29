@@ -12,7 +12,10 @@ MARKER=b"\x7fUNI2Q\x7f"
 def decode_manifest(data):
     if len(data)!=PACKET:
         raise ValueError("exact E2q extended private-root manifest required")
-    root,used,prior=old_decode(data[:PRIOR_PACKET])
+    prefix=bytearray(data[:PRIOR_PACKET])
+    if prefix[9]!=COUNT:raise ValueError("E2q expected 21-target manifest")
+    prefix[9]=PRIOR
+    root,used,prior=old_decode(prefix)
     extras=[]
     for i in range(PRIOR,COUNT):
         at=10+i*RECORD_LEN
