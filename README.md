@@ -1,23 +1,23 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-29:** E2i's independent
-> paused-QEMU upper old-CR3 page-table witness is merged in `main`.
-> E2j extends the test to the **first/last physical page of each
-> UEFI-owned reservation**, using a bounded COM2 manifest and
-> independent QMP page-table walks. Real QEMU/OVMF observed
-> **14 boundary addresses, each via a 2MiB leaf, and 3 table frames**,
-> with host preflight exit **87** and **161/161 tests**.
-> It does **not** prove intermediate reservation pages, 4KiB PT
-> guest paths, ExitBootServices, live CR3 switching, installed
-> exception handling, or an actual freestanding kernel boot.
-> True L1 clean success exit **65** remains unverified.
-> See [E2j evidence](docs/implementation/l1-e2j-targeted-witness-2026-10-29.md)
-> and [operator test gate](docs/implementation/l1-operator-test-readiness.md).
+> **L1 Experimental Kernel — 2026-10-29:** E2j's EFI reservation
+> boundary old-CR3 path witness is merged in `main`. E2k adds
+> **11-byte exact linked code closure for both emergency error
+> handlers**, independently audits real PE32+ executable bytes,
+> and confirms three real disposable QEMU/OVMF outcomes:
+> preflight **89**, generic-handler direct call **99**, and
+> DF-handler direct call **101**. **180/180 host/Rust tests pass**.
+> Direct calls are NOT CPU exception delivery or #DF IST proof.
+> **No GDT/IDT/TSS installation, ExitBootServices, CR3 switch,
+> or real high-half kernel boot has occurred**. True kernel
+> clean success exit **65** is unverified. See
+> [E2k evidence](docs/implementation/l1-e2k-emergency-handler-closure-2026-10-29.md)
+> and [operator testing gate](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independent operating system project implementing its
-approved **L1 Experimental Kernel**. This experimental source is
-**not a released or successfully booted operating system**.
-L2 and higher features are outside approved implementation scope.
+**UniOS** implements its independently approved **L1 Experimental Kernel**
+as a staged preflight and boot-handoff research project. It is **not
+yet a successfully booted or released OS**. L2 and higher work
+requires a separate approval.
 
 ## Vision
 
