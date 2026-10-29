@@ -4,6 +4,7 @@
 // construction. NEVER load this CR3 before the bridge/IDT/IST and
 // ExitBootServices contracts are independently verified.
 use unios_elf::{Segment, PAGE, BASE, LIMIT};
+pub mod transition_closure;
 
 pub const TABLE_PAGES: usize = 128; // 512KiB hard cap
 pub const ENTRIES: usize = 512;
@@ -75,6 +76,13 @@ impl<'a> Builder<'a> {
         Ok(Self { frames: backing, root_pa, used: 1, depth: [0; TABLE_PAGES] })
     }
     pub fn root(&self) -> u64 { self.root_pa }
+    /// E2n strictly read-only cross-check of actual raw page-table
+    /// words. The private CR3 stays dormant; this only audits bytes.
+    pub fn audit_transition_cut(
+        &self,spec:transition_closure::CutSpec
+    )->Result<transition_closure::Report,transition_closure::Error>{
+        transition_closure::audit(self.frames,self.root_pa,self.used,spec)
+    }
     pub fn used_tables(&self) -> usize { self.used }
     fn table_index(&self, pa: u64) -> Result<usize, Error> {
         let off = pa.checked_sub(self.root_pa).ok_or(Error::Corrupt)?;
