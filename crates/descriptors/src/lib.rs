@@ -109,6 +109,13 @@ pub fn verify(
     b:&[u8],image:Image,main_top:u64,df_ist_top:u64,
     normal_handler:u64,df_handler:u64,
 )->Result<(),Error> {
+    verify_with_ud(b,image,main_top,df_ist_top,normal_handler,df_handler,None)
+}
+
+fn verify_with_ud(
+    b:&[u8],image:Image,main_top:u64,df_ist_top:u64,
+    normal_handler:u64,df_handler:u64,ud_handler:Option<u64>,
+)->Result<(),Error> {
     if b.len()!=PAGE {return Err(Error::Length);}
     if image.gdtr_base & 4095 !=0 ||
        image.gdtr_limit as usize+1!=GDT_BYTES ||
@@ -137,7 +144,9 @@ pub fn verify(
     }
     for i in 0..IDT_VECTORS {
         let (target,cs,ist,attr,zero)=get_gate(b,i);
-        if target!=if i==DOUBLE_FAULT {df_handler} else {normal_handler} ||
+        if target!=if i==DOUBLE_FAULT {df_handler}
+                else if i==6 {ud_handler.unwrap_or(normal_handler)}
+                else {normal_handler} ||
             cs!=KERNEL_CS || ist!=if i==DOUBLE_FAULT {1} else {0} ||
             attr!=0x8e || zero!=0 {
             return Err(Error::InvalidIdt);
@@ -149,6 +158,35 @@ pub fn verify(
         return Err(Error::Reserved);
     }
     Ok(())
+}
+
+/// E2l lab: one exception-specific vector 6 (#UD) gate; all other
+/// gates preserve the reviewed E2f descriptor contract. The image is
+/// built at an independently identity-verified PHYSICAL address, and
+/// loaded only by a terminal disposable-QEMU test.
+pub fn build_lab_ud(
+    b:&mut [u8],descriptors_va:u64,main_top:u64,df_ist_top:u64,
+    normal_handler:u64,df_handler:u64,ud_handler:u64,
+)->Result<Image,Error> {
+    if !canonical(ud_handler) || ud_handler<0x10_0000 ||
+       ud_handler>=(1<<32) || ud_handler==normal_handler ||
+       ud_handler==df_handler {return Err(Error::InvalidHandler);}
+    let image=build(b,descriptors_va,main_top,df_ist_top,
+                    normal_handler,df_handler)?;
+    set_gate(b,6,ud_handler,0);
+    verify_lab_ud(b,image,main_top,df_ist_top,
+                  normal_handler,df_handler,ud_handler)?;
+    Ok(image)
+}
+pub fn verify_lab_ud(
+    b:&[u8],image:Image,main_top:u64,df_ist_top:u64,
+    normal_handler:u64,df_handler:u64,ud_handler:u64,
+)->Result<(),Error> {
+    if !canonical(ud_handler) || ud_handler<0x10_0000 ||
+       ud_handler>=(1<<32) || ud_handler==normal_handler ||
+       ud_handler==df_handler {return Err(Error::InvalidHandler);}
+    verify_with_ud(b,image,main_top,df_ist_top,
+                   normal_handler,df_handler,Some(ud_handler))
 }
 
 #[cfg(test)]
@@ -217,6 +255,25 @@ mod tests {
     #[test] fn rejects_nonzero_reserved(){
         let (mut b,img)=fixture();b[PAGE-1]=0x31;
         assert_eq!(verify(&b,img,M,D,N,F),Err(Error::Reserved));
+    }
+    #[test] fn live_lab_ud_gate_is_isolated_to_vector6(){
+        let (mut bytes,_)=fixture();
+        let image=build_lab_ud(&mut bytes,VA,M,D,N,F,0x1400_0600).unwrap();
+        assert_eq!(verify_lab_ud(&bytes,image,M,D,N,F,0x1400_0600),Ok(()));
+        assert_eq!(get_gate(&bytes,6).0,0x1400_0600);
+        assert_eq!(get_gate(&bytes,8).0,F);
+        assert_eq!(get_gate(&bytes,5).0,N);
+        assert_eq!(verify(&bytes,image,M,D,N,F),Err(Error::InvalidIdt));
+    }
+    #[test] fn live_lab_rejects_missing_or_wrong_ud_gate(){
+        let (mut bytes,_)=fixture();
+        let image=build_lab_ud(&mut bytes,VA,M,D,N,F,0x1400_0600).unwrap();
+        bytes[IDT_OFF+6*16]^=1;
+        assert_eq!(verify_lab_ud(&bytes,image,M,D,N,F,0x1400_0600),Err(Error::InvalidIdt));
+    }
+    #[test] fn live_lab_rejects_alias_ud_handler(){
+        let mut bytes=vec![0;PAGE];
+        assert_eq!(build_lab_ud(&mut bytes,VA,M,D,N,F,N),Err(Error::InvalidHandler));
     }
     #[test] fn rejects_corrupt_tss_descriptor(){
         let (mut b,img)=fixture();b[29]^=0x80;
