@@ -64,6 +64,8 @@ pub enum Error {
     ActiveLab,
     #[cfg(feature="lab-e2n-transition-closure")]
     TransitionCut,
+    #[cfg(feature="lab-e2o-host-private-witness")]
+    NewHostProof,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -428,6 +430,50 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                     return Err(Error::TransitionCut);
                 }
                 tables.audit_guard_pages().map_err(|_|Error::TransitionCut)?;
+                #[cfg(feature="lab-e2o-host-private-witness")]
+                {
+                    use crate::host_checkpoint::{PrivateTarget,PRIVATE_TARGETS};
+                    let mut targets=[PrivateTarget{va:0,pa:0,rights:0};PRIVATE_TARGETS];
+                    targets[0]=PrivateTarget{va:entry.va,pa:entry.pa,rights:1};
+                    for i in 0..4 {
+                        targets[i+1]=PrivateTarget{
+                            va:code[i].va,pa:code[i].pa,rights:1,
+                        };
+                    }
+                    for i in 0..2u64 {
+                        targets[5+i as usize]=PrivateTarget{
+                            va:aux[1].base+i*PAGE,pa:aux[1].base+i*PAGE,rights:2,
+                        };
+                    }
+                    for i in 0..4u64 {
+                        targets[7+i as usize]=PrivateTarget{
+                            va:MAIN_STACK_VA+i*PAGE,
+                            pa:aux[2].base+i*PAGE,rights:2,
+                        };
+                        targets[11+i as usize]=PrivateTarget{
+                            va:IST_STACK_VA+i*PAGE,
+                            pa:aux[3].base+i*PAGE,rights:2,
+                        };
+                    }
+                    targets[15]=PrivateTarget{
+                        va:DESCRIPTORS_VA,pa:aux[4].base,rights:2,
+                    };
+                    targets[16]=PrivateTarget{
+                        va:CONTEXT_VA,pa:aux[5].base,rights:3,
+                    };
+                    targets[17]=PrivateTarget{
+                        va:unios_paging::MAIN_GUARD_VA,pa:0,rights:0,
+                    };
+                    targets[18]=PrivateTarget{
+                        va:unios_paging::IST_GUARD_VA,pa:0,rights:0,
+                    };
+                    // The VM is halted a SECOND time by an independent
+                    // host that reads the physical PML4 and all traversed
+                    // tables; only host-issued 'O' can unlock the guest.
+                    if !crate::host_checkpoint::private_checkpoint(
+                        tables.root(),tables.used_tables(),&targets,
+                    ) {return Err(Error::NewHostProof);}
+                }
             }
             #[cfg(feature="lab-e2l-lab-descriptors")]
             {
