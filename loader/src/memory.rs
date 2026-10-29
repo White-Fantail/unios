@@ -381,7 +381,13 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 // after every E2k code-page/provenance proof has succeeded.
                 let (ud,ist)=crate::exception_lab::addresses();
                 if ud==ist {return Err(Error::ActiveLab);}
-                for handler in [ud,ist] {
+                #[cfg(feature="lab-e2m-smoke-real-df")]
+                let real_df=crate::exception_lab::real_df_address();
+                #[cfg(feature="lab-e2m-smoke-real-df")]
+                let executable_anchors=[ud,ist,real_df];
+                #[cfg(not(feature="lab-e2m-smoke-real-df"))]
+                let executable_anchors=[ud,ist,ist];
+                for handler in executable_anchors {
                     let (va,pa)=crate::oldmap::audit_efi_code_page(
                         root_gate,handler,map,map_size,descriptor_size
                     ).map_err(|_|Error::ActiveLab)?;
@@ -404,13 +410,25 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 let (normal,old_df)=crate::emergency_handlers::addresses();
                 // Software vector8 is restricted to explicitly named
                 // QEMU IST smoke mode, not claimed as a real double fault.
-                #[cfg(feature="lab-e2l-smoke-ist")]
+                #[cfg(feature="lab-e2m-smoke-real-df")]
+                let df=real_df;
+                #[cfg(all(feature="lab-e2l-smoke-ist",not(feature="lab-e2m-smoke-real-df")))]
                 let df=ist;
-                #[cfg(not(feature="lab-e2l-smoke-ist"))]
+                #[cfg(not(any(feature="lab-e2l-smoke-ist",feature="lab-e2m-smoke-real-df")))]
                 let df=old_df;
+                #[cfg(feature="lab-e2m-smoke-real-df")]
+                let img=unios_descriptors::build_lab_df(
+                    desc,desc_pa,main_top,ist_top,normal,df,ud,
+                ).map_err(|_|Error::ActiveLab)?;
+                #[cfg(not(feature="lab-e2m-smoke-real-df"))]
                 let img=unios_descriptors::build_lab_ud(
                     desc,desc_pa,main_top,ist_top,normal,df,ud,
                 ).map_err(|_|Error::ActiveLab)?;
+                #[cfg(feature="lab-e2m-smoke-real-df")]
+                unios_descriptors::verify_lab_df(
+                    desc,img,main_top,ist_top,normal,df,ud
+                ).map_err(|_|Error::ActiveLab)?;
+                #[cfg(not(feature="lab-e2m-smoke-real-df"))]
                 unios_descriptors::verify_lab_ud(
                     desc,img,main_top,ist_top,normal,df,ud
                 ).map_err(|_|Error::ActiveLab)?;
@@ -421,6 +439,10 @@ pub fn preflight(services: *mut BootServices, image: &Image, payload: &[u8]) -> 
                 unsafe {crate::exception_lab::trigger_ud(img);}
                 #[cfg(feature="lab-e2l-smoke-ist")]
                 unsafe {crate::exception_lab::trigger_ist(
+                    img,aux[3].base,ist_top,
+                );}
+                #[cfg(feature="lab-e2m-smoke-real-df")]
+                unsafe {crate::exception_lab::trigger_real_df(
                     img,aux[3].base,ist_top,
                 );}
             }
