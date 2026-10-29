@@ -31,7 +31,7 @@ def parse_translation(text, root):
         raise ValueError("QMP denied root gva2gpa translation")
     values = [int(s,16) for s in re.findall(r"0x[0-9a-fA-F]+",text)]
     if len(values) != 2 or values[0] != root or values[1] != root:
-        raise ValueError("host QMP root virtual->physical not identity")
+        raise ValueError(f"host QMP root translation unexpected root=0x{root:x}, values={values}, raw={text[:350]!r}")
     return True
 
 def parse_words(text, address, n=8):
