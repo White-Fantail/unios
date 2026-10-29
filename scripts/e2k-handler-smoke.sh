@@ -5,6 +5,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 export UNIOS_KERNEL_ELF="$ROOT/target/x86_64-unknown-none/release/unios_kernel"
 test -s "$UNIOS_KERNEL_ELF"
+# Preserve the audited safe E2k preflight image. Smoke variants are
+# intentionally fatal and must NEVER become the default CI artifact.
+cp out/esp/EFI/BOOT/BOOTX64.EFI out/e2k-preflight-loader.efi
+cp out/preflight-serial.log out/e2k-preflight-serial.log
+cp out/preflight-outcome.txt out/e2k-preflight-outcome.txt
+cp out/e2k-host-targeted-proof.json out/e2k-preflight-host-proof.json
 for mode in generic df; do
   cargo build --locked --release -p unios_loader \
     --features "lab-debug-exit,lab-e2k-emergency-closure,lab-e2k-smoke-$mode" \
@@ -20,3 +26,12 @@ for mode in generic df; do
   printf "E2K_%s_DIRECT_CALL_SMOKE_ONLY (NOT CPU EXCEPTION)\n" "$mode" |
     tee "out/e2k-$mode-smoke-scope.txt"
 done
+
+# Restore the non-fatal preflight image and final release target artifact.
+cargo build --locked --release -p unios_loader \
+  --features "lab-debug-exit,lab-e2k-emergency-closure" \
+  --target x86_64-unknown-uefi
+cmp target/x86_64-unknown-uefi/release/unios_loader.efi out/e2k-preflight-loader.efi
+cp out/e2k-preflight-loader.efi out/esp/EFI/BOOT/BOOTX64.EFI
+echo "E2K_PRE_FLIGHT_DEFAULT_RESTORED (NO FATAL SMOKE BY DEFAULT)" |
+  tee out/e2k-artifact-restore-proof.txt
