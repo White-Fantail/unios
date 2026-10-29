@@ -38,6 +38,8 @@ cargo run --locked --quiet -p unios_paging --bin audit -- "$KERNEL" out/e2c-page
 python3 scripts/audit_e2c_pte.py "$KERNEL" out/e2c-page-tables.bin | tee out/host-pte-independent-audit.txt
 cargo run --locked --quiet -p unios_descriptors --bin audit -- out/e2f-descriptors.bin | tee out/host-descriptor-builder.txt
 python3 scripts/audit_e2f_descriptors.py out/e2f-descriptors.bin | tee out/host-descriptor-independent-audit.txt
+cargo run --locked --quiet -p unios_rootgate --bin audit -- out/e2g-host-root-map.bin | tee out/host-root-builder.txt
+python3 scripts/audit_e2g_root.py out/e2g-host-root-map.bin | tee out/host-root-independent-audit.txt
 export UNIOS_KERNEL_ELF="$KERNEL"
 cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2g-root-gate --target x86_64-unknown-uefi
 EFI="$ROOT/target/x86_64-unknown-uefi/release/unios_loader.efi"
