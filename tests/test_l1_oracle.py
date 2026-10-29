@@ -70,6 +70,12 @@ class OracleTest(unittest.TestCase):
         self.assertFalse(clean_pass(self.good(exit_code=95)))
     def test_e2o_host_new_root_is_not_kernel_boot(self):
         self.assertFalse(clean_pass(self.good(exit_code=97)))
+    def test_e2p_final_key_only_not_clean_boot(self):
+        self.assertFalse(clean_pass(self.good(exit_code=113)))
+    def test_e2p_real_exitbs_not_clean_boot(self):
+        self.assertFalse(clean_pass(self.good(exit_code=115)))
+    def test_e2p_invalid_exitbs_not_clean_boot(self):
+        self.assertFalse(clean_pass(self.good(exit_code=117)))
     def test_marker_then_reset(self):
         self.assertFalse(clean_pass(self.good(qmp_events=["RESET"])))
 

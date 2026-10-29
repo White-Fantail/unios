@@ -11,7 +11,7 @@ command -v readelf
 command -v file
 rustc --version --verbose | tee out/rustc-version.txt
 cargo --version | tee out/cargo-version.txt
-cargo test --locked -p unios_elf -p unios_bootmap -p unios_staging -p unios_paging -p unios_cpugate -p unios_bridgecheck -p unios_descriptors -p unios_rootgate
+cargo test --locked -p unios_elf -p unios_bootmap -p unios_staging -p unios_paging -p unios_cpugate -p unios_bridgecheck -p unios_descriptors -p unios_rootgate -p unios_exitbs
 
 export CARGO_TARGET_DIR="$ROOT/target"
 export RUSTFLAGS="-C relocation-model=static -C link-arg=-no-pie -C link-arg=-T$ROOT/kernel/link.ld -C link-arg=-zmax-page-size=4096"
@@ -41,7 +41,7 @@ python3 scripts/audit_e2f_descriptors.py out/e2f-descriptors.bin | tee out/host-
 cargo run --locked --quiet -p unios_rootgate --bin audit -- out/e2g-host-root-map.bin | tee out/host-root-builder.txt
 python3 scripts/audit_e2g_root.py out/e2g-host-root-map.bin | tee out/host-root-independent-audit.txt
 export UNIOS_KERNEL_ELF="$KERNEL"
-cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2o-host-private-witness --target x86_64-unknown-uefi
+cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2p-exitbs-contract --target x86_64-unknown-uefi
 EFI="$ROOT/target/x86_64-unknown-uefi/release/unios_loader.efi"
 file "$EFI" | tee out/uefi-pe-header.txt
 if ! grep -Eq 'PE32\+.*EFI application' out/uefi-pe-header.txt; then
@@ -51,4 +51,4 @@ python3 scripts/audit_e2k_pe.py "$EFI" | tee out/e2k-independent-pe-handler-audi
 mkdir -p out/esp/EFI/BOOT
 cp "$EFI" out/esp/EFI/BOOT/BOOTX64.EFI
 sha256sum "$KERNEL" "$EFI" | tee out/image-digests.txt
-echo "E2O_HOST_INDEPENDENT_PRIVATE_PML4_WITNESS_PREFLIGHT_ONLY (E3-E5 NOT RUN)" | tee out/status.txt
+echo "E2P_FINAL_MEMORY_MAP_KEY_CONTRACT_ONLY (E3-E5 NOT RUN)" | tee out/status.txt

@@ -19,6 +19,10 @@ name = "unios_descriptors"
 version = "0.1.0"
 
 [[package]]
+name = "unios_exitbs"
+version = "0.1.0"
+
+[[package]]
 name = "unios_elf"
 version = "0.1.0"
 
@@ -42,6 +46,7 @@ dependencies = [
  "unios_cpugate",
  "unios_descriptors",
  "unios_elf",
+ "unios_exitbs",
  "unios_paging",
  "unios_rootgate",
  "unios_staging",

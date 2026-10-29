@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# E2o QEMU: independent host comparison of old and uninstalled new root table frames.
-# Distinct debug-exit byte 0x30 returns 97; 65 is reserved for E4 clean PASS.
+# E2p QEMU: old/new QMP witnesses, final EFI memory map/key contract, optional real ExitBS terminal cut.
+# Distinct debug-exit byte 0x38 returns 113; opt-in actual ExitBS 0x39 returns 115; 65 is reserved for E4 clean PASS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -26,21 +26,21 @@ qemu-system-x86_64 --version | tee out/qemu-version.txt
 sha256sum "$CODE" "$VARS_TEMPLATE" "$(command -v qemu-system-x86_64)" |
   tee out/preflight-host-digests.txt
 cat > out/qemu-profile.txt <<'PROFILE'
-LAB-H1 E2o-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
+LAB-H1 E2p-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
 1 vCPU, 256 MiB, OVMF DevUnsigned, immutable CODE,
 disposable pflash VARS, disposable GPT ESP with ephemeral snapshot overlay,
 no network and no real user media; COM1 log, COM2 host barrier and QMP.
-E2o host exit=97, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
+E2p host preflight exit=113, optional ExitBS=115, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
 PROFILE
 # Host controls a separate COM2 Unix socket and pauses vCPU0 at the root
 # dereference checkpoint. Guest cannot advance without successful QMP proof.
 # CPU-origin evidence: QEMU's native exception trace is collected only
 # for the opt-in nested-fault VM (not the default preflight).
 LOG_ARGS=()
-if [[ "${UNIOS_E2O_SMOKE:-preflight}" == "df" ]]; then
-  LOG_ARGS=(-d int -D "$ROOT/out/e2o-real-df-qemu-trace.log")
+if [[ "${UNIOS_E2P_SMOKE:-preflight}" == "df" ]]; then
+  LOG_ARGS=(-d int -D "$ROOT/out/e2p-real-df-qemu-trace.log")
 fi
-python3 scripts/e2o_host.py -- qemu-system-x86_64 \
+python3 scripts/e2p_host.py -- qemu-system-x86_64 \
   "${LOG_ARGS[@]}" \
   -machine q35,accel=tcg -cpu qemu64,+nx,-la57,-pcid \
   -smp 1 -m 256 -nic none \
