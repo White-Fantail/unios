@@ -18,21 +18,23 @@ unios_l1_cr3_terminal:
     mov cr3,rdi
     // UART COM2 was initialized before ExitBootServices. No I/O
     // to EFI boot services, no stack-relative memory or CALL.
+    .macro uart_byte value
+    mov dx,0x2fd
+.Ltxwait\@:
+    in al,dx
+    test al,0x20
+    jz .Ltxwait\@
     mov dx,0x2f8
-    mov al,0x7f
+    mov al,\value
     out dx,al
-    mov al,0x55
-    out dx,al
-    mov al,0x4e
-    out dx,al
-    mov al,0x49
-    out dx,al
-    mov al,0x32
-    out dx,al
-    mov al,0x51
-    out dx,al
-    mov al,0x7f
-    out dx,al
+    .endm
+    uart_byte 0x7f
+    uart_byte 0x55
+    uart_byte 0x4e
+    uart_byte 0x49
+    uart_byte 0x32
+    uart_byte 0x51
+    uart_byte 0x7f
     // The independent host MUST pause the vCPU, verify the actual
     // CPU CR3/RIP/RSP under NEW root, then authorize 'Q'.
     mov ecx,0x10000000
