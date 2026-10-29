@@ -28,7 +28,14 @@ pub fn host_checkpoint()->bool {
         for _ in 0..1_000_000u32 {
             if input(UART+5) & 0x20!=0 {break;}
         }
-        output(UART,b'R');
+        // Unique multi-byte barrier marker. OVMF writes unrelated ANSI
+        // traffic on COM2 before the UniOS UEFI app starts.
+        for marker in b"\x7fUNI2H\x7f" {
+            for _ in 0..1_000_000u32 {
+                if input(UART+5)&0x20!=0 {break;}
+            }
+            output(UART,*marker);
+        }
         // Fail closed: host cannot approve by simply seeing a serial
         // token; it must send exactly 'A' on the independent COM2 RX.
         for _ in 0..600_000_000u64 {

@@ -141,9 +141,17 @@ def run(argv):
                 qmp_socket.settimeout(8)
                 gate_socket.settimeout(30)
                 qmp=Qmp(qmp_socket)
-                msg=gate_socket.recv(1)
-                if msg!=b"R":
-                    raise ValueError(f"guest did not reach pre-dereference barrier: {msg!r}")
+                magic=b"\x7fUNI2H\x7f"
+                collected=bytearray()
+                while magic not in collected:
+                    if time.monotonic()>timeout:
+                        raise TimeoutError("guest did not emit unique barrier marker")
+                    fragment=gate_socket.recv(1024)
+                    if not fragment:
+                        raise ValueError("COM2 socket closed before barrier")
+                    collected.extend(fragment)
+                    if len(collected)>128*1024:
+                        raise ValueError("excess COM2 noise before guest barrier")
                 # Pause BEFORE reading registers/translation/memory; proof is
                 # independent of any physical-address value printed by guest.
                 qmp.call("stop")
