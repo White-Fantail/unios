@@ -194,6 +194,8 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                             // silently time out in OVMF Boot Manager.
                             let code:u8=if matches!(err,memory::Error::FinalMap) {
                                 0x3a
+                            } else if matches!(err,memory::Error::SwitchCode) {
+                                0x3f
                             } else {0x3b};
                             asm!("out dx,al",in("dx") 0xf4u16,
                                  in("al") code,

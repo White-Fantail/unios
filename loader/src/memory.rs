@@ -467,9 +467,10 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                         tables.verify(va,pa,Rights::Rx)
                             .map_err(|_|Error::SwitchCode)?;
                     }
-                    if (start>>12)!=(end-1)>>12 {
-                        // This early QEMU trial is deliberately limited to
-                        // ONE audited executable page for the entire cut.
+                    if ((end-1)>>12).saturating_sub(start>>12)>1 {
+                        // A finite span across at most two executable pages,
+                        // EACH independently old/new verified above. The
+                        // PE linker may place the same code across a 4K cut.
                         return Err(Error::SwitchCode);
                     }
                     // No active new CR3 yet. Bracket the newly mapped

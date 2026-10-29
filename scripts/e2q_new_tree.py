@@ -35,7 +35,7 @@ def verify_new(root,used,targets,records,old_root,reader,old_reader):
         or start["rights"]!=1 or end["rights"]!=1
         or start["va"]<0x100000 or end["va"]>=1<<32
         or end["va"]<=start["va"]
-        or start["va"]>>12 != end["va"]>>12):
+        or (end["va"]>>12)-(start["va"]>>12)>1):
         raise ValueError("untrusted terminal CR3 switch code span")
     for t in (start,end):
         old=witness_one(old_root,t["va"],old_reader)

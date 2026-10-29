@@ -230,7 +230,7 @@ def run(argv):
                         raise TimeoutError("guest omitted new-PML4 host checkpoint")
                     fragment=gate_socket.recv(1024)
                     if not fragment:
-                        raise ValueError("COM2 closed before private-table manifest")
+                        raise ValueError(f"COM2 closed before private-table manifest, guest_exit={proc.poll()}")
                     collected.extend(fragment)
                     if len(collected)>128*1024:
                         raise ValueError("excess COM2 traffic before new-root checkpoint")
@@ -240,7 +240,7 @@ def run(argv):
                         raise TimeoutError("new root manifest timed out")
                     fragment=gate_socket.recv(1024)
                     if not fragment:
-                        raise ValueError("truncated private PML4 manifest")
+                        raise ValueError(f"truncated private PML4 manifest, guest_exit={proc.poll()}")
                     second.extend(fragment)
                 if len(second)!=PACKET:
                     raise ValueError("trailing bytes in private PML4 manifest")
