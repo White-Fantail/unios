@@ -96,6 +96,12 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                 let service_ptr = unsafe { (*system_table).boot_services.cast::<memory::BootServices>() };
                 match memory::preflight(service_ptr, &checked, EMBEDDED_ELF) {
                     Ok(_count) => {
+                        // QEMU-only direct call after all code provenance checks.
+                        // NOT an IDT-delivered CPU exception or live #DF.
+                        #[cfg(feature="lab-e2k-smoke-generic")]
+                        unsafe {emergency_handlers::smoke_generic();}
+                        #[cfg(feature="lab-e2k-smoke-df")]
+                        unsafe {emergency_handlers::smoke_df();}
                         // E2b still remains a pre-ExitBS diagnostic. A newer
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]

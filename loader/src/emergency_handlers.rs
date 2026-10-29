@@ -67,3 +67,15 @@ pub fn validate_linked_bytes() -> Result<(),unios_bridgecheck::Error> {
     }
     Ok(())
 }
+
+/// QEMU-only lab smoke: direct function call, never a CPU exception or IST test.
+#[cfg(feature="lab-e2k-smoke-generic")]
+pub unsafe fn smoke_generic() -> ! {
+    unios_l1_emergency_generic();
+    loop {core::hint::spin_loop();}
+}
+#[cfg(feature="lab-e2k-smoke-df")]
+pub unsafe fn smoke_df() -> ! {
+    unios_l1_emergency_df();
+    loop {core::hint::spin_loop();}
+}
