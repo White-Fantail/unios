@@ -1,20 +1,23 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-29:** E2h's independently paused
-> QEMU old-CR3 *root* witness has been incorporated into `main`.
-> E2i extends the live QEMU witness to **all PML4/PDPT table frames**
-> before firmware-root dereference; the pinned VM preflight observes
-> host exit **85**, with 143 host/Rust unit tests. **PD/PT lower tables
-> remain unverified**, and no ExitBootServices, new CR3, exception
-> descriptor installation, or real kernel boot occurred. True L1 boot
-> exit **65** remains UNVERIFIED. Review
-> [E2i evidence](docs/implementation/l1-e2i-upper-table-witness-2026-10-29.md)
-> and [operator release gate](docs/implementation/l1-operator-test-readiness.md).
+> **L1 Experimental Kernel — 2026-10-29:** E2i's independent
+> paused-QEMU upper old-CR3 page-table witness is merged in `main`.
+> E2j extends the test to the **first/last physical page of each
+> UEFI-owned reservation**, using a bounded COM2 manifest and
+> independent QMP page-table walks. Real QEMU/OVMF observed
+> **14 boundary addresses, each via a 2MiB leaf, and 3 table frames**,
+> with host preflight exit **87** and **161/161 tests**.
+> It does **not** prove intermediate reservation pages, 4KiB PT
+> guest paths, ExitBootServices, live CR3 switching, installed
+> exception handling, or an actual freestanding kernel boot.
+> True L1 clean success exit **65** remains unverified.
+> See [E2j evidence](docs/implementation/l1-e2j-targeted-witness-2026-10-29.md)
+> and [operator test gate](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independent operating system developing its approved
-**L1 Experimental Kernel**. The current source is an experimental
-preflight, **not a booted or released general-purpose OS**.
-L2 and later functionality are outside the approved implementation scope.
+**UniOS** is an independent operating system project implementing its
+approved **L1 Experimental Kernel**. This experimental source is
+**not a released or successfully booted operating system**.
+L2 and higher features are outside approved implementation scope.
 
 ## Vision
 
