@@ -56,6 +56,8 @@ pub enum Error {
     BoundedBridge,
     #[cfg(feature = "lab-e2f-descriptors")]
     Descriptors,
+    #[cfg(feature = "lab-e2h-host-root-proof")]
+    HostProof,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
