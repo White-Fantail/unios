@@ -81,7 +81,10 @@ pub fn host_checkpoint(reservations:&[Reservation])->bool {
 }
 
 #[cfg(feature="lab-e2o-host-private-witness")]
+#[cfg(not(feature="lab-e2q-cr3-code"))]
 pub const PRIVATE_TARGETS:usize=19;
+#[cfg(feature="lab-e2q-cr3-code")]
+pub const PRIVATE_TARGETS:usize=21;
 /// Compact COM2 evidence manifest. All fields are untrusted until the
 /// independent paused-QMP host reads actual RAM and validates identity,
 /// root reservation, exact PTE contents and target labels.

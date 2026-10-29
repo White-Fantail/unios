@@ -74,6 +74,8 @@ pub enum Error {
     NewHostProof,
     #[cfg(feature="lab-e2p-exitbs-contract")]
     FinalMap,
+    #[cfg(feature="lab-e2q-cr3-code")]
+    SwitchCode,
 }
 
 fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> {
@@ -98,6 +100,10 @@ fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> 
 pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image, payload: &[u8]) -> Result<usize, Error> {
     if services.is_null() { return Err(Error::BadServices); }
     let bs = unsafe { &*services };
+    #[cfg(feature="lab-e2q-actual-cr3")]
+    let mut switch_root=0u64;
+    #[cfg(feature="lab-e2q-actual-cr3")]
+    let mut switch_bridge_top=0u64;
     if bs.header.signature != EFI_BOOT_SERVICES_SIGNATURE ||
         (bs.header.size as usize) < core::mem::size_of::<BootServices>() {
         return Err(Error::BadServices);
@@ -438,6 +444,45 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                     return Err(Error::TransitionCut);
                 }
                 tables.audit_guard_pages().map_err(|_|Error::TransitionCut)?;
+                #[cfg(feature="lab-e2q-cr3-code")]
+                {
+                    use unios_bridgecheck::Span;
+                    let (start,end)=crate::cr3_terminal::bounds();
+                    if end<=start {return Err(Error::SwitchCode);}
+                    let span=Span::new(start,end).map_err(|_|Error::SwitchCode)?;
+                    // Every machine-code page must be old-CR3 executable,
+                    // EFI_LOADER_CODE-owned, and exactly same-PA RX in
+                    // the new private PML4 before host checkpoint.
+                    for i in 0..span.pages {
+                        let page=span.page(i).ok_or(Error::SwitchCode)?;
+                        let (va,pa)=crate::oldmap::audit_efi_code_page(
+                            root_gate,page,map,map_size,descriptor_size
+                        ).map_err(|_|Error::SwitchCode)?;
+                        match tables.lookup(va).map_err(|_|Error::SwitchCode)? {
+                            Some(x) if x.pa==pa && x.rights==Rights::Rx=>{},
+                            Some(_)=>return Err(Error::SwitchCode),
+                            None=>tables.map_efi_executable_anchor(va,pa)
+                                .map_err(|_|Error::SwitchCode)?,
+                        }
+                        tables.verify(va,pa,Rights::Rx)
+                            .map_err(|_|Error::SwitchCode)?;
+                    }
+                    if (start>>12)!=(end-1)>>12 {
+                        // This early QEMU trial is deliberately limited to
+                        // ONE audited executable page for the entire cut.
+                        return Err(Error::SwitchCode);
+                    }
+                    // No active new CR3 yet. Bracket the newly mapped
+                    // instruction range in the final host QMP manifest.
+                    #[cfg(feature="lab-e2q-actual-cr3")]
+                    {
+                        switch_root=tables.root();
+                        switch_bridge_top=aux[1].base+2*PAGE;
+                        tables.verify(switch_bridge_top-1,
+                            switch_bridge_top-1,Rights::Rw)
+                            .map_err(|_|Error::SwitchCode)?;
+                    }
+                }
                 #[cfg(feature="lab-e2o-host-private-witness")]
                 {
                     use crate::host_checkpoint::{PrivateTarget,PRIVATE_TARGETS};
@@ -475,6 +520,16 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                     targets[18]=PrivateTarget{
                         va:unios_paging::IST_GUARD_VA,pa:0,rights:0,
                     };
+                    #[cfg(feature="lab-e2q-cr3-code")]
+                    {
+                        let (start,end)=crate::cr3_terminal::bounds();
+                        targets[19]=PrivateTarget{
+                            va:start,pa:start,rights:1,
+                        };
+                        targets[20]=PrivateTarget{
+                            va:end-1,pa:end-1,rights:1,
+                        };
+                    }
                     // The VM is halted a SECOND time by an independent
                     // host that reads the physical PML4 and all traversed
                     // tables; only host-issued 'O' can unlock the guest.
@@ -617,6 +672,11 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                 match unios_exitbs::after_exit(status,attempt) {
                     Ok(unios_exitbs::ExitDecision::Success)=>{
                         // NO EFI CALLS AFTER SUCCESS; NO return-to-firmware.
+                        #[cfg(feature="lab-e2q-actual-cr3")]
+                        unsafe {crate::cr3_terminal::activate(
+                            switch_root,switch_bridge_top,
+                        );}
+                        #[cfg(not(feature="lab-e2q-actual-cr3"))]
                         unsafe {terminal_debug(0x39);}
                     }
                     Ok(unios_exitbs::ExitDecision::Retry)=>{},

@@ -22,6 +22,8 @@ mod bridge_span;
 mod emergency_handlers;
 #[cfg(feature="lab-e2l-lab-descriptors")]
 mod exception_lab;
+#[cfg(feature="lab-e2q-cr3-code")]
+mod cr3_terminal;
 #[cfg(feature="lab-e2h-host-root-proof")]
 mod host_checkpoint;
 
@@ -108,7 +110,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature="lab-e2p-exitbs-contract")]
+                            #[cfg(feature="lab-e2q-cr3-code")]
+                            console(system_table, b"UNIOS:L1:E2Q_BOUNDED_REAL_CR3_BRIDGE_PREFLIGHT_ONLY\r\n");
+                            #[cfg(all(feature="lab-e2p-exitbs-contract",not(feature="lab-e2q-cr3-code")))]
                             console(system_table, b"UNIOS:L1:E2P_FINAL_MAP_KEY_VERIFIED_ONLY_NO_EXITBS\r\n");
                             #[cfg(all(feature="lab-e2o-host-private-witness",not(feature="lab-e2p-exitbs-contract")))]
                             console(system_table, b"UNIOS:L1:E2O_INDEPENDENT_NEW_PML4_HOST_WITNESS_ONLY\r\n");
@@ -143,7 +147,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature="lab-e2p-exitbs-contract")]
+                            #[cfg(feature="lab-e2q-cr3-code")]
+                            const CODE: u8 = 0x3e;
+                            #[cfg(all(feature="lab-e2p-exitbs-contract",not(feature="lab-e2q-cr3-code")))]
                             const CODE: u8 = 0x38;
                             #[cfg(all(feature="lab-e2o-host-private-witness",not(feature="lab-e2p-exitbs-contract")))]
                             const CODE: u8 = 0x30;
