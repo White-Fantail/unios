@@ -268,10 +268,10 @@ def run(argv):
                 proof.update(new_proof)
                 proof["guest_raw_cut_audit"]="completed_before_second_paused_checkpoint"
                 (base/"e2o-host-targeted-proof.json").write_text(
-                    json.dumps({"result":"PASS",**proof},indent=2)+"\\n")
+                    json.dumps({"result":"PASS",**proof},indent=2)+"\n")
                 (base/"e2o-new-root-host-proof.json").write_text(
                     json.dumps({"result":"PASS","old_root":f"0x{root:x}",
-                                **new_proof},indent=2)+"\\n")
+                                **new_proof},indent=2)+"\n")
                 if any(x in ("RESET","SHUTDOWN") for x in qmp.events):
                     raise RuntimeError("unexpected reset before second authorization")
                 # Only the successful independent physical-frame audit is
