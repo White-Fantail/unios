@@ -229,7 +229,21 @@ def run(argv):
                 while PRIVATE_MARKER not in collected:
                     if time.monotonic()>timeout:
                         raise TimeoutError("guest omitted new-PML4 host checkpoint")
-                    fragment=gate_socket.recv(1024)
+                    try:
+                        fragment=gate_socket.recv(1024)
+                    except socket.timeout:
+                        # Fail closed and collect the independent guest
+                        # CPU state, never grant 'O' on a guessed marker.
+                        state=qmp.call("query-status")
+                        try:
+                            qmp.call("stop")
+                            cpu_crash=qmp.hmp("info registers")
+                        except Exception as ex:
+                            cpu_crash=f"QMP registers unavailable: {ex}"
+                        print("E2Q_SECOND_HOST_BARRIER_TIMEOUT "
+                              f"status={state} events={qmp.events} "
+                              f"cpu={cpu_crash[:1000]!r}",file=sys.stderr)
+                        raise RuntimeError("missing second private-PML4 COM2 barrier")
                     if not fragment:
                         raise ValueError(f"COM2 closed before private-table manifest, guest_exit={proc.poll()}")
                     collected.extend(fragment)

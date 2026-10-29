@@ -19,7 +19,7 @@ restore_default_image() {
   fi
 }
 trap restore_default_image EXIT
-for mode in ud ist df exitbs cr3; do
+for mode in cr3 exitbs ud ist df; do
   if [[ "$mode" == "df" ]]; then
     FEATURES="lab-debug-exit,lab-e2q-cr3-code,lab-e2m-smoke-real-df"
   elif [[ "$mode" == "cr3" ]]; then
