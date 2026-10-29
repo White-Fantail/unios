@@ -100,7 +100,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature="lab-e2h-host-root-proof")]
+                            #[cfg(feature="lab-e2i-host-table-proof")]
+                            console(system_table, b"UNIOS:L1:E2I_HOST_CORROBORATED_ALL_OLD_TABLES_ONLY\r\n");
+                            #[cfg(all(feature="lab-e2h-host-root-proof",not(feature="lab-e2i-host-table-proof")))]
                             console(system_table, b"UNIOS:L1:E2H_HOST_CORROBORATED_ROOT_ONLY\r\n");
                             #[cfg(all(feature="lab-e2g-root-gate",not(feature="lab-e2h-host-root-proof")))]
                             console(system_table, b"UNIOS:L1:E2G_FIRMWARE_CR3_ROOT_DESCRIPTOR_ONLY\r\n");
@@ -119,7 +121,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature="lab-e2h-host-root-proof")]
+                            #[cfg(feature="lab-e2i-host-table-proof")]
+                            const CODE: u8 = 0x2a;
+                            #[cfg(all(feature="lab-e2h-host-root-proof",not(feature="lab-e2i-host-table-proof")))]
                             const CODE: u8 = 0x29;
                             #[cfg(all(feature="lab-e2g-root-gate",not(feature="lab-e2h-host-root-proof")))]
                             const CODE: u8 = 0x28;

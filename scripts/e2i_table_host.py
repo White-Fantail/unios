@@ -202,7 +202,7 @@ def run(argv):
                     "E2I_QEMU_ALL_CR3_TABLE_FRAMES_CORROBORATED_ONLY "
                     "(NO EXITBS / NO NEW CR3 / NO CLEAN_PASS)\n")
                 print(f"E2I_HOST_TABLE_QMP_PROOF PASS root={proof['root_pa']} "
-                      f"qwords={proof['sampled_pml4_qwords']} exit={rc}")
+                      f"tables={proof['table_pages']} qwords={proof['pte_qwords_verified']} exit={rc}")
                 return 0
         finally:
             if proc.poll() is None:
@@ -211,7 +211,7 @@ def run(argv):
 
 if __name__=="__main__":
     if len(sys.argv)<3 or sys.argv[1]!="--":
-        raise SystemExit("usage: e2h_root_host.py -- qemu-system-x86_64 [args...]")
+        raise SystemExit("usage: e2i_table_host.py -- qemu-system-x86_64 [args...]")
     try:
         raise SystemExit(run(sys.argv[2:]))
     except (ValueError,RuntimeError,TimeoutError,OSError,subprocess.TimeoutExpired) as err:

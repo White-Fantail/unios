@@ -1,4 +1,4 @@
-// QEMU-only E2h independent host/guest barrier. Called after the UEFI
+// QEMU-only E2h/E2i independent host/guest barrier. Called after the UEFI
 // descriptor ownership gate but BEFORE the initial physical root deref.
 // COM2 is an isolated lab socket; never use this path in production hardware.
 use core::arch::asm;
@@ -17,7 +17,7 @@ pub fn host_checkpoint()->bool {
     unsafe {
         // Configure COM2 UART 8N1, FIFO off, DLAB clear, IRQ off.
         // The external host monitor must perform a paused-CPU read of
-        // CR3, gva2gpa(root), x(root), xp(root) before sending 'A'.
+        // CR3, gva2gpa(root), x(root), xp(root) before sending feature-specific authorization.
         output(UART+1,0); // IER
         output(UART+3,0x80); // DLAB
         output(UART,1); // baud divisor low
@@ -30,7 +30,11 @@ pub fn host_checkpoint()->bool {
         }
         // Unique multi-byte barrier marker. OVMF writes unrelated ANSI
         // traffic on COM2 before the UniOS UEFI app starts.
-        for marker in b"\x7fUNI2H\x7f" {
+        #[cfg(feature="lab-e2i-host-table-proof")]
+        let barrier:&[u8]=b"\x7fUNI2I\x7f";
+        #[cfg(not(feature="lab-e2i-host-table-proof"))]
+        let barrier:&[u8]=b"\x7fUNI2H\x7f";
+        for marker in barrier {
             for _ in 0..1_000_000u32 {
                 if input(UART+5)&0x20!=0 {break;}
             }
@@ -40,7 +44,10 @@ pub fn host_checkpoint()->bool {
         // token; it must send exactly 'A' on the independent COM2 RX.
         for _ in 0..600_000_000u64 {
             if input(UART+5)&1!=0 {
-                return input(UART)==b'A';
+                #[cfg(feature="lab-e2i-host-table-proof")]
+                {return input(UART)==b'I';}
+                #[cfg(not(feature="lab-e2i-host-table-proof"))]
+                {return input(UART)==b'A';}
             }
             core::hint::spin_loop();
         }
