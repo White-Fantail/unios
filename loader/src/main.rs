@@ -108,7 +108,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature="lab-e2n-transition-closure")]
+                            #[cfg(feature="lab-e2o-host-private-witness")]
+                            console(system_table, b"UNIOS:L1:E2O_INDEPENDENT_NEW_PML4_HOST_WITNESS_ONLY\r\n");
+                            #[cfg(all(feature="lab-e2n-transition-closure",not(feature="lab-e2o-host-private-witness")))]
                             console(system_table, b"UNIOS:L1:E2N_RAW_PRIVATE_CR3_CUT_CLOSURE_PREFLIGHT_ONLY\r\n");
                             #[cfg(all(feature="lab-e2m-lab-descriptors",not(feature="lab-e2n-transition-closure")))]
                             console(system_table, b"UNIOS:L1:E2M_REAL_DOUBLE_FAULT_LAB_PREFLIGHT_ONLY\r\n");
@@ -139,7 +141,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature="lab-e2n-transition-closure")]
+                            #[cfg(feature="lab-e2o-host-private-witness")]
+                            const CODE: u8 = 0x30;
+                            #[cfg(all(feature="lab-e2n-transition-closure",not(feature="lab-e2o-host-private-witness")))]
                             const CODE: u8 = 0x2f;
                             #[cfg(all(feature="lab-e2m-lab-descriptors",not(feature="lab-e2n-transition-closure")))]
                             const CODE: u8 = 0x2e;
