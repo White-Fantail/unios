@@ -221,7 +221,8 @@ def run(argv):
                     "(NO EXITBS / NO NEW CR3 / NO CLEAN_PASS)\n")
                 print(f"E2J_HOST_TARGETED_QMP_PROOF PASS root={proof['root_pa']} "
                       f"targets={proof['sampled_reservation_pages']} "
-                      f"tables={proof['fully_compared_table_pages']} exit={rc}")
+                      f"tables={proof['fully_compared_table_pages']} "
+                      f"leaf_sizes={proof['sampled_leaf_sizes']} exit={rc}")
                 return 0
         finally:
             if proc.poll() is None:
