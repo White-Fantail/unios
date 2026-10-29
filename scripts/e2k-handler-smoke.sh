@@ -10,7 +10,14 @@ test -s "$UNIOS_KERNEL_ELF"
 cp out/esp/EFI/BOOT/BOOTX64.EFI out/e2k-preflight-loader.efi
 cp out/preflight-serial.log out/e2k-preflight-serial.log
 cp out/preflight-outcome.txt out/e2k-preflight-outcome.txt
+cp out/preflight-host-exit.txt out/e2k-preflight-host-exit.txt
 cp out/e2k-host-targeted-proof.json out/e2k-preflight-host-proof.json
+restore_default_image() {
+  if test -s out/e2k-preflight-loader.efi; then
+    cp out/e2k-preflight-loader.efi out/esp/EFI/BOOT/BOOTX64.EFI
+  fi
+}
+trap restore_default_image EXIT
 for mode in generic df; do
   cargo build --locked --release -p unios_loader \
     --features "lab-debug-exit,lab-e2k-emergency-closure,lab-e2k-smoke-$mode" \
@@ -33,5 +40,12 @@ cargo build --locked --release -p unios_loader \
   --target x86_64-unknown-uefi
 cmp target/x86_64-unknown-uefi/release/unios_loader.efi out/e2k-preflight-loader.efi
 cp out/e2k-preflight-loader.efi out/esp/EFI/BOOT/BOOTX64.EFI
+cp out/e2k-preflight-serial.log out/preflight-serial.log
+cp out/e2k-preflight-outcome.txt out/preflight-outcome.txt
+cp out/e2k-preflight-host-exit.txt out/preflight-host-exit.txt
+cp out/e2k-preflight-host-proof.json out/e2k-host-targeted-proof.json
+# Never upload an implicitly bootable disposable GPT holding a fatal
+# direct-call smoke EFI; retain separate text and digest evidence only.
+rm -f out/preflight-disk.img out/preflight-fat.img out/preflight-vars.fd
 echo "E2K_PRE_FLIGHT_DEFAULT_RESTORED (NO FATAL SMOKE BY DEFAULT)" |
   tee out/e2k-artifact-restore-proof.txt
