@@ -1,24 +1,27 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-30:** E2o's
-> independent QEMU-host verification of all **8 private
-> page-table frames** and **19 mapped/unmapped targets**
-> is merged into `main`. **E2p** adds a bounded final
-> EFI GetMemoryMap/key protocol and a separately compiled,
-> **actual ExitBootServices QEMU terminal experiment**.
-> GitHub Actions verified **273/273 tests**, normal final-map
-> preflight **113**, real ExitBootServices success path
-> **115**, and legacy fault exits **103/105/109**.
-> The new CR3 remains **uninstalled**, no high-half
-> kernel entry occurred, and real clean kernel exit **65**
-> is **NOT verified**. See
-> [E2p evidence](docs/implementation/l1-e2p-exitbs-terminal-2026-10-30.md)
+> **L1 Experimental Kernel — 2026-10-30:** E2p's
+> real `ExitBootServices` terminal QEMU success is in
+> `main`. **E2q** extends that disposable QEMU-only
+> terminal path to a **real new private CR3 switch**.
+> The host independently checks all **8 new physical PTE
+> frames, 21 mappings, actual live CPU CR3/RIP/RSP** in
+> three paused host/guest checkpoints. Final CI has
+> **291/291 tests** and real post-CR3 QEMU exit **121**,
+> retaining `ExitBootServices` exit **115** and exception
+> regressions **103/105/109**.
+>
+> **No high-half kernel entry**, production descriptor
+> installation, or clean L1 boot exit **65** occurred.
+> Hardware tests and complete operator QEMU kernel boot
+> remain **NO-GO**. See the
+> [E2q evidence](docs/implementation/l1-e2q-real-cr3-terminal-2026-10-30.md)
 > and [operator readiness](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independently designed OS project now implementing
-the approved **L1 Experimental Kernel**. It remains a controlled
-EFI/QEMU laboratory, **not yet a booted or released OS**.
-L2 and higher features require a separate approval.
+**UniOS** is an independent operating system project implementing
+its approved **L1 Experimental Kernel** in an isolated EFI/QEMU
+research environment. It is not yet a booted or released
+general-purpose operating system. L2+ work requires authorization.
 
 ## Vision
 
