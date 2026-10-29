@@ -1,26 +1,24 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-30:** E2n's guest
-> independent raw private-PML4 walker is in `main`.
-> **E2o** adds a second **independent paused-QMP host witness
-> of actual new private PML4 physical table pages**, with
-> a dedicated COM2 **O** authorization barrier after the
-> original old-root **J** check. The host verified **all
-> 8 used new 4KiB table frames**, **19 exact address/rights
-> targets including 2 absent guards**, and old CR3 remains
-> active. Disposable QEMU exits **97/103/105/109**, with
-> **252/252 unit/host tests passing**. The private CR3 is
-> still **NOT activated** and `ExitBootServices`, high-half
-> kernel entry, and real clean boot exit **65** have NOT
-> occurred. See
-> [E2o QEMU evidence](docs/implementation/l1-e2o-independent-pml4-host-witness-2026-10-30.md)
-> and [operator test readiness](docs/implementation/l1-operator-test-readiness.md).
+> **L1 Experimental Kernel — 2026-10-30:** E2o's
+> independent QEMU-host verification of all **8 private
+> page-table frames** and **19 mapped/unmapped targets**
+> is merged into `main`. **E2p** adds a bounded final
+> EFI GetMemoryMap/key protocol and a separately compiled,
+> **actual ExitBootServices QEMU terminal experiment**.
+> GitHub Actions verified **273/273 tests**, normal final-map
+> preflight **113**, real ExitBootServices success path
+> **115**, and legacy fault exits **103/105/109**.
+> The new CR3 remains **uninstalled**, no high-half
+> kernel entry occurred, and real clean kernel exit **65**
+> is **NOT verified**. See
+> [E2p evidence](docs/implementation/l1-e2p-exitbs-terminal-2026-10-30.md)
+> and [operator readiness](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independently designed operating system project
-implementing its approved **L1 Experimental Kernel** as an
-experimental EFI/QEMU laboratory. This is **not a booted or
-released general-purpose OS**. L2+ development requires
-separate approval.
+**UniOS** is an independently designed OS project now implementing
+the approved **L1 Experimental Kernel**. It remains a controlled
+EFI/QEMU laboratory, **not yet a booted or released OS**.
+L2 and higher features require a separate approval.
 
 ## Vision
 
