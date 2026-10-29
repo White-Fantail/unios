@@ -26,6 +26,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf gdisk dosfstools mtools
       - name: E2k QEMU executable emergency-handler span audit and old-CR3 host witness (NOT kernel boot)
         run: bash scripts/qemu-preflight.sh
+      - name: E2k QEMU direct-call fatal stubs smoke (NOT IDT or DF CPU exception injection)
+        run: bash scripts/e2k-handler-smoke.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4
         if: always()

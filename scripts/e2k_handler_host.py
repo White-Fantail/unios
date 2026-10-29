@@ -128,7 +128,15 @@ def connect_unix(path, process, deadline):
             time.sleep(0.05)
     raise TimeoutError(f"QEMU {path} control socket not ready")
 
+def expected_host_exit(mode):
+    choices={"preflight":89,"generic":99,"df":101}
+    if mode not in choices:
+        raise ValueError("unknown QEMU handler smoke mode")
+    return choices[mode]
+
 def run(argv):
+    mode=os.environ.get("UNIOS_E2K_SMOKE","preflight")
+    expected=expected_host_exit(mode)
     base=Path("out")
     qmp_path=base/"e2j-qmp.sock"
     gate_path=base/"e2j-com2.sock"
@@ -211,15 +219,15 @@ def run(argv):
                 remaining=max(1,int(timeout-time.monotonic()))
                 rc=proc.wait(timeout=remaining)
                 (base/"preflight-host-exit.txt").write_text(f"{rc}\n")
-                if rc!=89:
-                    raise RuntimeError(f"QEMU unexpected E2k diagnostic exit: {rc}")
+                if rc!=expected:
+                    raise RuntimeError(f"QEMU unexpected E2k diagnostic exit: {rc}, expected={expected} mode={mode}")
                 serial=(base/"preflight-serial.log").read_text(errors="replace")
                 if "HALTED_PASS" in serial:
                     raise RuntimeError("E2k emitted forbidden kernel success marker")
                 (base/"preflight-outcome.txt").write_text(
-                    "E2K_QEMU_EMERGENCY_HANDLER_CLOSURE_PREFLIGHT_ONLY "
+                    f"E2K_QEMU_EMERGENCY_HANDLER_{mode.upper()}_SMOKE_ONLY "
                     "(NO EXITBS / NO NEW CR3 / NO CLEAN_PASS)\n")
-                print(f"E2K_HOST_EMERGENCY_CLOSURE_PROOF PASS root={proof['root_pa']} "
+                print(f"E2K_HOST_EMERGENCY_CLOSURE_PROOF PASS mode={mode} root={proof['root_pa']} "
                       f"targets={proof['sampled_reservation_pages']} "
                       f"tables={proof['fully_compared_table_pages']} "
                       f"leaf_sizes={proof['sampled_leaf_sizes']} exit={rc}")
