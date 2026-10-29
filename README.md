@@ -1,24 +1,25 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-30:** E2l's
-> genuine CPU #UD and software vector-8 IST1 tests have
-> been merged. **E2m** adds an isolated *CPU-generated
-> genuine double fault* via nested contributory #GP
-> delivery and a separate TSS IST1 error-code/stack check.
-> The disposable QEMU/OVMF test confirmed native
-> **#GP-during-#GP → #DF**, host exit **109**,
-> regression exits **93/103/105**, and **212/212 host/Rust
-> tests**. The deliberately malformed #GP gate is compiled
-> only in a terminal VM fault-injection variant.
-> **No ExitBootServices, new CR3, high-half kernel entry,
-> or clean real boot exit 65 has been verified.** See
-> [E2m evidence](docs/implementation/l1-e2m-true-double-fault-2026-10-30.md)
-> and [operator test gate](docs/implementation/l1-operator-test-readiness.md).
+> **L1 Experimental Kernel — 2026-10-30:** E2m's
+> genuine CPU-generated #DF + IST1 proof is in `main`.
+> **E2n** adds an independent **raw, uninstalled new-private-CR3
+> page-table walk** for the staged kernel entry, E2e bridge
+> code bounds, both emergency handlers, all bridge/main/DF-IST
+> stack pages, high-half metadata and guard pages.
+> Disposable QEMU/OVMF yields diagnostic **95** and
+> E2l/E2m fault regression exits **103/105/109**, with
+> **230/230 tests**. The QEMU host still independently
+> witnesses **the old firmware CR3 only**; new private PTEs
+> are decoded inside the guest, not separately by QMP.
+> **No active new CR3, ExitBootServices, high-half kernel
+> entry or clean kernel exit 65 has occurred.**
+> See [E2n evidence](docs/implementation/l1-e2n-raw-transition-closure-2026-10-30.md)
+> and [operator gate](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independent operating system project implementing the
-approved **L1 Experimental Kernel**. It remains experimental EFI
-preflight and isolated QEMU exception research, **not a booted or
-released general-purpose OS**. L2+ functionality is separately gated.
+**UniOS** implements the approved **L1 Experimental Kernel** as
+disposable, carefully gated EFI/QEMU preflight research. This
+is **not a booted or released operating system**. L2 and
+later development requires separate authorization.
 
 ## Vision
 
