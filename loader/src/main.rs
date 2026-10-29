@@ -20,6 +20,8 @@ mod bridge_anchor;
 mod bridge_span;
 #[cfg(feature = "lab-e2f-descriptors")]
 mod emergency_handlers;
+#[cfg(feature="lab-e2l-lab-descriptors")]
+mod exception_lab;
 #[cfg(feature="lab-e2h-host-root-proof")]
 mod host_checkpoint;
 
@@ -106,7 +108,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         // map snapshot is mandatory before any future ExitBS.
                         #[cfg(feature = "lab-e2b-staging")]
                         unsafe {
-                            #[cfg(feature="lab-e2k-emergency-closure")]
+                            #[cfg(feature="lab-e2l-lab-descriptors")]
+                            console(system_table, b"UNIOS:L1:E2L_DORMANT_PHYSICAL_IDT_LAB_PREFLIGHT_ONLY\r\n");
+                            #[cfg(all(feature="lab-e2k-emergency-closure",not(feature="lab-e2l-lab-descriptors")))]
                             console(system_table, b"UNIOS:L1:E2K_LINK_BOUNDED_EXCEPTION_HANDLERS_PREFLIGHT_ONLY\r\n");
                             #[cfg(all(feature="lab-e2j-targeted-leaf-proof",not(feature="lab-e2k-emergency-closure")))]
                             console(system_table, b"UNIOS:L1:E2J_HOST_TARGETED_RESERVATION_LEAF_PREFLIGHT_ONLY\r\n");
@@ -131,7 +135,9 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
                         unsafe { console(system_table, b"UNIOS:L1:E2A_MAP_PREFLIGHT_ONLY\r\n"); }
                         #[cfg(feature = "lab-debug-exit")]
                         unsafe {
-                            #[cfg(feature="lab-e2k-emergency-closure")]
+                            #[cfg(feature="lab-e2l-lab-descriptors")]
+                            const CODE: u8 = 0x2d;
+                            #[cfg(all(feature="lab-e2k-emergency-closure",not(feature="lab-e2l-lab-descriptors")))]
                             const CODE: u8 = 0x2c;
                             #[cfg(all(feature="lab-e2j-targeted-leaf-proof",not(feature="lab-e2k-emergency-closure")))]
                             const CODE: u8 = 0x2b;

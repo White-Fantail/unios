@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# E2k QEMU: E2j QMP witness plus exact EFI emergency fault-handler bytes and RX span mapping.
-# Distinct debug-exit byte 0x2c returns 89; 65 is reserved for E4 clean PASS.
+# E2l QEMU: E2j QMP witness plus physical descriptor preflight and terminal UD/IST dispatch.
+# Distinct debug-exit byte 0x2d returns 91; 65 is reserved for E4 clean PASS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -26,15 +26,15 @@ qemu-system-x86_64 --version | tee out/qemu-version.txt
 sha256sum "$CODE" "$VARS_TEMPLATE" "$(command -v qemu-system-x86_64)" |
   tee out/preflight-host-digests.txt
 cat > out/qemu-profile.txt <<'PROFILE'
-LAB-H1 E2k-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
+LAB-H1 E2l-only, Q35 TCG, qemu64 NX, LA57=0, PCIDE=0,
 1 vCPU, 256 MiB, OVMF DevUnsigned, immutable CODE,
 disposable pflash VARS, disposable GPT ESP with ephemeral snapshot overlay,
 no network and no real user media; COM1 log, COM2 host barrier and QMP.
-E2k host exit=89, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
+E2l host exit=91, full L1 CLEAN_PASS exit=65 (NOT ENABLED).
 PROFILE
 # Host controls a separate COM2 Unix socket and pauses vCPU0 at the root
 # dereference checkpoint. Guest cannot advance without successful QMP proof.
-python3 scripts/e2k_handler_host.py -- qemu-system-x86_64 \
+python3 scripts/e2l_exception_host.py -- qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu qemu64,+nx,-la57,-pcid \
   -smp 1 -m 256 -nic none \
   -drive if=pflash,unit=0,format=raw,readonly=on,file="$CODE" \

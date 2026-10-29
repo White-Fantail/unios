@@ -52,6 +52,14 @@ class OracleTest(unittest.TestCase):
     def test_e2k_emergency_closure_preflight_not_kernel_pass(self):
         self.assertFalse(clean_pass(self.good(exit_code=89)))
 
+    def test_e2l_physical_idt_preflight_not_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=91)))
+    def test_e2l_real_ud_not_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=103)))
+    def test_e2l_software_vector8_ist_not_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=105)))
+    def test_e2l_ist_wrong_stack_not_kernel_pass(self):
+        self.assertFalse(clean_pass(self.good(exit_code=107)))
     def test_marker_then_reset(self):
         self.assertFalse(clean_pass(self.good(qmp_events=["RESET"])))
 
