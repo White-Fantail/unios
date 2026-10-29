@@ -1,22 +1,24 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-30:** E2k's linked
-> emergency-handler code and fail-stop direct CALLs are in `main`.
-> E2l adds **genuine CPU-generated #UD via UD2 and active
-> GDT/IDT/TSS**, plus a **software INT8 IST1 stack switch**,
-> on disposable QEMU/OVMF. The final CI ran **191/191 tests** and
-> saw independent preflight **91**, hardware #UD **103**, and
-> software-vector IST1 **105**. **INT8 is not a genuine
-> CPU-generated #DF.** No ExitBootServices, new CR3, high-half
-> kernel entry or true full-boot exit **65** has occurred.
-> See [E2l evidence](docs/implementation/l1-e2l-active-idt-ist-2026-10-30.md)
+> **L1 Experimental Kernel — 2026-10-30:** E2l's
+> genuine CPU #UD and software vector-8 IST1 tests have
+> been merged. **E2m** adds an isolated *CPU-generated
+> genuine double fault* via nested contributory #GP
+> delivery and a separate TSS IST1 error-code/stack check.
+> The disposable QEMU/OVMF test confirmed native
+> **#GP-during-#GP → #DF**, host exit **109**,
+> regression exits **93/103/105**, and **212/212 host/Rust
+> tests**. The deliberately malformed #GP gate is compiled
+> only in a terminal VM fault-injection variant.
+> **No ExitBootServices, new CR3, high-half kernel entry,
+> or clean real boot exit 65 has been verified.** See
+> [E2m evidence](docs/implementation/l1-e2m-true-double-fault-2026-10-30.md)
 > and [operator test gate](docs/implementation/l1-operator-test-readiness.md).
 
-**UniOS** is an independent OS project implementing its approved
-**L1 Experimental Kernel**. The source is currently an experimental
-EFI preflight / isolated QEMU exception lab, **not a booted or
-released general-purpose OS**. L2 and later functionality
-requires separate authorization.
+**UniOS** is an independent operating system project implementing the
+approved **L1 Experimental Kernel**. It remains experimental EFI
+preflight and isolated QEMU exception research, **not a booted or
+released general-purpose OS**. L2+ functionality is separately gated.
 
 ## Vision
 
