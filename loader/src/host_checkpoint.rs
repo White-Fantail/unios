@@ -79,3 +79,50 @@ pub fn host_checkpoint(reservations:&[Reservation])->bool {
         false
     }
 }
+
+#[cfg(feature="lab-e2o-host-private-witness")]
+pub const PRIVATE_TARGETS:usize=19;
+/// Compact COM2 evidence manifest. All fields are untrusted until the
+/// independent paused-QMP host reads actual RAM and validates identity,
+/// root reservation, exact PTE contents and target labels.
+#[cfg(feature="lab-e2o-host-private-witness")]
+#[derive(Clone,Copy)]
+pub struct PrivateTarget {
+    pub va:u64, pub pa:u64, pub rights:u8,
+}
+/// Stage 2: distinct NEW private root witness AFTER the guest finished
+/// building and independently checking raw PTEs. CR3 is still the old
+/// firmware root; this sends metadata only and NEVER switches CR3.
+/// A second bounded, distinct O authorization is mandatory before
+/// subsequent QEMU exception-lab tests or preflight success.
+#[cfg(feature="lab-e2o-host-private-witness")]
+pub fn private_checkpoint(root:u64,used:usize,targets:&[PrivateTarget;PRIVATE_TARGETS])->bool {
+    if root<0x100000 || root >=1u64<<32 || root&4095!=0 ||
+       used<4 || used>128 {return false;}
+    unsafe {
+        for byte in b"\x7fUNI2O\x7f" {
+            if !transmit(UART,*byte) {return false;}
+        }
+        for b in root.to_le_bytes() {
+            if !transmit(UART,b) {return false;}
+        }
+        if !transmit(UART,used as u8) || !transmit(UART,PRIVATE_TARGETS as u8) {
+            return false;
+        }
+        for target in targets {
+            if target.rights>3 {return false;}
+            for b in target.va.to_le_bytes() {
+                if !transmit(UART,b) {return false;}
+            }
+            for b in target.pa.to_le_bytes() {
+                if !transmit(UART,b) {return false;}
+            }
+            if !transmit(UART,target.rights) {return false;}
+        }
+        for _ in 0..600_000_000u64 {
+            if input(UART+5)&1!=0 {return input(UART)==b'O';}
+            core::hint::spin_loop();
+        }
+        false
+    }
+}
