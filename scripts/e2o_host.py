@@ -290,7 +290,11 @@ def run(argv):
                 print(f"E2O_QMP_OLD_AND_NEW_PML4_WITNESS PASS mode={mode} root={proof['root_pa']} "
                       f"targets={proof['sampled_reservation_pages']} "
                       f"tables={proof['fully_compared_table_pages']} "
-                      f"leaf_sizes={proof['sampled_leaf_sizes']} exit={rc}")
+                      f"leaf_sizes={proof['sampled_leaf_sizes']} "
+                      f"new_root={new_proof['new_root_pa']} "
+                      f"new_pages={new_proof['new_table_pages_compared']} "
+                      f"new_targets={new_proof['new_target_count']} "
+                      f"new_guards={new_proof['new_unmapped_guards']} exit={rc}")
                 return 0
         finally:
             if proc.poll() is None:

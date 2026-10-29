@@ -12,6 +12,7 @@ cp out/preflight-serial.log out/e2o-preflight-serial.log
 cp out/preflight-outcome.txt out/e2o-preflight-outcome.txt
 cp out/preflight-host-exit.txt out/e2o-preflight-host-exit.txt
 cp out/e2o-host-targeted-proof.json out/e2o-preflight-host-proof.json
+cp out/e2o-new-root-host-proof.json out/e2o-preflight-new-root-proof.json
 restore_default_image() {
   if test -s out/e2o-preflight-loader.efi; then
     cp out/e2o-preflight-loader.efi out/esp/EFI/BOOT/BOOTX64.EFI
@@ -35,6 +36,7 @@ for mode in ud ist df; do
   cp out/preflight-outcome.txt "out/e2o-$mode-smoke-outcome.txt"
   cp out/preflight-serial.log "out/e2o-$mode-smoke-serial.log"
   cp out/e2o-host-targeted-proof.json "out/e2o-$mode-smoke-host-proof.json"
+  cp out/e2o-new-root-host-proof.json "out/e2o-$mode-new-root-proof.json"
   if [[ "$mode" == "df" ]]; then
     python3 scripts/audit_e2m_df_trace.py out/e2o-real-df-qemu-trace.log |
       tee out/e2o-df-native-trace-proof.txt
@@ -54,6 +56,7 @@ cp out/e2o-preflight-serial.log out/preflight-serial.log
 cp out/e2o-preflight-outcome.txt out/preflight-outcome.txt
 cp out/e2o-preflight-host-exit.txt out/preflight-host-exit.txt
 cp out/e2o-preflight-host-proof.json out/e2o-host-targeted-proof.json
+cp out/e2o-preflight-new-root-proof.json out/e2o-new-root-host-proof.json
 # Never upload an implicitly bootable disposable GPT holding a fatal
 # exception dispatch smoke EFI; retain separate text and digest evidence only.
 rm -f out/preflight-disk.img out/preflight-fat.img out/preflight-vars.fd
