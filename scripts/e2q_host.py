@@ -21,6 +21,7 @@ from e2r_descriptor_new_tree import PACKET as E2R_DESC_PACKET, decode_manifest a
 from e2r_live_tree import PACKET as LIVE_PACKET, decode_manifest as decode_live, verify_new as verify_live, MARKER as LIVE_MARKER
 from e2r_live_cpu import verify_cpu as verify_live_cpu
 from e2r_kernel_cpu import verify_kernel,verify_context,reg as kernel_reg
+from e2r_clean_oracle import verify_trace as verify_clean_trace,ENTRY as CLEAN_ENTRY,SUCCESS as CLEAN_SUCCESS
 
 ROOT_MASK = 0x000f_ffff_ffff_f000
 TIME_LIMIT = 120
@@ -136,7 +137,7 @@ def connect_unix(path, process, deadline):
     raise TimeoutError(f"QEMU {path} control socket not ready")
 
 def expected_host_exit(mode):
-    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125,"e2r_live":129,"e2r_handoff":133}
+    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125,"e2r_live":129,"e2r_handoff":133,"e2r_clean":65}
     if mode not in choices:
         raise ValueError("unknown QEMU handler smoke mode")
     return choices[mode]
@@ -146,13 +147,13 @@ def run(argv):
     expected_exit=expected_host_exit(mode)
     # Only the explicit E2r preflight feature emits 23 targets.
     # Every E2q default/fault/actual CR3 path retains its 21-target ABI.
-    target_packet=(LIVE_PACKET if mode in ("e2r_live","e2r_handoff") else
+    target_packet=(LIVE_PACKET if mode in ("e2r_live","e2r_handoff","e2r_clean") else
                    E2R_DESC_PACKET if mode=="e2r_desc" else
                    E2R_PACKET if mode=="e2r" else PACKET)
-    decode_current=(decode_live if mode in ("e2r_live","e2r_handoff") else
+    decode_current=(decode_live if mode in ("e2r_live","e2r_handoff","e2r_clean") else
                     decode_e2r_desc if mode=="e2r_desc" else
                     decode_e2r if mode=="e2r" else decode_manifest)
-    verify_current=(verify_live if mode in ("e2r_live","e2r_handoff") else
+    verify_current=(verify_live if mode in ("e2r_live","e2r_handoff","e2r_clean") else
                     verify_e2r_desc if mode=="e2r_desc" else
                     verify_e2r if mode=="e2r" else verify_new)
     base=Path("out")
@@ -297,7 +298,7 @@ def run(argv):
                 _,old_final=parse_cr3(regs5)
                 if old_final!=root:
                     raise RuntimeError("old firmware CR3 changed during new-PTE audit")
-                if mode in ("e2r","e2r_desc","e2r_live","e2r_handoff"):
+                if mode in ("e2r","e2r_desc","e2r_live","e2r_handoff","e2r_clean"):
                     # E2r-C2/C4: only after independently proving the entire
                     # private PML4 and its descriptor PA mapping, read the
                     # actual EFI-built 4KiB GDT/TSS/IDT physical page.
@@ -324,7 +325,7 @@ def run(argv):
                 # allowed to unlock the guest; this is not a CR3 switch.
                 gate_socket.sendall(b"O")
                 qmp.call("cont")
-                if mode in ("cr3","e2r_live","e2r_handoff"):
+                if mode in ("cr3","e2r_live","e2r_handoff","e2r_clean"):
                     # CPU now calls ExitBootServices, sets bridge RSP,
                     # executes an actual MOV CR3, and sends the UNIQUE
                     # third COM2 marker from RX code under new CR3.
@@ -363,8 +364,8 @@ def run(argv):
                     bridge=next(r for r in records if r["id"]==3)
                     live=parse_switched_regs(
                         cpu,new_root,
-                        int(new_proof["live_descriptors_begin"] if mode in ("e2r_live","e2r_handoff") else new_proof["cr3_terminal_code_begin"],16),
-                        int(new_proof["live_descriptors_end"] if mode in ("e2r_live","e2r_handoff") else new_proof["cr3_terminal_code_end"],16),
+                        int(new_proof["live_descriptors_begin"] if mode in ("e2r_live","e2r_handoff","e2r_clean") else new_proof["cr3_terminal_code_begin"],16),
+                        int(new_proof["live_descriptors_end"] if mode in ("e2r_live","e2r_handoff","e2r_clean") else new_proof["cr3_terminal_code_end"],16),
                         bridge["base"],bridge["end"])
                     print(f"E2Q_STAGE_Q_CPU_REGISTERS_VERIFIED {live}",flush=True)
                     rip=int(live["cpu_live_rip"],16)
@@ -412,7 +413,7 @@ def run(argv):
                         raise RuntimeError("VM shutdown before terminal new-CR3 verification")
                     gate_socket.sendall(b"Q")
                     qmp.call("cont")
-                    if mode in ("e2r_live","e2r_handoff"):
+                    if mode in ("e2r_live","e2r_handoff","e2r_clean"):
                         # Fourth independent stop, after actual LGDT/LIDT/
                         # LTR, far-CS reload and all data-segment reloads.
                         fourth=bytearray()
@@ -457,7 +458,7 @@ def run(argv):
                             raise RuntimeError("unexpected reset before fourth QMP proof")
                         gate_socket.sendall(b"R")
                         qmp.call("cont")
-                        if mode=="e2r_handoff":
+                        if mode in ("e2r_handoff","e2r_clean"):
                             # Only a real kernel SysV64 code path can emit
                             # the fifth distinct marker after BSS/context
                             # checks. Guest serial tokens alone prove nothing.
@@ -516,6 +517,10 @@ def run(argv):
                                             "kernel_entry_executed":True,
                                             "full_clean_boot":False},indent=2)+"\n")
                             print("E2R_C6_FIFTH_QMP_HIGH_HALF_RIP_RSP_CR3_BSS_CONTEXT_PASS",flush=True)
+                            if mode=="e2r_clean":
+                                pretrace=(base/"preflight-serial.log").read_text(errors="replace")
+                                if CLEAN_SUCCESS in pretrace:
+                                    raise RuntimeError("HALTED_PASS appeared BEFORE fifth QMP authorization")
                             gate_socket.sendall(b"K")
                             qmp.call("cont")
                 remaining=max(1,int(timeout-time.monotonic()))
@@ -524,16 +529,31 @@ def run(argv):
                 if rc!=expected_exit:
                     raise RuntimeError(f"QEMU unexpected E2q diagnostic exit: {rc}, expected={expected_exit} mode={mode}")
                 serial=(base/"preflight-serial.log").read_text(errors="replace")
-                if mode=="e2r_handoff":
+                if mode in ("e2r_handoff","e2r_clean"):
                     if serial.count("UNIOS:L1:E2R_C6_HIGH_HALF_ENTRY")!=1:
                         raise RuntimeError("C6 kernel COM1 marker absent/duplicate")
                     if not (base/"e2r-c6-kernel-proof.json").is_file():
                         raise RuntimeError("C6 independently stopped QMP kernel witness missing")
-                if "HALTED_PASS" in serial:
+                if mode=="e2r_clean":
+                    qproof=json.loads((base/"e2r-c6-kernel-proof.json").read_text())
+                    if (qproof["result"]!="PASS" or
+                        qproof["kernel_entry_executed"] is not True or
+                        qproof["kernel_cpu_active_descriptors"] is not True or
+                        qproof["boot_context_pa_bytes_independently_verified"] is not True):
+                        raise RuntimeError("clean exit lacked independent paused QMP high-half proof")
+                    accepted=verify_clean_trace(serial,rc,True)
+                    (base/"e2r-c7-clean-boot-proof.json").write_text(
+                        json.dumps(accepted,indent=2)+"\n")
+                    print("E2R_C7_ORDERED_COM1_AND_EXACT_EXIT65_QMP_PASS",flush=True)
+                elif "HALTED_PASS" in serial:
                     raise RuntimeError("E2q emitted forbidden kernel success marker")
-                (base/"preflight-outcome.txt").write_text(
-                    f"E2Q_QEMU_ACTUAL_CR3_HOST_WITNESS_{mode.upper()}_SMOKE_ONLY "
-                    "(NO EXITBS / NO NEW CR3 / NO CLEAN_PASS)\n")
+                if mode=="e2r_clean":
+                    (base/"preflight-outcome.txt").write_text(
+                        "E2R_C7_QEMU_L1_CLEAN_BOOT_ACCEPTED_EXIT65_ONLY\n")
+                else:
+                    (base/"preflight-outcome.txt").write_text(
+                        f"E2Q_QEMU_ACTUAL_CR3_HOST_WITNESS_{mode.upper()}_SMOKE_ONLY "
+                        "(NO CLEAN_PASS)\n")
                 print(f"E2Q_QMP_OLD_NEW_AND_ACTIVE_CR3_WITNESS PASS mode={mode} root={proof['root_pa']} "
                       f"targets={proof['sampled_reservation_pages']} "
                       f"tables={proof['fully_compared_table_pages']} "
