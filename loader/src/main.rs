@@ -24,6 +24,8 @@ mod emergency_handlers;
 mod exception_lab;
 #[cfg(feature="lab-e2q-cr3-code")]
 mod cr3_terminal;
+#[cfg(feature="lab-e2r-high-entry-code")]
+mod high_entry;
 #[cfg(feature="lab-e2h-host-root-proof")]
 mod host_checkpoint;
 
@@ -94,6 +96,14 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
         Ok(checked) => {
             if checked.count == 0 || checked.staged_bytes > unios_elf::MAX_STAGED {
                 return EFI_LOAD_ERROR;
+            }
+            #[cfg(feature="lab-e2r-high-entry-code")]
+            {
+                // Linked candidate is inspected, NEVER invoked. No high-half jump.
+                let (begin, end) = high_entry::bounds();
+                if begin == 0 || end <= begin || end - begin > 64 {
+                    return EFI_LOAD_ERROR;
+                }
             }
             #[cfg(feature = "lab-e2-preflight")]
             {
