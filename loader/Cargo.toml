@@ -49,3 +49,4 @@ lab-e2p-actual-exitbs = ["lab-e2p-exitbs-contract", "lab-debug-exit"]
 lab-e2q-cr3-code = ["lab-e2p-exitbs-contract"]
 lab-e2q-actual-cr3 = ["lab-e2q-cr3-code", "lab-e2p-actual-exitbs", "lab-debug-exit"]
 lab-e2r-high-entry-code = ["lab-e2q-cr3-code"] # offline-linked only; no activation
+lab-e2r-descriptor-code = ["lab-e2r-high-entry-code"] # unreachable RX audit only
