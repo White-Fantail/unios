@@ -87,8 +87,10 @@ pub const PRIVATE_TARGETS:usize=19;
 pub const PRIVATE_TARGETS:usize=21;
 #[cfg(all(feature="lab-e2r-high-entry-code",not(feature="lab-e2r-descriptor-code")))]
 pub const PRIVATE_TARGETS:usize=23;
-#[cfg(feature="lab-e2r-descriptor-code")]
+#[cfg(all(feature="lab-e2r-descriptor-code",not(feature="lab-e2r-active-descriptors")))]
 pub const PRIVATE_TARGETS:usize=25;
+#[cfg(feature="lab-e2r-active-descriptors")]
+pub const PRIVATE_TARGETS:usize=27;
 /// Compact COM2 evidence manifest. All fields are untrusted until the
 /// independent paused-QMP host reads actual RAM and validates identity,
 /// root reservation, exact PTE contents and target labels.
