@@ -287,6 +287,19 @@ def run(argv):
                 _,old_final=parse_cr3(regs5)
                 if old_final!=root:
                     raise RuntimeError("old firmware CR3 changed during new-PTE audit")
+                if mode=="e2r":
+                    # E2r-C2: only after independently proving the entire
+                    # private PML4 and its descriptor PA mapping, read the
+                    # actual EFI-built 4KiB GDT/TSS/IDT physical page.
+                    # Old-root virtual and physical reads must be identical.
+                    from e2r_descriptor_witness import verify_descriptor_page
+                    from struct import pack
+                    descriptor_pa=next(r["base"] for r in records if r["id"]==6)
+                    descriptor_words=qmp_read_table(qmp,descriptor_pa)
+                    descriptor_bytes=pack("<512Q",*descriptor_words)
+                    new_proof.update(verify_descriptor_page(
+                        descriptor_bytes,
+                        new_targets[3]["va"],new_targets[4]["va"]))
                 proof.update(new_proof)
                 proof["guest_raw_cut_audit"]="completed_before_second_paused_checkpoint"
                 (base/"e2q-host-targeted-proof.json").write_text(
