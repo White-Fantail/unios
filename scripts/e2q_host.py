@@ -17,6 +17,7 @@ from e2j_targeted import MARKER, parse_manifest, verify_targets
 from e2o_new_tree import MARKER as PRIVATE_MARKER
 from e2q_new_tree import PACKET,decode_manifest,verify_new,MARKER as SWITCH_MARKER,parse_switched_regs
 from e2r_new_tree import PACKET as E2R_PACKET, decode_manifest as decode_e2r, verify_new as verify_e2r
+from e2r_descriptor_new_tree import PACKET as E2R_DESC_PACKET, decode_manifest as decode_e2r_desc, verify_new as verify_e2r_desc
 
 ROOT_MASK = 0x000f_ffff_ffff_f000
 TIME_LIMIT = 120
@@ -132,7 +133,7 @@ def connect_unix(path, process, deadline):
     raise TimeoutError(f"QEMU {path} control socket not ready")
 
 def expected_host_exit(mode):
-    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125}
+    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125}
     if mode not in choices:
         raise ValueError("unknown QEMU handler smoke mode")
     return choices[mode]
@@ -142,9 +143,12 @@ def run(argv):
     expected_exit=expected_host_exit(mode)
     # Only the explicit E2r preflight feature emits 23 targets.
     # Every E2q default/fault/actual CR3 path retains its 21-target ABI.
-    target_packet=E2R_PACKET if mode=="e2r" else PACKET
-    decode_current=decode_e2r if mode=="e2r" else decode_manifest
-    verify_current=verify_e2r if mode=="e2r" else verify_new
+    target_packet=(E2R_DESC_PACKET if mode=="e2r_desc" else
+                   E2R_PACKET if mode=="e2r" else PACKET)
+    decode_current=(decode_e2r_desc if mode=="e2r_desc" else
+                    decode_e2r if mode=="e2r" else decode_manifest)
+    verify_current=(verify_e2r_desc if mode=="e2r_desc" else
+                    verify_e2r if mode=="e2r" else verify_new)
     base=Path("out")
     qmp_path=base/"e2j-qmp.sock"
     gate_path=base/"e2j-com2.sock"
@@ -287,8 +291,8 @@ def run(argv):
                 _,old_final=parse_cr3(regs5)
                 if old_final!=root:
                     raise RuntimeError("old firmware CR3 changed during new-PTE audit")
-                if mode=="e2r":
-                    # E2r-C2: only after independently proving the entire
+                if mode in ("e2r","e2r_desc"):
+                    # E2r-C2/C4: only after independently proving the entire
                     # private PML4 and its descriptor PA mapping, read the
                     # actual EFI-built 4KiB GDT/TSS/IDT physical page.
                     # Old-root virtual and physical reads must be identical.
