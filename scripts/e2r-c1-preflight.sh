@@ -36,11 +36,15 @@ assert p["new_target_count"]==23
 assert p["high_entry_stub_old_new_rx"] is True
 assert p["high_entry_stub_executed"] is False
 assert p["kernel_entry_executed"] is False
-print("E2R_C1_QMP_23_TARGET_HIGH_ENTRY_RX_PASS (NO HIGH-HALF JUMP)")
+assert p["descriptor_pa_contents_independently_verified"] is True
+assert p["descriptor_tss_ist1_high_half"] is True
+assert p["descriptor_idt_vectors"]==32
+assert p["descriptor_activated"] is False
+print("E2R_C2_QMP_23_TARGET_RX_AND_PHYSICAL_DESCRIPTOR_PAGE_PASS (DORMANT ONLY)")
 PY
 cp out/e2q-new-root-host-proof.json out/e2r-c1-private-host-proof.json
 cp out/preflight-serial.log out/e2r-c1-serial.log
 cp out/preflight-outcome.txt out/e2r-c1-outcome.txt
 # The currently installed ESP image is intentionally restored by trap.
 cmp out/e2r-c1-safe-preflight.efi out/e2q-preflight-loader.efi
-echo "E2R_C1_ONLY_NO_EXITBS_NO_NEW_CR3_NO_KERNEL_BOOT" | tee out/e2r-c1-status.txt
+echo "E2R_C2_ONLY_NO_EXITBS_NO_ACTIVE_DESCRIPTORS_NO_KERNEL_BOOT" | tee out/e2r-c1-status.txt
