@@ -55,6 +55,17 @@ print("E2R_C6_REAL_HIGH_HALF_ELF_ENTRY_QMP_PASS (FULL_L1_BOOT_NOT_YET_ACCEPTED)"
 PY
 cp out/e2q-new-root-host-proof.json out/e2r-c6-new-root-proof.json
 cp out/preflight-serial.log out/e2r-c6-serial.log
-# Default safe EFI never changes. Normal linked ELF is restored in a
-# separate build and cannot be used as evidence of this opt-in experiment.
+# Restore the original non-C6 Rust kernel *in the normal target path*.
+# Preserve the tested C6 ELF separately under out/ for audit provenance.
+# The next E2q/C1/C4 regression must never silently embed the opt-in ELF.
+unset UNIOS_KERNEL_ELF
+export RUSTFLAGS="-C relocation-model=static -C link-arg=-no-pie -C link-arg=-T$ROOT/kernel/link.ld -C link-arg=-zmax-page-size=4096"
+cargo build --locked --release -p unios_kernel --target x86_64-unknown-none
+unset RUSTFLAGS
+test -s "$BASE_ELF"
+if cmp -s "$BASE_ELF" out/e2r-c6-kernel.elf; then
+    echo "C6 default and opt-in ELF must be distinct" >&2
+    exit 1
+fi
+echo "E2R_C6_DEFAULT_KERNEL_BINARY_RESTORED" | tee out/e2r-c6-kernel-restore-proof.txt
 echo "E2R_C6_REAL_HIGH_HALF_ENTERED_EXIT133_ONLY_NO_CLEAN_BOOT_EXIT65" | tee out/e2r-c6-scope.txt
