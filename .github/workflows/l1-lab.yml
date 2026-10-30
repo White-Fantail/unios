@@ -27,14 +27,14 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf gdisk dosfstools mtools
       - name: E2q QEMU 21-target old/new private root and terminal bridge code mapping preflight (NOT kernel boot)
         run: bash scripts/qemu-preflight.sh
+      - name: E2r-C5 QEMU real private CR3 and CPU GDT IDT TSS witness (NO kernel boot)
+        run: bash scripts/e2r-c5-terminal.sh
       - name: E2q QEMU regressions, ExitBS and real CR3 with third paused QMP live CPU proof
         run: bash scripts/e2q-terminal-regressions.sh
       - name: E2r-C1 independently prove linked high-entry PE RX via 23-target QMP (NO high-half execution)
         run: bash scripts/e2r-c1-preflight.sh
       - name: E2r-C4 independent QMP 25-target descriptor stub RX proof (NO LGDT)
         run: bash scripts/e2r-c4-preflight.sh
-      - name: E2r-C5 QEMU real private CR3 and CPU GDT IDT TSS witness (NO kernel boot)
-        run: bash scripts/e2r-c5-terminal.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4
         if: always()
