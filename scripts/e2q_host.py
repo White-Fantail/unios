@@ -20,6 +20,7 @@ from e2r_new_tree import PACKET as E2R_PACKET, decode_manifest as decode_e2r, ve
 from e2r_descriptor_new_tree import PACKET as E2R_DESC_PACKET, decode_manifest as decode_e2r_desc, verify_new as verify_e2r_desc
 from e2r_live_tree import PACKET as LIVE_PACKET, decode_manifest as decode_live, verify_new as verify_live, MARKER as LIVE_MARKER
 from e2r_live_cpu import verify_cpu as verify_live_cpu
+from e2r_kernel_cpu import verify_kernel,verify_context,reg as kernel_reg
 
 ROOT_MASK = 0x000f_ffff_ffff_f000
 TIME_LIMIT = 120
@@ -135,7 +136,7 @@ def connect_unix(path, process, deadline):
     raise TimeoutError(f"QEMU {path} control socket not ready")
 
 def expected_host_exit(mode):
-    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125,"e2r_live":129}
+    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125,"e2r_live":129,"e2r_handoff":133}
     if mode not in choices:
         raise ValueError("unknown QEMU handler smoke mode")
     return choices[mode]
@@ -145,13 +146,13 @@ def run(argv):
     expected_exit=expected_host_exit(mode)
     # Only the explicit E2r preflight feature emits 23 targets.
     # Every E2q default/fault/actual CR3 path retains its 21-target ABI.
-    target_packet=(LIVE_PACKET if mode=="e2r_live" else
+    target_packet=(LIVE_PACKET if mode in ("e2r_live","e2r_handoff") else
                    E2R_DESC_PACKET if mode=="e2r_desc" else
                    E2R_PACKET if mode=="e2r" else PACKET)
-    decode_current=(decode_live if mode=="e2r_live" else
+    decode_current=(decode_live if mode in ("e2r_live","e2r_handoff") else
                     decode_e2r_desc if mode=="e2r_desc" else
                     decode_e2r if mode=="e2r" else decode_manifest)
-    verify_current=(verify_live if mode=="e2r_live" else
+    verify_current=(verify_live if mode in ("e2r_live","e2r_handoff") else
                     verify_e2r_desc if mode=="e2r_desc" else
                     verify_e2r if mode=="e2r" else verify_new)
     base=Path("out")
@@ -296,7 +297,7 @@ def run(argv):
                 _,old_final=parse_cr3(regs5)
                 if old_final!=root:
                     raise RuntimeError("old firmware CR3 changed during new-PTE audit")
-                if mode in ("e2r","e2r_desc","e2r_live"):
+                if mode in ("e2r","e2r_desc","e2r_live","e2r_handoff"):
                     # E2r-C2/C4: only after independently proving the entire
                     # private PML4 and its descriptor PA mapping, read the
                     # actual EFI-built 4KiB GDT/TSS/IDT physical page.
@@ -323,7 +324,7 @@ def run(argv):
                 # allowed to unlock the guest; this is not a CR3 switch.
                 gate_socket.sendall(b"O")
                 qmp.call("cont")
-                if mode in ("cr3","e2r_live"):
+                if mode in ("cr3","e2r_live","e2r_handoff"):
                     # CPU now calls ExitBootServices, sets bridge RSP,
                     # executes an actual MOV CR3, and sends the UNIQUE
                     # third COM2 marker from RX code under new CR3.
@@ -411,7 +412,7 @@ def run(argv):
                         raise RuntimeError("VM shutdown before terminal new-CR3 verification")
                     gate_socket.sendall(b"Q")
                     qmp.call("cont")
-                    if mode=="e2r_live":
+                    if mode in ("e2r_live","e2r_handoff"):
                         # Fourth independent stop, after actual LGDT/LIDT/
                         # LTR, far-CS reload and all data-segment reloads.
                         fourth=bytearray()
@@ -456,12 +457,80 @@ def run(argv):
                             raise RuntimeError("unexpected reset before fourth QMP proof")
                         gate_socket.sendall(b"R")
                         qmp.call("cont")
+                        if mode=="e2r_handoff":
+                            # Only a real kernel SysV64 code path can emit
+                            # the fifth distinct marker after BSS/context
+                            # checks. Guest serial tokens alone prove nothing.
+                            marker=b"\x7fUNI2S\x7f"
+                            fifth=bytearray()
+                            while marker not in fifth:
+                                if time.monotonic()>timeout:
+                                    raise TimeoutError("fifth high-half kernel checkpoint missing")
+                                try:
+                                    fragment=gate_socket.recv(512)
+                                except socket.timeout:
+                                    qmp.call("stop")
+                                    crashed=qmp.hmp("info registers")
+                                    print("E2R_C6_HIGH_HALF_TIMEOUT "+
+                                          crashed[:1800],file=sys.stderr)
+                                    raise RuntimeError("no high-half kernel RIP marker")
+                                if not fragment:
+                                    raise ValueError("guest COM2 closed before high-half checkpoint")
+                                fifth.extend(fragment)
+                                if len(fifth)>8192:
+                                    raise ValueError("oversized fifth kernel marker")
+                            if fifth.split(marker,1)[1]:
+                                raise ValueError("trailing fifth COM2 data")
+                            qmp.call("stop")
+                            if qmp.call("query-status").get("running") is not False:
+                                raise RuntimeError("kernel vCPU not paused at fifth marker")
+                            kernel_regs=qmp.hmp("info registers")
+                            from e2o_new_tree import CONTEXT
+                            from pathlib import Path
+                            from struct import unpack
+                            context_pa=next(r["base"] for r in records if r["id"]==7)
+                            physical=parse_full_page_dump(
+                                qmp.hmp(f"xp /512gx 0x{context_pa:x}"),context_pa)
+                            entry_va=new_targets[0]["va"]
+                            entry_pa=new_targets[0]["pa"]
+                            from os import environ
+                            elf=Path(environ["UNIOS_KERNEL_ELF"]).read_bytes()
+                            elf_entry=int.from_bytes(elf[24:32],"little")
+                            if entry_va!=elf_entry or entry_pa==0:
+                                raise ValueError("QEMU staged kernel entry differs from actual ELF")
+                            mapped=lambda addr:walk_active(new_root,used,addr,active_physical_page)
+                            proof_kernel=verify_kernel(
+                                kernel_regs,new_root,elf_entry,entry_pa,mapped)
+                            proof_kernel.update(verify_context(
+                                list(physical[:8]),new_root,elf_entry))
+                            # Cross-check actual physical BootContext storage is
+                            # the same physical frame as private RO context VA.
+                            if mapped(CONTEXT)!=(context_pa,3):
+                                raise ValueError("kernel BootContext not private supervisor RO")
+                            if any(physical[8:]):
+                                raise ValueError("BootContext page trailing 4080 bytes nonzero")
+                            if any(x in ("RESET","SHUTDOWN") for x in qmp.events):
+                                raise RuntimeError("QEMU reset before kernel RIP witness")
+                            (base/"e2r-c6-kernel-registers.txt").write_text(kernel_regs)
+                            (base/"e2r-c6-kernel-proof.json").write_text(
+                                json.dumps({**proof_kernel,
+                                            "kernel_elf_entry":hex(elf_entry),
+                                            "kernel_entry_executed":True,
+                                            "full_clean_boot":False},indent=2)+"\n")
+                            print("E2R_C6_FIFTH_QMP_HIGH_HALF_RIP_RSP_CR3_BSS_CONTEXT_PASS",flush=True)
+                            gate_socket.sendall(b"K")
+                            qmp.call("cont")
                 remaining=max(1,int(timeout-time.monotonic()))
                 rc=proc.wait(timeout=remaining)
                 (base/"preflight-host-exit.txt").write_text(f"{rc}\n")
                 if rc!=expected_exit:
                     raise RuntimeError(f"QEMU unexpected E2q diagnostic exit: {rc}, expected={expected_exit} mode={mode}")
                 serial=(base/"preflight-serial.log").read_text(errors="replace")
+                if mode=="e2r_handoff":
+                    if serial.count("UNIOS:L1:E2R_C6_HIGH_HALF_ENTRY")!=1:
+                        raise RuntimeError("C6 kernel COM1 marker absent/duplicate")
+                    if not (base/"e2r-c6-kernel-proof.json").is_file():
+                        raise RuntimeError("C6 independently stopped QMP kernel witness missing")
                 if "HALTED_PASS" in serial:
                     raise RuntimeError("E2q emitted forbidden kernel success marker")
                 (base/"preflight-outcome.txt").write_text(
