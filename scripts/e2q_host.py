@@ -23,6 +23,7 @@ from e2r_live_cpu import verify_cpu as verify_live_cpu
 from e2r_kernel_cpu import verify_kernel,verify_context,reg as kernel_reg
 from e2r_clean_oracle import verify_trace as verify_clean_trace,ENTRY as CLEAN_ENTRY,SUCCESS as CLEAN_SUCCESS
 from audit_e2r_high_ud_trace import verify_native_high_ud
+from audit_e2r_guard_pf_trace import verify_native_high_guard_pf
 
 ROOT_MASK = 0x000f_ffff_ffff_f000
 TIME_LIMIT = 120
@@ -138,7 +139,7 @@ def connect_unix(path, process, deadline):
     raise TimeoutError(f"QEMU {path} control socket not ready")
 
 def expected_host_exit(mode):
-    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125,"e2r_live":129,"e2r_handoff":133,"e2r_clean":65,"e2r_kernel_ud":99}
+    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125,"e2r_live":129,"e2r_handoff":133,"e2r_clean":65,"e2r_kernel_ud":99,"e2r_guard_pf":99}
     if mode not in choices:
         raise ValueError("unknown QEMU handler smoke mode")
     return choices[mode]
@@ -148,13 +149,13 @@ def run(argv):
     expected_exit=expected_host_exit(mode)
     # Only the explicit E2r preflight feature emits 23 targets.
     # Every E2q default/fault/actual CR3 path retains its 21-target ABI.
-    target_packet=(LIVE_PACKET if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud") else
+    target_packet=(LIVE_PACKET if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf") else
                    E2R_DESC_PACKET if mode=="e2r_desc" else
                    E2R_PACKET if mode=="e2r" else PACKET)
-    decode_current=(decode_live if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud") else
+    decode_current=(decode_live if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf") else
                     decode_e2r_desc if mode=="e2r_desc" else
                     decode_e2r if mode=="e2r" else decode_manifest)
-    verify_current=(verify_live if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud") else
+    verify_current=(verify_live if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf") else
                     verify_e2r_desc if mode=="e2r_desc" else
                     verify_e2r if mode=="e2r" else verify_new)
     base=Path("out")
@@ -299,7 +300,7 @@ def run(argv):
                 _,old_final=parse_cr3(regs5)
                 if old_final!=root:
                     raise RuntimeError("old firmware CR3 changed during new-PTE audit")
-                if mode in ("e2r","e2r_desc","e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud"):
+                if mode in ("e2r","e2r_desc","e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf"):
                     # E2r-C2/C4: only after independently proving the entire
                     # private PML4 and its descriptor PA mapping, read the
                     # actual EFI-built 4KiB GDT/TSS/IDT physical page.
@@ -326,7 +327,7 @@ def run(argv):
                 # allowed to unlock the guest; this is not a CR3 switch.
                 gate_socket.sendall(b"O")
                 qmp.call("cont")
-                if mode in ("cr3","e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud"):
+                if mode in ("cr3","e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf"):
                     # CPU now calls ExitBootServices, sets bridge RSP,
                     # executes an actual MOV CR3, and sends the UNIQUE
                     # third COM2 marker from RX code under new CR3.
@@ -365,8 +366,8 @@ def run(argv):
                     bridge=next(r for r in records if r["id"]==3)
                     live=parse_switched_regs(
                         cpu,new_root,
-                        int(new_proof["live_descriptors_begin"] if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud") else new_proof["cr3_terminal_code_begin"],16),
-                        int(new_proof["live_descriptors_end"] if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud") else new_proof["cr3_terminal_code_end"],16),
+                        int(new_proof["live_descriptors_begin"] if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf") else new_proof["cr3_terminal_code_begin"],16),
+                        int(new_proof["live_descriptors_end"] if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf") else new_proof["cr3_terminal_code_end"],16),
                         bridge["base"],bridge["end"])
                     print(f"E2Q_STAGE_Q_CPU_REGISTERS_VERIFIED {live}",flush=True)
                     rip=int(live["cpu_live_rip"],16)
@@ -414,7 +415,7 @@ def run(argv):
                         raise RuntimeError("VM shutdown before terminal new-CR3 verification")
                     gate_socket.sendall(b"Q")
                     qmp.call("cont")
-                    if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud"):
+                    if mode in ("e2r_live","e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf"):
                         # Fourth independent stop, after actual LGDT/LIDT/
                         # LTR, far-CS reload and all data-segment reloads.
                         fourth=bytearray()
@@ -459,7 +460,7 @@ def run(argv):
                             raise RuntimeError("unexpected reset before fourth QMP proof")
                         gate_socket.sendall(b"R")
                         qmp.call("cont")
-                        if mode in ("e2r_handoff","e2r_clean","e2r_kernel_ud"):
+                        if mode in ("e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf"):
                             # Only a real kernel SysV64 code path can emit
                             # the fifth distinct marker after BSS/context
                             # checks. Guest serial tokens alone prove nothing.
@@ -503,6 +504,11 @@ def run(argv):
                                 kernel_regs,new_root,elf_entry,entry_pa,mapped)
                             proof_kernel.update(verify_context(
                                 list(physical[:8]),new_root,elf_entry))
+                            if mode=="e2r_guard_pf":
+                                from e2o_new_tree import MAIN_GUARD
+                                if mapped(MAIN_GUARD) is not None:
+                                    raise ValueError("actual main-stack guard unexpectedly mapped under live CR3")
+                                print("E2R_E2_QMP_LIVE_MAIN_STACK_GUARD_UNMAPPED PASS",flush=True)
                             # Cross-check actual physical BootContext storage is
                             # the same physical frame as private RO context VA.
                             if mapped(CONTEXT)!=(context_pa,3):
@@ -530,11 +536,30 @@ def run(argv):
                 if rc!=expected_exit:
                     raise RuntimeError(f"QEMU unexpected E2q diagnostic exit: {rc}, expected={expected_exit} mode={mode}")
                 serial=(base/"preflight-serial.log").read_text(errors="replace")
-                if mode in ("e2r_handoff","e2r_clean","e2r_kernel_ud"):
+                if mode in ("e2r_handoff","e2r_clean","e2r_kernel_ud","e2r_guard_pf"):
                     if serial.count("UNIOS:L1:E2R_C6_HIGH_HALF_ENTRY")!=1:
                         raise RuntimeError("C6 kernel COM1 marker absent/duplicate")
                     if not (base/"e2r-c6-kernel-proof.json").is_file():
                         raise RuntimeError("C6 independently stopped QMP kernel witness missing")
+                if mode=="e2r_guard_pf":
+                    qproof=json.loads((base/"e2r-c6-kernel-proof.json").read_text())
+                    if (qproof["result"]!="PASS" or
+                        qproof["kernel_entry_executed"] is not True or
+                        qproof["kernel_cpu_active_descriptors"] is not True or
+                        qproof["boot_context_pa_bytes_independently_verified"] is not True):
+                        raise RuntimeError("guard page #PF lacked fifth QMP CPU+context proof")
+                    if CLEAN_SUCCESS in serial:
+                        raise RuntimeError("fatal guard #PF incorrectly emitted HALTED_PASS")
+                    from e2o_new_tree import MAIN_GUARD
+                    fault=verify_native_high_guard_pf(
+                        (base/"e2r-e2-pf-native-qemu.log").read_bytes())
+                    (base/"e2r-e2-guard-pf-proof.json").write_text(
+                        json.dumps({"result":"PASS","kernel_entry_executed":True,
+                                    "live_idt_guard_fault_dispatch":True,
+                                    "private_guard_unmapped_qmp":True,
+                                    "exact_fatal_exit":99,"clean_boot":False,
+                                    **fault},indent=2)+"\n")
+                    print("E2R_E2_HIGH_HALF_MAIN_GUARD_PF_QMP_NATIVE_PASS exit=99",flush=True)
                 if mode=="e2r_kernel_ud":
                     # Host-authorized real #UD never receives the clean
                     # boot PASS marker. Debug-exit 99 alone is insufficient:
