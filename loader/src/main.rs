@@ -30,6 +30,8 @@ mod high_entry;
 mod high_descriptor;
 #[cfg(feature="lab-e2r-active-descriptors")]
 mod live_descriptors;
+#[cfg(feature="lab-e2r-actual-entry")]
+mod kernel_handoff;
 #[cfg(feature="lab-e2h-host-root-proof")]
 mod host_checkpoint;
 
