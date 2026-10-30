@@ -1,22 +1,21 @@
 # UniOS
 
-> **L1 Experimental Kernel — 2026-10-30:** E2p's
-> real `ExitBootServices` terminal QEMU success is in
-> `main`. **E2q** extends that disposable QEMU-only
-> terminal path to a **real new private CR3 switch**.
-> The host independently checks all **8 new physical PTE
-> frames, 21 mappings, actual live CPU CR3/RIP/RSP** in
-> three paused host/guest checkpoints. Final CI has
-> **291/291 tests** and real post-CR3 QEMU exit **121**,
-> retaining `ExitBootServices` exit **115** and exception
-> regressions **103/105/109**.
+> **L1 Experimental Kernel — 2026-10-30:** The E2r-C7 disposable
+> Ubuntu 24.04/QEMU 8.2.2/OVMF lab has performed a **real freestanding
+> high-half ELF kernel entry** after ExitBootServices, a private CR3,
+> GDT/IDT/TSS/IST activation and a protected kernel stack. The host
+> independently inspected physical PTEs, actual CPU RIP/RSP/CR3,
+> descriptor registers and BootContext. The kernel emitted ordered
+> COM1 `E2R_C6_HIGH_HALF_ENTRY` then `HALTED_PASS` after the fifth
+> QMP barrier, with native QEMU exit **65**.
 >
-> **No high-half kernel entry**, production descriptor
-> installation, or clean L1 boot exit **65** occurred.
-> Hardware tests and complete operator QEMU kernel boot
-> remain **NO-GO**. See the
-> [E2q evidence](docs/implementation/l1-e2q-real-cr3-terminal-2026-10-30.md)
-> and [operator readiness](docs/implementation/l1-operator-test-readiness.md).
+> **Only a pinned disposable QEMU L1 test is admitted.** Default EFI
+> remains a nonfatal preflight image; separately feature-built C7 EFI
+> and ELF binaries, hashes and QMP evidence are retained. No real
+> hardware boot, desktop functionality, production OS support or L2
+> work is implied. Use the
+> [QEMU test runbook](docs/implementation/l1-operator-qemu-runbook.md)
+> and [readiness gate](docs/implementation/l1-operator-test-readiness.md).
 
 **UniOS** is an independent operating system project implementing
 its approved **L1 Experimental Kernel** in an isolated EFI/QEMU
