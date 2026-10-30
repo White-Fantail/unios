@@ -554,7 +554,7 @@ def run(argv):
                     (base/"e2r-e1-ud-host-proof.json").write_text(
                         json.dumps({"result":"PASS","kernel_entry_executed":True,
                                     "live_idt_exception_dispatch":True,
-                                    "exact_fatal_exit":99,"clean_boot":False,**native},indent=2)+"\\n")
+                                    "exact_fatal_exit":99,"clean_boot":False,**native},indent=2)+"\n")
                     print("E2R_E1_NATIVE_HIGH_HALF_UD_QMP_PASS exit=99",flush=True)
                 if mode=="e2r_clean":
                     qproof=json.loads((base/"e2r-c6-kernel-proof.json").read_text())
