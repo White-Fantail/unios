@@ -50,6 +50,17 @@ if ! grep -Eq 'PE32\+.*EFI application' out/uefi-pe-header.txt; then
 fi
 python3 scripts/audit_e2k_pe.py "$EFI" | tee out/e2k-independent-pe-handler-audit.txt
 python3 scripts/audit_e2q_cr3_pe.py "$EFI" | tee out/e2q-independent-machine-cr3-audit.txt
+# E2r-B is deliberately LINKED AND AUDITED OFFLINE, never executed in QEMU.
+# Build a separate opt-in PE, require exact jump ABI bytes, then restore and
+# byte-compare the ordinary nonfatal E2q image before preparing the QEMU ESP.
+cp "$EFI" out/e2r-safe-preflight.efi
+cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2r-high-entry-code --target x86_64-unknown-uefi
+python3 scripts/audit_e2q_cr3_pe.py "$EFI" | tee out/e2r-candidate-cr3-machine-audit.txt
+python3 scripts/audit_e2r_high_entry_pe.py "$EFI" | tee out/e2r-candidate-high-entry-machine-audit.txt
+cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2q-cr3-code --target x86_64-unknown-uefi
+cmp "$EFI" out/e2r-safe-preflight.efi
+python3 scripts/audit_e2r_high_entry_pe.py --absent "$EFI" | tee out/e2r-safe-preflight-absence-proof.txt
+rm -f out/e2r-safe-preflight.efi
 mkdir -p out/esp/EFI/BOOT
 cp "$EFI" out/esp/EFI/BOOT/BOOTX64.EFI
 sha256sum "$KERNEL" "$EFI" | tee out/image-digests.txt
