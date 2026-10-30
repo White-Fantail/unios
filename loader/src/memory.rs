@@ -104,6 +104,8 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
     let mut switch_root=0u64;
     #[cfg(any(feature="lab-e2q-actual-cr3",feature="lab-e2r-active-descriptors"))]
     let mut switch_bridge_top=0u64;
+    #[cfg(feature="lab-e2r-actual-entry")]
+    let mut switch_kernel_entry=0u64;
     if bs.header.signature != EFI_BOOT_SERVICES_SIGNATURE ||
         (bs.header.size as usize) < core::mem::size_of::<BootServices>() {
         return Err(Error::BadServices);
@@ -539,7 +541,10 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                     // exact same EFI-loader-code-owned physical bytes.
                     // This is a disposable QEMU feature, not default EFI.
                     use unios_bridgecheck::Span;
+                    #[cfg(not(feature="lab-e2r-actual-entry"))]
                     let (begin,end)=crate::live_descriptors::bounds();
+                    #[cfg(feature="lab-e2r-actual-entry")]
+                    let (begin,end)=crate::kernel_handoff::bounds();
                     let span=Span::new(begin,end).map_err(|_|Error::SwitchCode)?;
                     for index in 0..span.pages {
                         let address=span.page(index).ok_or(Error::SwitchCode)?;
@@ -563,6 +568,29 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                         .map_err(|_|Error::SwitchCode)?;
                     tables.verify(unios_paging::IST_STACK_VA+4*PAGE-1,
                                   aux[3].base+4*PAGE-1,Rights::Rw)
+                        .map_err(|_|Error::SwitchCode)?;
+                }
+                #[cfg(feature="lab-e2r-actual-entry")]
+                {
+                    // The physical context backing is already EFI-owned
+                    // and old-root RW-audited; the new mapping is RO.
+                    // Write all fixed words *before* the independent O
+                    // checkpoint and the irreversible final memory map.
+                    const MAGIC:u64=0x48314c534f494e55;
+                    let context=&aux[5];
+                    if context.id!=7 || context.pages!=1 || image.entry!=0xffffffff80000000 {
+                        return Err(Error::SwitchCode);
+                    }
+                    tables.verify(CONTEXT_VA,context.base,Rights::Ro)
+                        .map_err(|_|Error::SwitchCode)?;
+                    let words=unsafe {slice::from_raw_parts_mut(
+                        context.base as *mut u64,(PAGE/8) as usize)};
+                    words.fill(0);
+                    words[0]=MAGIC; words[1]=1; words[2]=image.entry;
+                    words[3]=MAIN_STACK_VA+4*PAGE;
+                    words[4]=tables.root(); words[5]=CONTEXT_VA;
+                    switch_kernel_entry=image.entry;
+                    tables.verify(image.entry,entry.pa,Rights::Rx)
                         .map_err(|_|Error::SwitchCode)?;
                 }
                 #[cfg(feature="lab-e2o-host-private-witness")]
@@ -779,10 +807,18 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                         unsafe {crate::cr3_terminal::activate(
                             switch_root,switch_bridge_top,
                         );}
-                        #[cfg(feature="lab-e2r-active-descriptors")]
+                        #[cfg(all(feature="lab-e2r-active-descriptors",not(feature="lab-e2r-actual-entry")))]
                         unsafe {crate::live_descriptors::activate(
                             switch_root,switch_bridge_top,
                             unios_paging::DESCRIPTORS_VA,
+                        );}
+                        #[cfg(feature="lab-e2r-actual-entry")]
+                        unsafe {crate::kernel_handoff::activate(
+                            switch_root,switch_bridge_top,
+                            unios_paging::DESCRIPTORS_VA,
+                            unios_paging::MAIN_STACK_VA+4*PAGE,
+                            unios_paging::CONTEXT_VA,
+                            switch_kernel_entry,
                         );}
                         #[cfg(all(not(feature="lab-e2q-actual-cr3"),not(feature="lab-e2r-active-descriptors")))]
                         unsafe {terminal_debug(0x39);}
