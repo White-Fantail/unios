@@ -28,6 +28,8 @@ mod cr3_terminal;
 mod high_entry;
 #[cfg(feature="lab-e2r-descriptor-code")]
 mod high_descriptor;
+#[cfg(feature="lab-e2r-active-descriptors")]
+mod live_descriptors;
 #[cfg(feature="lab-e2h-host-root-proof")]
 mod host_checkpoint;
 
