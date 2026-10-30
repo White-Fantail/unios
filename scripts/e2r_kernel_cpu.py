@@ -13,7 +13,7 @@ BASE=0xffffffff80000000
 LIMIT=0xffffffff84000000
 
 def reg(text,name):
-    pattern=r"\\b"+name+r"=([0-9a-fA-F]{8,16})\\b"
+    pattern=r"\b"+name+r"=([0-9a-fA-F]{8,16})\b"
     values=re.findall(pattern,text,re.I)
     if len(values)!=1:raise ValueError("missing/ambiguous QMP "+name)
     return int(values[0],16)
@@ -35,7 +35,7 @@ def verify_kernel(regs,root,entry,rx_pa,read_private):
     for name,expected in (("CS",8),("SS",16),("DS",16),("ES",16),("TR",24)):
         if field(regs,name,4)!=expected:
             raise ValueError("kernel CPU selector "+name+" invalid")
-    tr=re.findall(r"(?m)^TR\\s*=\\s*([0-9a-fA-F]{4})\\s+([0-9a-fA-F]{16})\\b",regs)
+    tr=re.findall(r"(?m)^TR\s*=\s*([0-9a-fA-F]{4})\s+([0-9a-fA-F]{16})\b",regs)
     if len(tr)!=1 or int(tr[0][1],16)!=DESCRIPTORS+0x100:
         raise ValueError("kernel CPU high-half TSS cache invalid")
     mapped=read_private(rip)
