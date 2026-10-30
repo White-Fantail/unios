@@ -41,6 +41,10 @@ if [[ "${UNIOS_E2Q_SMOKE:-preflight}" == "cr3" ]]; then
   LOG_ARGS=(-d int,cpu_reset -D "$ROOT/out/e2q-cr3-qemu-exception-trace.log")
 elif [[ "${UNIOS_E2Q_SMOKE:-preflight}" == "df" ]]; then
   LOG_ARGS=(-d int -D "$ROOT/out/e2q-real-df-qemu-trace.log")
+elif [[ "${UNIOS_E2Q_SMOKE:-preflight}" == "e2r_kernel_ud" ]]; then
+  # QEMU's independent CPU-generated exception trace is mandatory.
+  # The guest cannot forge this host-side source using COM1 or debug-exit.
+  LOG_ARGS=(-d int -D "$ROOT/out/e2r-e1-ud-native-qemu.log")
 fi
 python3 scripts/e2q_host.py -- qemu-system-x86_64 \
   "${LOG_ARGS[@]}" \
