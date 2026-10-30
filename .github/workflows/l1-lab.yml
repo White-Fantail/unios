@@ -29,6 +29,8 @@ jobs:
         run: bash scripts/qemu-preflight.sh
       - name: E2r-C5 QEMU real private CR3 and CPU GDT IDT TSS witness (NO kernel boot)
         run: bash scripts/e2r-c5-terminal.sh
+      - name: E2r-C6 actual high-half ELF entry and fifth paused QMP CPU witness (NO exit 65)
+        run: bash scripts/e2r-c6-terminal.sh
       - name: E2q QEMU regressions, ExitBS and real CR3 with third paused QMP live CPU proof
         run: bash scripts/e2q-terminal-regressions.sh
       - name: E2r-C1 independently prove linked high-entry PE RX via 23-target QMP (NO high-half execution)
