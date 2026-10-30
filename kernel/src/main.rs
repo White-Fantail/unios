@@ -96,6 +96,14 @@ unsafe fn lab_entry(ptr:*const u8)->! {
     for _ in 0..600000000u64 {
         if input(0x2fd)&1!=0 {
             if input(0x2f8)==b'K' {
+                #[cfg(feature="lab-e2r-high-half-ud")]
+                {
+                    // Genuine CPU #UD AFTER the high-half entry and
+                    // independently authorized fifth QMP checkpoint.
+                    // The new kernel IDT must dispatch to the generic
+                    // fail-stop handler (debug port byte 0x31 => exit99).
+                    asm!("ud2", options(noreturn));
+                }
                 #[cfg(feature="lab-e2r-clean-pass")]
                 {
                     // The CPU only reaches here after the host fifth
