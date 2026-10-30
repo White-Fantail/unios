@@ -32,7 +32,9 @@ def occurrences(data):
 def audit(data):
     hits,prefixes=occurrences(data)
     if len(hits)!=1 or prefixes!=1:
-        raise Reject(f"exact descriptor transition count={len(hits)} prefixes={prefixes}")
+        samples=[raw[i:i+72].hex(" ") for _,_,raw in regions(data)
+                 for i in range(len(raw)) if raw.startswith(PREFIX,i)][:2]
+        raise Reject(f"exact descriptor transition count={len(hits)} prefixes={prefixes}; linked_pe_prefix_samples={samples}")
     return hits[0][1]
 
 def negative(data,at,index,label):
