@@ -85,8 +85,10 @@ pub fn host_checkpoint(reservations:&[Reservation])->bool {
 pub const PRIVATE_TARGETS:usize=19;
 #[cfg(all(feature="lab-e2q-cr3-code",not(feature="lab-e2r-high-entry-code")))]
 pub const PRIVATE_TARGETS:usize=21;
-#[cfg(feature="lab-e2r-high-entry-code")]
+#[cfg(all(feature="lab-e2r-high-entry-code",not(feature="lab-e2r-descriptor-code")))]
 pub const PRIVATE_TARGETS:usize=23;
+#[cfg(feature="lab-e2r-descriptor-code")]
+pub const PRIVATE_TARGETS:usize=25;
 /// Compact COM2 evidence manifest. All fields are untrusted until the
 /// independent paused-QMP host reads actual RAM and validates identity,
 /// root reservation, exact PTE contents and target labels.
