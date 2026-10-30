@@ -96,6 +96,18 @@ unsafe fn lab_entry(ptr:*const u8)->! {
     for _ in 0..600000000u64 {
         if input(0x2fd)&1!=0 {
             if input(0x2f8)==b'K' {
+                #[cfg(feature="lab-e2r-main-guard-pf")]
+                {
+                    // The exact MAIN_GUARD_VA must be unmapped in the
+                    // private kernel CR3, independently QMP-walked before
+                    // this read. A real CPU #PF dispatches via the live
+                    // IDT's generic terminal handler (exit 99).
+                    let _ = core::ptr::read_volatile(
+                        0xffffffff83fe0000u64 as *const u8);
+                    // Any unexpectedly mapped guard MUST fail separately,
+                    // not be misidentified as the expected #PF.
+                    lab_fail();
+                }
                 #[cfg(feature="lab-e2r-high-half-ud")]
                 {
                     // Genuine CPU #UD AFTER the high-half entry and
