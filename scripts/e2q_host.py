@@ -450,7 +450,7 @@ def run(argv):
                             json.dumps({"result":"PASS",**verified,
                                         "live_pc_private_leaf_rx":True,
                                         "efi_boot_services_exited":"terminal marker follows success branch"},
-                                       indent=2)+"\\n")
+                                       indent=2)+"\n")
                         print("E2R_C5_FOURTH_QMP_CPU_GDTR_IDTR_TR_CS_CR3_PASS",flush=True)
                         if any(x in ("RESET","SHUTDOWN") for x in qmp.events):
                             raise RuntimeError("unexpected reset before fourth QMP proof")
