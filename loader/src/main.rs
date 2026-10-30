@@ -26,6 +26,8 @@ mod exception_lab;
 mod cr3_terminal;
 #[cfg(feature="lab-e2r-high-entry-code")]
 mod high_entry;
+#[cfg(feature="lab-e2r-descriptor-code")]
+mod high_descriptor;
 #[cfg(feature="lab-e2h-host-root-proof")]
 mod host_checkpoint;
 
@@ -96,6 +98,11 @@ pub extern "efiapi" fn efi_main(_image_handle: usize, system_table: *mut SystemT
         Ok(checked) => {
             if checked.count == 0 || checked.staged_bytes > unios_elf::MAX_STAGED {
                 return EFI_LOAD_ERROR;
+            }
+            #[cfg(feature="lab-e2r-descriptor-code")]
+            {
+                let (begin,end)=high_descriptor::bounds();
+                if begin==0 || end<=begin || end-begin>256 {return EFI_LOAD_ERROR;}
             }
             #[cfg(feature="lab-e2r-high-entry-code")]
             {
