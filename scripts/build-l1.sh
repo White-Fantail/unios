@@ -57,9 +57,17 @@ cp "$EFI" out/e2r-safe-preflight.efi
 cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2r-high-entry-code --target x86_64-unknown-uefi
 python3 scripts/audit_e2q_cr3_pe.py "$EFI" | tee out/e2r-candidate-cr3-machine-audit.txt
 python3 scripts/audit_e2r_high_entry_pe.py "$EFI" | tee out/e2r-candidate-high-entry-machine-audit.txt
+# C3: compile an entirely separate, unreachable CPU descriptor candidate.
+# The linked precise LGDT/LIDT/LTR/far-CS sequence must be inspected.
+cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2r-descriptor-code --target x86_64-unknown-uefi
+python3 scripts/audit_e2q_cr3_pe.py "$EFI" | tee out/e2r-c3-cr3-machine-audit.txt
+python3 scripts/audit_e2r_high_entry_pe.py "$EFI" | tee out/e2r-c3-entry-machine-audit.txt
+python3 scripts/audit_e2r_descriptor_pe.py "$EFI" | tee out/e2r-c3-descriptor-machine-audit.txt
+# No operational EFI may contain even an unreachable activation candidate.
 cargo build --locked --release -p unios_loader --features lab-debug-exit,lab-e2q-cr3-code --target x86_64-unknown-uefi
 cmp "$EFI" out/e2r-safe-preflight.efi
 python3 scripts/audit_e2r_high_entry_pe.py --absent "$EFI" | tee out/e2r-safe-preflight-absence-proof.txt
+python3 scripts/audit_e2r_descriptor_pe.py --absent "$EFI" | tee out/e2r-c3-safe-activation-absence-proof.txt
 rm -f out/e2r-safe-preflight.efi
 mkdir -p out/esp/EFI/BOOT
 cp "$EFI" out/esp/EFI/BOOT/BOOTX64.EFI
