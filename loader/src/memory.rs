@@ -484,6 +484,29 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                             .map_err(|_|Error::SwitchCode)?;
                     }
                 }
+                #[cfg(feature="lab-e2r-high-entry-code")]
+                {
+                    // C1: first validate the *actual linked* high-entry stub
+                    // under firmware old CR3 and the dormant private root.
+                    // No descriptor activation, jump or ExitBS in this mode.
+                    use unios_bridgecheck::Span;
+                    let (begin,end)=crate::high_entry::bounds();
+                    let span=Span::new(begin,end).map_err(|_|Error::SwitchCode)?;
+                    for index in 0..span.pages {
+                        let address=span.page(index).ok_or(Error::SwitchCode)?;
+                        let (va,pa)=crate::oldmap::audit_efi_code_page(
+                            root_gate,address,map,map_size,descriptor_size
+                        ).map_err(|_|Error::SwitchCode)?;
+                        match tables.lookup(va).map_err(|_|Error::SwitchCode)? {
+                            Some(x) if x.pa==pa && x.rights==Rights::Rx=>{},
+                            Some(_)=>return Err(Error::SwitchCode),
+                            None=>tables.map_efi_executable_anchor(va,pa)
+                                .map_err(|_|Error::SwitchCode)?,
+                        }
+                        tables.verify(va,pa,Rights::Rx)
+                            .map_err(|_|Error::SwitchCode)?;
+                    }
+                }
                 #[cfg(feature="lab-e2o-host-private-witness")]
                 {
                     use crate::host_checkpoint::{PrivateTarget,PRIVATE_TARGETS};
@@ -530,6 +553,13 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                         targets[20]=PrivateTarget{
                             va:end-1,pa:end-1,rights:1,
                         };
+                    }
+                    #[cfg(feature="lab-e2r-high-entry-code")]
+                    {
+                        let (start,end)=crate::high_entry::bounds();
+                        if end<=start {return Err(Error::SwitchCode);}
+                        targets[21]=PrivateTarget{va:start,pa:start,rights:1};
+                        targets[22]=PrivateTarget{va:end-1,pa:end-1,rights:1};
                     }
                     // The VM is halted a SECOND time by an independent
                     // host that reads the physical PML4 and all traversed
