@@ -24,7 +24,7 @@ unios_l1_kernel_handoff:
     mov rsp,rsi
     mov cr3,rdi
 
-    .macro com2_byte value
+    .macro com2_handoff_byte value
     mov dx,0x2fd
 .Ltxwait\@:
     in al,dx
@@ -37,13 +37,13 @@ unios_l1_kernel_handoff:
 
     // Third host witness is the same Q barrier as E2q. Its QMP
     // verifies actual CPU CR3/RIP/RSP and private PTE on current RIP.
-    com2_byte 0x7f
-    com2_byte 0x55
-    com2_byte 0x4e
-    com2_byte 0x49
-    com2_byte 0x32
-    com2_byte 0x51
-    com2_byte 0x7f
+    com2_handoff_byte 0x7f
+    com2_handoff_byte 0x55
+    com2_handoff_byte 0x4e
+    com2_handoff_byte 0x49
+    com2_handoff_byte 0x32
+    com2_handoff_byte 0x51
+    com2_handoff_byte 0x7f
     mov ecx,0x10000000
 1:
     mov dx,0x2fd
@@ -88,13 +88,13 @@ unios_l1_kernel_handoff:
     mov gs,ax
 
     // Fourth host witness now sees live GDTR/IDTR/TR/CS/SS and CR3.
-    com2_byte 0x7f
-    com2_byte 0x55
-    com2_byte 0x4e
-    com2_byte 0x49
-    com2_byte 0x32
-    com2_byte 0x52
-    com2_byte 0x7f
+    com2_handoff_byte 0x7f
+    com2_handoff_byte 0x55
+    com2_handoff_byte 0x4e
+    com2_handoff_byte 0x49
+    com2_handoff_byte 0x32
+    com2_handoff_byte 0x52
+    com2_handoff_byte 0x7f
     mov ecx,0x10000000
 4:
     mov dx,0x2fd
