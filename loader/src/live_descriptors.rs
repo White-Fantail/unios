@@ -56,7 +56,7 @@ unios_l1_live_descriptors:
     jne 8f
 
     // Use only the identity-mapped, owned bridge stack for operands.
-    // GDTR {limit=39,base=DESCRIPTORS_VA}; IDTR {limit=511,base+0x200}.
+    // GDTR limit=39, base=DESCRIPTORS_VA; IDTR limit=511, base+0x200.
     // Assembly never touches the descriptor *contents* until the
     // hardware reads their already-mapped high-half virtual addresses.
     sub rsp,32
