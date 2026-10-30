@@ -100,9 +100,9 @@ fn reserve(bs: &BootServices, pages: u64, id: u8) -> Result<Reservation, Error> 
 pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image, payload: &[u8]) -> Result<usize, Error> {
     if services.is_null() { return Err(Error::BadServices); }
     let bs = unsafe { &*services };
-    #[cfg(feature="lab-e2q-actual-cr3")]
+    #[cfg(any(feature="lab-e2q-actual-cr3",feature="lab-e2r-active-descriptors"))]
     let mut switch_root=0u64;
-    #[cfg(feature="lab-e2q-actual-cr3")]
+    #[cfg(any(feature="lab-e2q-actual-cr3",feature="lab-e2r-active-descriptors"))]
     let mut switch_bridge_top=0u64;
     if bs.header.signature != EFI_BOOT_SERVICES_SIGNATURE ||
         (bs.header.size as usize) < core::mem::size_of::<BootServices>() {
@@ -475,7 +475,7 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                     }
                     // No active new CR3 yet. Bracket the newly mapped
                     // instruction range in the final host QMP manifest.
-                    #[cfg(feature="lab-e2q-actual-cr3")]
+                    #[cfg(any(feature="lab-e2q-actual-cr3",feature="lab-e2r-active-descriptors"))]
                     {
                         switch_root=tables.root();
                         switch_bridge_top=aux[1].base+2*PAGE;
@@ -531,6 +531,39 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                         tables.verify(va,pa,Rights::Rx)
                             .map_err(|_|Error::SwitchCode)?;
                     }
+                }
+                #[cfg(feature="lab-e2r-active-descriptors")]
+                {
+                    // A distinct, finite actual-CR3+GDT/IDT/TSS CPU stub.
+                    // Both old firmware and new private CR3 execute the
+                    // exact same EFI-loader-code-owned physical bytes.
+                    // This is a disposable QEMU feature, not default EFI.
+                    use unios_bridgecheck::Span;
+                    let (begin,end)=crate::live_descriptors::bounds();
+                    let span=Span::new(begin,end).map_err(|_|Error::SwitchCode)?;
+                    for index in 0..span.pages {
+                        let address=span.page(index).ok_or(Error::SwitchCode)?;
+                        let (va,pa)=crate::oldmap::audit_efi_code_page(
+                            root_gate,address,map,map_size,descriptor_size
+                        ).map_err(|_|Error::SwitchCode)?;
+                        match tables.lookup(va).map_err(|_|Error::SwitchCode)? {
+                            Some(x) if x.pa==pa && x.rights==Rights::Rx=>{},
+                            Some(_)=>return Err(Error::SwitchCode),
+                            None=>tables.map_efi_executable_anchor(va,pa)
+                                .map_err(|_|Error::SwitchCode)?,
+                        }
+                        tables.verify(va,pa,Rights::Rx)
+                            .map_err(|_|Error::SwitchCode)?;
+                    }
+                    // Never use unvalidated live start/end or loader frame.
+                    if end-begin>1024 || ((end-1)>>12)-(begin>>12)>1 {
+                        return Err(Error::SwitchCode);
+                    }
+                    tables.verify(unios_paging::DESCRIPTORS_VA,aux[4].base,Rights::Rw)
+                        .map_err(|_|Error::SwitchCode)?;
+                    tables.verify(unios_paging::IST_STACK_VA+4*PAGE-1,
+                                  aux[3].base+4*PAGE-1,Rights::Rw)
+                        .map_err(|_|Error::SwitchCode)?;
                 }
                 #[cfg(feature="lab-e2o-host-private-witness")]
                 {
@@ -593,6 +626,13 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                         targets[23]=PrivateTarget{va:begin,pa:begin,rights:1};
                         targets[24]=PrivateTarget{va:end-1,pa:end-1,rights:1};
                     }
+                    #[cfg(feature="lab-e2r-active-descriptors")]
+                    {
+                        let (begin,end)=crate::live_descriptors::bounds();
+                        if end<=begin {return Err(Error::SwitchCode);}
+                        targets[25]=PrivateTarget{va:begin,pa:begin,rights:1};
+                        targets[26]=PrivateTarget{va:end-1,pa:end-1,rights:1};
+                    }
                     // The VM is halted a SECOND time by an independent
                     // host that reads the physical PML4 and all traversed
                     // tables; only host-issued 'O' can unlock the guest.
@@ -601,7 +641,7 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                     ) {return Err(Error::NewHostProof);}
                 }
             }
-            #[cfg(feature="lab-e2l-lab-descriptors")]
+            #[cfg(all(feature="lab-e2l-lab-descriptors",not(feature="lab-e2r-active-descriptors")))]
             {
                 // Build a second test-only register image at the CURRENT
                 // identity-mapped EFI physical VA; dormant high-half GDT
@@ -735,11 +775,16 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                 match unios_exitbs::after_exit(status,attempt) {
                     Ok(unios_exitbs::ExitDecision::Success)=>{
                         // NO EFI CALLS AFTER SUCCESS; NO return-to-firmware.
-                        #[cfg(feature="lab-e2q-actual-cr3")]
+                        #[cfg(all(feature="lab-e2q-actual-cr3",not(feature="lab-e2r-active-descriptors")))]
                         unsafe {crate::cr3_terminal::activate(
                             switch_root,switch_bridge_top,
                         );}
-                        #[cfg(not(feature="lab-e2q-actual-cr3"))]
+                        #[cfg(feature="lab-e2r-active-descriptors")]
+                        unsafe {crate::live_descriptors::activate(
+                            switch_root,switch_bridge_top,
+                            unios_paging::DESCRIPTORS_VA,
+                        );}
+                        #[cfg(all(not(feature="lab-e2q-actual-cr3"),not(feature="lab-e2r-active-descriptors")))]
                         unsafe {terminal_debug(0x39);}
                     }
                     Ok(unios_exitbs::ExitDecision::Retry)=>{},
