@@ -31,7 +31,31 @@ python3 scripts/audit_e2r_descriptor_pe.py "$EFI" | tee out/e2r-c7-descriptor-pe
 cp "$EFI" out/e2r-c7-loader.efi
 sha256sum out/e2r-c7-kernel.elf out/e2r-c7-loader.efi | tee out/e2r-c7-image-digests.txt
 cp "$EFI" "$SAFE_EFI"
-UNIOS_E2Q_SMOKE=e2r_clean bash scripts/qemu-preflight.sh | tee out/e2r-c7-qmp-transcript.txt
+# The pinned TCG/OVMF COM2 second pre-cut barrier can occasionally
+# timeout. The first VM is rejected and preserved as failure evidence.
+# Only this independently diagnosed host-barrier failure can run a
+# SECOND fresh disposable VM, with every QMP/PTE/CPU/exit oracle repeated.
+# No other error or clean-boot rejection may be silently retried.
+C7_LOG=out/e2r-c7-qmp-transcript.txt
+if ! UNIOS_E2Q_SMOKE=e2r_clean bash scripts/qemu-preflight.sh > "$C7_LOG" 2>&1; then
+    if grep -Eq 'E2Q_(SECOND_HOST_BARRIER_TIMEOUT|POST_CR3_TIMEOUT_DEBUG)' "$C7_LOG"; then
+        mv "$C7_LOG" out/e2r-c7-first-VM-COM2-rejected.log
+        echo "E2R_C7_DISPOSABLE_VM_RETRY prior=FAILED reason=COM2_BARRIER attempt=2/2"
+        rm -f out/e2r-c6-kernel-proof.json out/e2r-c7-clean-boot-proof.json \
+              out/e2q-new-root-host-proof.json out/e2q-host-targeted-proof.json \
+              out/preflight-outcome.txt out/preflight-host-exit.txt
+        if ! UNIOS_E2Q_SMOKE=e2r_clean bash scripts/qemu-preflight.sh > "$C7_LOG" 2>&1; then
+            cat "$C7_LOG"
+            echo "E2R_C7_BOTH_VM_ATTEMPTS_REJECTED" >&2
+            exit 1
+        fi
+    else
+        cat "$C7_LOG"
+        echo "E2R_C7_NONRETRYABLE_QEMU_REJECTED" >&2
+        exit 1
+    fi
+fi
+cat "$C7_LOG"
 grep -q 'E2R_C6_FIFTH_QMP_HIGH_HALF_RIP_RSP_CR3_BSS_CONTEXT_PASS' out/e2r-c7-qmp-transcript.txt
 grep -q 'E2R_C7_ORDERED_COM1_AND_EXACT_EXIT65_QMP_PASS' out/e2r-c7-qmp-transcript.txt
 grep -q 'mode=e2r_clean ' out/e2r-c7-qmp-transcript.txt
