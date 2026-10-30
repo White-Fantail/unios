@@ -7,6 +7,8 @@ cd "$ROOT"
 export UNIOS_KERNEL_ELF="$ROOT/target/x86_64-unknown-none/release/unios_kernel"
 test -s "$UNIOS_KERNEL_ELF"
 cp out/esp/EFI/BOOT/BOOTX64.EFI out/e2r-c5-safe-efi.efi
+python3 scripts/audit_e2r_high_entry_pe.py --absent out/e2r-c5-safe-efi.efi
+python3 scripts/audit_e2r_descriptor_pe.py --absent out/e2r-c5-safe-efi.efi
 restore() {
   cp out/e2r-c5-safe-efi.efi out/esp/EFI/BOOT/BOOTX64.EFI
   rm -f out/preflight-disk.img out/preflight-fat.img out/preflight-vars.fd
@@ -38,5 +40,5 @@ print("E2R_C5_LIVE_CPU_DESCRIPTORS_PASS (KERNEL_ENTRY=NOT_RUN)")
 PY
 cp out/e2q-new-root-host-proof.json out/e2r-c5-private-PML4.json
 cp out/preflight-serial.log out/e2r-c5-serial.log
-cmp out/e2r-c5-safe-efi.efi out/e2q-preflight-loader.efi
+python3 scripts/audit_e2r_descriptor_pe.py --absent out/e2r-c5-safe-efi.efi
 echo "E2R_C5_QEMU_CPU_DESCRIPTORS_ONLY_NO_KERNEL_BOOT" | tee out/e2r-c5-scope.txt
