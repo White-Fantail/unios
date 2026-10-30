@@ -507,6 +507,31 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                             .map_err(|_|Error::SwitchCode)?;
                     }
                 }
+                #[cfg(feature="lab-e2r-descriptor-code")]
+                {
+                    // E2r-C4: independently prove every page intersecting
+                    // the *linked* descriptor install / CS-reload stub
+                    // is EFI_LOADER_CODE supervisor RX under OLD firmware
+                    // and equal-physical supervisor RX under dormant NEW CR3.
+                    // No LGDT/LIDT/LTR is executed by this preflight.
+                    use unios_bridgecheck::Span;
+                    let (begin,end)=crate::high_descriptor::bounds();
+                    let span=Span::new(begin,end).map_err(|_|Error::SwitchCode)?;
+                    for index in 0..span.pages {
+                        let address=span.page(index).ok_or(Error::SwitchCode)?;
+                        let (va,pa)=crate::oldmap::audit_efi_code_page(
+                            root_gate,address,map,map_size,descriptor_size
+                        ).map_err(|_|Error::SwitchCode)?;
+                        match tables.lookup(va).map_err(|_|Error::SwitchCode)? {
+                            Some(x) if x.pa==pa && x.rights==Rights::Rx=>{},
+                            Some(_)=>return Err(Error::SwitchCode),
+                            None=>tables.map_efi_executable_anchor(va,pa)
+                                .map_err(|_|Error::SwitchCode)?,
+                        }
+                        tables.verify(va,pa,Rights::Rx)
+                            .map_err(|_|Error::SwitchCode)?;
+                    }
+                }
                 #[cfg(feature="lab-e2o-host-private-witness")]
                 {
                     use crate::host_checkpoint::{PrivateTarget,PRIVATE_TARGETS};
@@ -560,6 +585,13 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                         if end<=start {return Err(Error::SwitchCode);}
                         targets[21]=PrivateTarget{va:start,pa:start,rights:1};
                         targets[22]=PrivateTarget{va:end-1,pa:end-1,rights:1};
+                    }
+                    #[cfg(feature="lab-e2r-descriptor-code")]
+                    {
+                        let (begin,end)=crate::high_descriptor::bounds();
+                        if end<=begin {return Err(Error::SwitchCode);}
+                        targets[23]=PrivateTarget{va:begin,pa:begin,rights:1};
+                        targets[24]=PrivateTarget{va:end-1,pa:end-1,rights:1};
                     }
                     // The VM is halted a SECOND time by an independent
                     // host that reads the physical PML4 and all traversed
