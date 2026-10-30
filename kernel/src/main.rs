@@ -96,10 +96,21 @@ unsafe fn lab_entry(ptr:*const u8)->! {
     for _ in 0..600000000u64 {
         if input(0x2fd)&1!=0 {
             if input(0x2f8)==b'K' {
-                // Diagnostic C6 high-half entry only: 0x42 -> exit 133.
-                // Full E2r-D clean-boot exit 65 is intentionally forbidden.
-                out(0xf4,0x42);
-                halt();
+                #[cfg(feature="lab-e2r-clean-pass")]
+                {
+                    // The CPU only reaches here after the host fifth
+                    // QMP RIP/RSP/CR3/BootContext proof granted K.
+                    // COM1 stage order and true QEMU debug-exit 65 are
+                    // independently checked again after VM termination.
+                    serial(b"UNIOS:L1:HALTED_PASS\r\n");
+                    out(0xf4,0x20); // QEMU isa-debug-exit exit 65
+                    halt();
+                }
+                #[cfg(not(feature="lab-e2r-clean-pass"))]
+                {
+                    out(0xf4,0x42); // C6 diagnostic exit 133 only
+                    halt();
+                }
             }
             lab_fail();
         }
