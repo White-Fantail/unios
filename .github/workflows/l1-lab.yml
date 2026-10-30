@@ -1,8 +1,9 @@
-name: L1 experimental E2q terminal real CR3 bridge with third independent QMP CPU witness
+name: L1 experimental E2q/E2r regression and independent QEMU witness
 on:
   push:
     branches:
       - "experiment/l1-e2q-cr3-terminal-bridge"
+      - "experiment/l1-e2r-*"
   workflow_dispatch:
 
 permissions:
