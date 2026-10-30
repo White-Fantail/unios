@@ -9,3 +9,6 @@ name = "unios_kernel"
 path = "src/main.rs"
 test = false
 bench = false
+
+[features]
+lab-e2r-kernel-entry = [] # opt-in disposable QEMU test; not default
