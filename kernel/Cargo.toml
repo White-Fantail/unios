@@ -16,3 +16,5 @@ lab-e2r-kernel-entry = [] # opt-in disposable QEMU test; not default
 lab-e2r-clean-pass = ["lab-e2r-kernel-entry"] # only after fifth host K authorization
 
 lab-e2r-high-half-ud = ["lab-e2r-kernel-entry"] # QEMU-only real vector-6 negative control
+
+lab-e2r-main-guard-pf = ["lab-e2r-kernel-entry"] # QEMU-only, true non-present stack guard #PF
