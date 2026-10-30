@@ -36,8 +36,33 @@ for mode in cr3 exitbs ud ist df; do
   python3 scripts/audit_e2k_pe.py out/esp/EFI/BOOT/BOOTX64.EFI |
     tee "out/e2q-$mode-independent-pe.txt"
   python3 scripts/audit_e2q_cr3_pe.py out/esp/EFI/BOOT/BOOTX64.EFI | tee "out/e2q-$mode-cr3-opcode-audit.txt"
-  UNIOS_E2Q_SMOKE="$mode" bash scripts/qemu-preflight.sh |
-    tee "out/e2q-$mode-smoke-host.txt"
+  # CI/QEMU COM2 on TCG occasionally drops a pre-cut authorization
+  # barrier. Such a VM is FAILED, never granted O/Q, and its evidence is
+  # quarantined. Exactly one fresh disposable VM may retry only the two
+  # explicitly diagnosed COM2 barrier timeouts. All other failures stop.
+  # Each attempt re-creates GPT/ESP/VARS/QMP sockets and must independently
+  # complete EVERY original QEMU register/PTE/exit oracle.
+  HOST_LOG="out/e2q-$mode-smoke-host.txt"
+  if ! UNIOS_E2Q_SMOKE="$mode" bash scripts/qemu-preflight.sh > "$HOST_LOG" 2>&1; then
+    if grep -Eq 'E2Q_(SECOND_HOST_BARRIER_TIMEOUT|POST_CR3_TIMEOUT_DEBUG)' "$HOST_LOG"; then
+      mv "$HOST_LOG" "out/e2q-$mode-first-VM-barrier-rejected.log"
+      echo "E2Q_DISPOSABLE_VM_RETRY mode=$mode prior=FAILED reason=COM2_BARRIER attempt=2/2"
+      # A fresh VM must not inherit a previous partial host proof as a
+      # claim of success. The successful host re-writes all proof artifacts.
+      rm -f out/e2q-host-targeted-proof.json out/e2q-new-root-host-proof.json \
+            out/preflight-outcome.txt out/preflight-host-exit.txt
+      if ! UNIOS_E2Q_SMOKE="$mode" bash scripts/qemu-preflight.sh > "$HOST_LOG" 2>&1; then
+        cat "$HOST_LOG"
+        echo "E2Q_RETRY_REJECTED mode=$mode: both disposable VM attempts failed" >&2
+        exit 1
+      fi
+    else
+      cat "$HOST_LOG"
+      echo "E2Q_NONRETRYABLE_REJECTED mode=$mode" >&2
+      exit 1
+    fi
+  fi
+  cat "$HOST_LOG"
   cp out/preflight-outcome.txt "out/e2q-$mode-smoke-outcome.txt"
   cp out/preflight-serial.log "out/e2q-$mode-smoke-serial.log"
   cp out/e2q-host-targeted-proof.json "out/e2q-$mode-smoke-host-proof.json"
