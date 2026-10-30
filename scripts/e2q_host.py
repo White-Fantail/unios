@@ -18,6 +18,8 @@ from e2o_new_tree import MARKER as PRIVATE_MARKER
 from e2q_new_tree import PACKET,decode_manifest,verify_new,MARKER as SWITCH_MARKER,parse_switched_regs
 from e2r_new_tree import PACKET as E2R_PACKET, decode_manifest as decode_e2r, verify_new as verify_e2r
 from e2r_descriptor_new_tree import PACKET as E2R_DESC_PACKET, decode_manifest as decode_e2r_desc, verify_new as verify_e2r_desc
+from e2r_live_tree import PACKET as LIVE_PACKET, decode_manifest as decode_live, verify_new as verify_live, MARKER as LIVE_MARKER
+from e2r_live_cpu import verify_cpu as verify_live_cpu
 
 ROOT_MASK = 0x000f_ffff_ffff_f000
 TIME_LIMIT = 120
@@ -133,7 +135,7 @@ def connect_unix(path, process, deadline):
     raise TimeoutError(f"QEMU {path} control socket not ready")
 
 def expected_host_exit(mode):
-    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125}
+    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125,"e2r_desc":125,"e2r_live":129}
     if mode not in choices:
         raise ValueError("unknown QEMU handler smoke mode")
     return choices[mode]
@@ -143,11 +145,14 @@ def run(argv):
     expected_exit=expected_host_exit(mode)
     # Only the explicit E2r preflight feature emits 23 targets.
     # Every E2q default/fault/actual CR3 path retains its 21-target ABI.
-    target_packet=(E2R_DESC_PACKET if mode=="e2r_desc" else
+    target_packet=(LIVE_PACKET if mode=="e2r_live" else
+                   E2R_DESC_PACKET if mode=="e2r_desc" else
                    E2R_PACKET if mode=="e2r" else PACKET)
-    decode_current=(decode_e2r_desc if mode=="e2r_desc" else
+    decode_current=(decode_live if mode=="e2r_live" else
+                    decode_e2r_desc if mode=="e2r_desc" else
                     decode_e2r if mode=="e2r" else decode_manifest)
-    verify_current=(verify_e2r_desc if mode=="e2r_desc" else
+    verify_current=(verify_live if mode=="e2r_live" else
+                    verify_e2r_desc if mode=="e2r_desc" else
                     verify_e2r if mode=="e2r" else verify_new)
     base=Path("out")
     qmp_path=base/"e2j-qmp.sock"
@@ -291,7 +296,7 @@ def run(argv):
                 _,old_final=parse_cr3(regs5)
                 if old_final!=root:
                     raise RuntimeError("old firmware CR3 changed during new-PTE audit")
-                if mode in ("e2r","e2r_desc"):
+                if mode in ("e2r","e2r_desc","e2r_live"):
                     # E2r-C2/C4: only after independently proving the entire
                     # private PML4 and its descriptor PA mapping, read the
                     # actual EFI-built 4KiB GDT/TSS/IDT physical page.
@@ -318,7 +323,7 @@ def run(argv):
                 # allowed to unlock the guest; this is not a CR3 switch.
                 gate_socket.sendall(b"O")
                 qmp.call("cont")
-                if mode=="cr3":
+                if mode in ("cr3","e2r_live"):
                     # CPU now calls ExitBootServices, sets bridge RSP,
                     # executes an actual MOV CR3, and sends the UNIQUE
                     # third COM2 marker from RX code under new CR3.
@@ -357,8 +362,8 @@ def run(argv):
                     bridge=next(r for r in records if r["id"]==3)
                     live=parse_switched_regs(
                         cpu,new_root,
-                        int(new_proof["cr3_terminal_code_begin"],16),
-                        int(new_proof["cr3_terminal_code_end"],16),
+                        int(new_proof["live_descriptors_begin"] if mode=="e2r_live" else new_proof["cr3_terminal_code_begin"],16),
+                        int(new_proof["live_descriptors_end"] if mode=="e2r_live" else new_proof["cr3_terminal_code_end"],16),
                         bridge["base"],bridge["end"])
                     print(f"E2Q_STAGE_Q_CPU_REGISTERS_VERIFIED {live}",flush=True)
                     rip=int(live["cpu_live_rip"],16)
@@ -406,6 +411,51 @@ def run(argv):
                         raise RuntimeError("VM shutdown before terminal new-CR3 verification")
                     gate_socket.sendall(b"Q")
                     qmp.call("cont")
+                    if mode=="e2r_live":
+                        # Fourth independent stop, after actual LGDT/LIDT/
+                        # LTR, far-CS reload and all data-segment reloads.
+                        fourth=bytearray()
+                        while LIVE_MARKER not in fourth:
+                            if time.monotonic()>timeout:
+                                raise TimeoutError("missing live CPU descriptor checkpoint")
+                            try:
+                                fragment=gate_socket.recv(512)
+                            except socket.timeout:
+                                qmp.call("stop")
+                                failed=qmp.hmp("info registers")
+                                print("E2R_C5_LIVE_DESCRIPTOR_TIMEOUT "+
+                                      failed[:1800],file=sys.stderr)
+                                raise RuntimeError("CPU never installed complete high-half descriptors")
+                            if not fragment:
+                                raise ValueError("COM2 lost before fourth descriptor checkpoint")
+                            fourth.extend(fragment)
+                            if len(fourth)>8192:
+                                raise ValueError("excess fourth-stage COM2 traffic")
+                        if fourth.split(LIVE_MARKER,1)[1]:
+                            raise ValueError("unexpected fourth-stage COM2 trailing bytes")
+                        qmp.call("stop")
+                        if qmp.call("query-status").get("running") is not False:
+                            raise RuntimeError("fourth-stage vCPU not halted")
+                        actual=qmp.hmp("info registers")
+                        verified=verify_live_cpu(
+                            actual,new_root,
+                            int(new_proof["live_descriptors_begin"],16),
+                            int(new_proof["live_descriptors_end"],16),
+                            bridge["base"],bridge["end"])
+                        actual_rip=int(verified["cpu_live_rip"],16)
+                        if walk_active(new_root,used,actual_rip,active_physical_page)!=(actual_rip,1):
+                            raise ValueError("actual post-descriptor CPU RIP lacks private RX leaf")
+                        (base/"e2r-c5-live-descriptor-cpu-registers.txt").write_text(actual)
+                        (base/"e2r-c5-live-descriptor-proof.json").write_text(
+                            json.dumps({"result":"PASS",**verified,
+                                        "live_pc_private_leaf_rx":True,
+                                        "efi_boot_services_exited":"terminal marker follows success branch"},
+                                       indent=2)+"\\n")
+                        print("E2R_C5_FOURTH_QMP_CPU_GDTR_IDTR_TR_CS_CR3_PASS",flush=True)
+                        if any(x in ("RESET","SHUTDOWN") for x in qmp.events):
+                            raise RuntimeError("unexpected reset before fourth QMP proof")
+                        gate_socket.sendall(b"R")
+                        qmp.call("cont")
                 remaining=max(1,int(timeout-time.monotonic()))
                 rc=proc.wait(timeout=remaining)
                 (base/"preflight-host-exit.txt").write_text(f"{rc}\n")
