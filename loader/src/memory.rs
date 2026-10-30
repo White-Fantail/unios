@@ -656,7 +656,10 @@ pub fn preflight(services: *mut BootServices, image_handle: usize, image: &Image
                     }
                     #[cfg(feature="lab-e2r-active-descriptors")]
                     {
+                        #[cfg(not(feature="lab-e2r-actual-entry"))]
                         let (begin,end)=crate::live_descriptors::bounds();
+                        #[cfg(feature="lab-e2r-actual-entry")]
+                        let (begin,end)=crate::kernel_handoff::bounds();
                         if end<=begin {return Err(Error::SwitchCode);}
                         targets[25]=PrivateTarget{va:begin,pa:begin,rights:1};
                         targets[26]=PrivateTarget{va:end-1,pa:end-1,rights:1};
