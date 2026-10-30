@@ -16,6 +16,7 @@ from e2i_table_walk import walk_tables, qmp_read_table,parse_full_page_dump
 from e2j_targeted import MARKER, parse_manifest, verify_targets
 from e2o_new_tree import MARKER as PRIVATE_MARKER
 from e2q_new_tree import PACKET,decode_manifest,verify_new,MARKER as SWITCH_MARKER,parse_switched_regs
+from e2r_new_tree import PACKET as E2R_PACKET, decode_manifest as decode_e2r, verify_new as verify_e2r
 
 ROOT_MASK = 0x000f_ffff_ffff_f000
 TIME_LIMIT = 120
@@ -131,7 +132,7 @@ def connect_unix(path, process, deadline):
     raise TimeoutError(f"QEMU {path} control socket not ready")
 
 def expected_host_exit(mode):
-    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121}
+    choices={"preflight":125,"ud":103,"ist":105,"df":109,"exitbs":115,"cr3":121,"e2r":125}
     if mode not in choices:
         raise ValueError("unknown QEMU handler smoke mode")
     return choices[mode]
@@ -139,6 +140,11 @@ def expected_host_exit(mode):
 def run(argv):
     mode=os.environ.get("UNIOS_E2Q_SMOKE","preflight")
     expected_exit=expected_host_exit(mode)
+    # Only the explicit E2r preflight feature emits 23 targets.
+    # Every E2q default/fault/actual CR3 path retains its 21-target ABI.
+    target_packet=E2R_PACKET if mode=="e2r" else PACKET
+    decode_current=decode_e2r if mode=="e2r" else decode_manifest
+    verify_current=verify_e2r if mode=="e2r" else verify_new
     base=Path("out")
     qmp_path=base/"e2j-qmp.sock"
     gate_path=base/"e2j-com2.sock"
@@ -250,16 +256,16 @@ def run(argv):
                     if len(collected)>128*1024:
                         raise ValueError("excess COM2 traffic before new-root checkpoint")
                 second=bytearray(collected.split(PRIVATE_MARKER,1)[1])
-                while len(second)<PACKET:
+                while len(second)<target_packet:
                     if time.monotonic()>timeout:
                         raise TimeoutError("new root manifest timed out")
                     fragment=gate_socket.recv(1024)
                     if not fragment:
                         raise ValueError(f"truncated private PML4 manifest, guest_exit={proc.poll()}")
                     second.extend(fragment)
-                if len(second)!=PACKET:
+                if len(second)!=target_packet:
                     raise ValueError("trailing bytes in private PML4 manifest")
-                new_root,used,new_targets=decode_manifest(bytes(second))
+                new_root,used,new_targets=decode_current(bytes(second))
                 qmp.call("stop")
                 if qmp.call("query-status").get("running") is not False:
                     raise RuntimeError("QEMU failed to pause for private PML4 proof")
@@ -274,7 +280,7 @@ def run(argv):
                             raise ValueError("old-CR3 executable witness cap")
                         old_cache[pa]=tuple(qmp_read_table(qmp,pa))
                     return old_cache[pa]
-                new_proof=verify_new(
+                new_proof=verify_current(
                     new_root,used,new_targets,records,root,
                     lambda pa:qmp_read_table(qmp,pa),old_read)
                 regs5=qmp.hmp("info registers")
