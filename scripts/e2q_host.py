@@ -363,8 +363,8 @@ def run(argv):
                     bridge=next(r for r in records if r["id"]==3)
                     live=parse_switched_regs(
                         cpu,new_root,
-                        int(new_proof["live_descriptors_begin"] if mode=="e2r_live" else new_proof["cr3_terminal_code_begin"],16),
-                        int(new_proof["live_descriptors_end"] if mode=="e2r_live" else new_proof["cr3_terminal_code_end"],16),
+                        int(new_proof["live_descriptors_begin"] if mode in ("e2r_live","e2r_handoff") else new_proof["cr3_terminal_code_begin"],16),
+                        int(new_proof["live_descriptors_end"] if mode in ("e2r_live","e2r_handoff") else new_proof["cr3_terminal_code_end"],16),
                         bridge["base"],bridge["end"])
                     print(f"E2Q_STAGE_Q_CPU_REGISTERS_VERIFIED {live}",flush=True)
                     rip=int(live["cpu_live_rip"],16)
