@@ -486,8 +486,6 @@ def run(argv):
                                 raise RuntimeError("kernel vCPU not paused at fifth marker")
                             kernel_regs=qmp.hmp("info registers")
                             from e2o_new_tree import CONTEXT
-                            from pathlib import Path
-                            from struct import unpack
                             context_pa=next(r["base"] for r in records if r["id"]==7)
                             physical=parse_full_page_dump(
                                 qmp.hmp(f"xp /512gx 0x{context_pa:x}"),context_pa)
