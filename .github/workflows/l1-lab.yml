@@ -33,6 +33,8 @@ jobs:
         run: bash scripts/e2r-c1-preflight.sh
       - name: E2r-C4 independent QMP 25-target descriptor stub RX proof (NO LGDT)
         run: bash scripts/e2r-c4-preflight.sh
+      - name: E2r-C5 QEMU real private CR3 and CPU GDT IDT TSS witness (NO kernel boot)
+        run: bash scripts/e2r-c5-terminal.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4
         if: always()
