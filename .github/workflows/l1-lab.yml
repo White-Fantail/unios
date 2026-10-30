@@ -31,6 +31,8 @@ jobs:
         run: bash scripts/e2q-terminal-regressions.sh
       - name: E2r-C1 independently prove linked high-entry PE RX via 23-target QMP (NO high-half execution)
         run: bash scripts/e2r-c1-preflight.sh
+      - name: E2r-C4 independent QMP 25-target descriptor stub RX proof (NO LGDT)
+        run: bash scripts/e2r-c4-preflight.sh
       - name: Upload reproducibility and artifact evidence (NOT boot proof)
         uses: actions/upload-artifact@v4
         if: always()
