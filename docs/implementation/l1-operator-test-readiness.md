@@ -1,51 +1,42 @@
-# UniOS L1 — operator test-stage admission policy
+# UniOS L1 — operator QEMU test admission and limits
 
-**Status as of 2026-10-29:** **NOT YET A USER KERNEL BOOT TEST**.
+**2026-10-30 status:** The approved L1 Experimental Kernel's **E2r-C7
+isolated QEMU clean-boot oracle is verified**, including real high-half
+kernel execution and exact QEMU host exit **65**. The separate E2r-D
+operator wrapper and exact-main CI remain the final reproduction gate.
 
-The existing `scripts/build-l1.sh` and `scripts/qemu-preflight.sh` on the
-**experiment** branch are reproducible *firmware preflight diagnostics*,
-not an OS installation or user-operable kernel. Exit codes 67, 69, 71, 73
-and 75 intentionally mark only lab preflight phases, not success.
+## Verified on disposable Ubuntu 24.04 GitHub Actions
 
-## Explicit threshold to announce "TEST STAGE — QEMU"
+- [C6 high-half CPU entry CI #40990455349](https://github.com/White-Fantail/unios/actions/runs/40990455349): ExitBootServices, private CR3, high-half RIP/RSP, kernel ELF/BSS/BootContext, independent fifth QMP witness, diagnostic exit 133.
+- [C7 clean boot CI #40990906949](https://github.com/White-Fantail/unios/actions/runs/40990906949): all of the above plus fifth host authorization, ordered COM1 kernel-entry and HALTED_PASS markers, exact exit **65**, 27 private mappings, descriptor/GDT/IDT/TSS/IST witnesses, fault and previous-stage regressions.
+- Separate feature-built EFI and ELF have SHA-256 digests in `out/e2r-c7-image-digests.txt`, preserved inside the CI artifact with the structured host proofs. The **default safe EFI and normal kernel** are restored after each test.
 
-The assistant must first demonstrate and cite **an actual CI run**
-satisfying all:
-- Known SHA-256, signed-off review scope, pinned compiler/OVMF/QEMU.
-- ELF64 ET_EXEC / UEFI PE+ checks; bounded image copy, zeroed BSS and map
-  ownership, verified bridge address provenance.
-- Actual successful ExitBootServices with no post-cut firmware calls,
-  new CR3 enforced (CR0.WP + EFER.NXE), kernel SysV entry on protected
-  high-half stack, GDT/IDT/TSS/#DF IST and absence of guards.
-- Independent host-confirmed QEMU success exit **65** with correct
-  ordered COM1 stage trace and no reset/shutdown/timeout/panic.
-- At least the essential negative/fault controls and regression suite
-  for the exact test image; no premature blanket E5 signoff.
-- A bootable, separately versioned QEMU artifact with checksums and a
-  documented disposable test harness that cannot touch personal disks.
+## Explicit QEMU operator test gate
 
-Only THEN explicitly tell the user **"가상환경 테스트 단계 진입"** and supply
-tailored copy/paste commands, expected console/QEMU exit, SHA256 verification,
-failure capture and safe cleanup. Provide host instructions for the user's
-platform: primarily Linux/QEMU or a disposable Linux VM; adapt for macOS
-only after its tooling/image compatibility has been verified.
+An operator may only declare **가상환경 테스트 단계 진입** when:
 
-**Physical-machine testing is a separate, later approval:** unvalidated
-ACPI, hardware memory maps, firmware differences, DMA/IOMMU and serial
-diagnostics make real bare-metal boot outside the approved current LAB-H1
-profile. Do not instruct loading on personal PCs or writing bootable
-USB/media until explicitly expanded and tested.
+1. The entire approved L1 CI suite succeeds for the **exact main source SHA**.
+2. The tested EFI/ELF build is reproducible with pinned Rust 1.90.0, QEMU 8.2.2 and OVMF 4M in Ubuntu 24.04.
+3. Independently verified ExitBootServices, CR3, WP/NXE, high-half RIP/RSP, GDT/IDT/TSS/IST, stack guards, BootContext and actual loaded RX/BSS provenance remain intact.
+4. The guest emits ordered COM1 stage markers, an independently paused QMP fifth proof grants K, and native host QEMU exit is **65** without panic/reset/timeout.
+5. Negative controls and previous E2q/E2r QEMU regressions pass; no C7 opt-in EFI replaces the safe default.
+6. The separate tested EFI/ELF, digest file, structured QMP/COM1 proof, and the **documented disposable Ubuntu-only harness** exist.
 
-## Operator-facing expected future flow (not yet executable)
+The local operator must replay from a clean `main`, retaining the exact
+source SHA and confirming both binary SHA-256 digests and the clean exit.
+See [L1 operator QEMU runbook](l1-operator-qemu-runbook.md).
 
-1. Obtain exact release/test candidate and SHA-256, plus disposable QEMU
-   firmware and disk artifacts.
-2. Verify all hashes, isolate network and all real user disks, use a
-   separate OVMF VARS copy, no user media.
-3. Run finite QEMU with explicit machine/CPU/memory/serial and debug-exit;
-   capture COM1, QMP reset events and host exit.
-4. Require the **entire** stage-trace oracle, not just a string or exit
-   status, and inspect negative-path expected failures separately.
-5. Save a structured report and replay any failure against identical
-   fixture hashes. Never regard resets, hangs, printed PASS alone or
-   ordinary UEFI preflight as a successful kernel boot.
+## In scope versus not admitted
+
+- **In scope:** a throwaway, **non-root Ubuntu 24.04 Linux VM** running
+  pinned QEMU 8.2.2/OVMF 4M with a disposable GPT ESP, disconnected
+  guest network, no personal disks/USB passthrough, and saved evidence.
+- **Not admitted:** native macOS QEMU without separate compatibility
+  verification, any physical PC/USB boot, production use, other firmware,
+  multi-vCPU/hardware, or L2 functionality.
+- **No general OS claim:** the L1 result is a kernel entry and minimal
+  fail-stop boot oracle, not a desktop system, filesystem or driver stack.
+
+Never take a guest-written success marker or debug-exit alone as a boot.
+A missing fifth QMP witness, altered binary, firmware difference, or
+any unexpected CPU fault is a rejection, even if COM1 printed PASS.
